@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* Atelier Pelissier brand */
+  --brand-dark: #1b1b1d;
+  --brand-blue: #17adff;
+  --brand-green: #51ff7d;
+  --foreground: #171717;
+  --background: #e5e5e5;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* Ensure header uses brand dark */
+.app-header {
+  background-color: var(--brand-dark);
+}
+
+/* Primary button so it always has contrast */
+.btn-primary {
+  background-color: var(--brand-dark);
+  color: white;
+}
+.btn-primary:hover {
+  filter: brightness(0.9);
+}
+
+@media print {
+  header,
+  .print\:hidden,
+  a[href="/"],
+  button {
+    display: none !important;
+  }
+  main {
+    padding: 0 !important;
+    background: white !important;
+  }
+  #quote-print,
+  #service-call-print,
+  #service-calls-list-print {
+    box-shadow: none !important;
+    border: none !important;
+  }
+  #service-call-print,
+  #service-calls-list-print {
+    max-width: 100% !important;
+  }
+  /* Day schedule print: hide all except the day print clone */
+  body.printing-day * {
+    visibility: hidden !important;
+  }
+  body.printing-day #day-print-clone,
+  body.printing-day #day-print-clone * {
+    visibility: visible !important;
+  }
+  body.printing-day #day-print-clone {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    background: white !important;
+  }
+}

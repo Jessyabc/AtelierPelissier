@@ -1,0 +1,247 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Project {
+  id        String   @id @default(cuid())
+  name      String
+  type      String   // legacy: first type; use types for full list
+  types     String   @default("vanity") // comma-separated: vanity,side_unit,kitchen
+  isDraft   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Job identifier (e.g. MC-6199) — used for service call numbering
+  jobNumber String?
+  // Free-form notes for the job
+  notes     String?
+
+  // Client info
+  clientFirstName String?
+  clientLastName  String?
+  clientEmail     String?
+  clientPhone     String?
+  clientAddress   String?
+
+  vanityInputs     VanityInputs?
+  sideUnitInputs  SideUnitInputs?
+  kitchenInputs   KitchenInputs?
+  projectSettings ProjectSettings?
+  panelParts      PanelPart[]
+  costLines       CostLine[]
+  auditLogs       AuditLog[]
+  serviceCalls    ServiceCall[]
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  action    String   // e.g. created, saved, client_updated, cost_added, duplicated, deleted
+  details   String?  // optional JSON or short description
+  createdAt DateTime @default(now())
+}
+
+model VanityInputs {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  width          Float   // inches
+  depth          Float
+  kickplate      Boolean
+  framingStyle   String  // Sides only | Sides and bottom | Around | Frame everything
+  mountingStyle  String  // Freestanding | Wall-hung | Custom legs | Box base
+  drawers        Int
+  doors          Int
+  thickFrame     Boolean
+  numberOfSinks  String  // Single | Double
+  doorStyle      String  // Slab/Flat | Thin Shaker | Standard Shaker
+  countertop     Boolean
+  countertopWidth  Float?
+  countertopDepth Float?
+  sinks          String? // Single | Double | Single Vessel | Double Vessel | None
+  faucetHoles    String? // 4" center | 8" center | One hole | No Hole
+  priceRangePi2  Float?
+}
+
+model SideUnitInputs {
+  id        String  @id @default(cuid())
+  projectId String  @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  width         Float
+  depth         Float
+  height        Float
+  kickplate     Boolean
+  framingStyle  String
+  mountingStyle String
+  drawers       Int
+  doors         Int
+  thickFrame    Boolean
+  doorStyle     String
+}
+
+model KitchenInputs {
+  id        String @id @default(cuid())
+  projectId String @unique
+  project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Cost lines stored in CostLine with kind = estimate for kitchen
+}
+
+model ProjectSettings {
+  id             String   @id @default(cuid())
+  projectId      String   @unique
+  project        Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  markup         Float    @default(2.5)
+  taxEnabled     Boolean  @default(false)
+  taxRate        Float    @default(0.14975)
+  sheetFormatId  String?
+  sheetFormat    SheetFormat? @relation(fields: [sheetFormatId], references: [id])
+}
+
+model SheetFormat {
+  id          String   @id @default(cuid())
+  label       String   // e.g. "9'1\" x 4'7\""
+  lengthIn    Float
+  widthIn     Float
+  isCustom    Boolean  @default(false)
+
+  projects    ProjectSettings[]
+}
+
+model PanelPart {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label        String
+  lengthIn     Float
+  widthIn      Float
+  qty          Int
+  materialCode String?
+  thicknessIn   Float?
+}
+
+model CostLine {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind      String   // estimate | actual
+  category  String
+  amount    Float
+}
+
+// Service call: on-site visit record (matches legacy PDF form)
+// Multiple service calls per project (e.g. MC-6199 - #1, MC-6199 - #2)
+model ServiceCall {
+  id                    String   @id @default(cuid())
+  projectId             String
+  project               Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  // Client Information
+  clientName            String?
+  jobNumber             String?
+  address               String?
+  contactPerson         String?
+  clientPhone           String?
+  clientEmail           String?
+  // Service Call Details
+  serviceDate           DateTime?
+  timeOfArrival         DateTime?
+  timeOfDeparture       DateTime?
+  technicianName        String?
+  serviceCallNumber     String?
+  serviceCallType       String?  // JSON array: ["warranty","repair",...] — multiple types can apply
+  reasonForService      String?
+  workPerformed         String?
+  // Technician Checklist (JSON: workIdentified, repairCompleted, ...)
+  checklistJson         String?
+  // Materials/Parts Used
+  materialsDescription  String?
+  materialsQuantity     String?
+  materialsProvidedBy   String?  // company | client
+  // Service Status
+  serviceCompleted      Boolean?
+  additionalVisitRequired Boolean?
+  additionalVisitReason String?
+  estimatedFollowUpDate DateTime?
+  // Client Satisfaction (quality, timeliness, etc.)
+  satisfactionJson      String?
+  // Client Acknowledgment: completed | partial
+  clientAcknowledgmentType String?
+  followUpReason       String?
+  // Signatures
+  clientSignature      String?
+  responsibleSignature  String?
+  // Free-form notes for this service call
+  notes                 String?
+  items                 ServiceCallItem[]
+  dayPlanItems          DayPlanItem[]
+}
+
+// Materials/parts used during the service call (addable list)
+model ServiceCallItem {
+  id            String   @id @default(cuid())
+  serviceCallId String
+  serviceCall   ServiceCall @relation(fields: [serviceCallId], references: [id], onDelete: Cascade)
+  description   String   // Material/part description
+  quantity      String?  // e.g. "2", "N/A"
+  providedBy    String?  // company | client
+  files         ServiceCallItemFile[]
+}
+
+// Files attached to a materials/parts item
+model ServiceCallItemFile {
+  id                 String   @id @default(cuid())
+  serviceCallItemId  String
+  serviceCallItem    ServiceCallItem @relation(fields: [serviceCallItemId], references: [id], onDelete: Cascade)
+  fileName           String   // Original file name
+  storagePath        String   // Path under public/uploads/ for serving
+}
+
+// Day plan: ordered lineup of events for a specific date. User can add, remove, reorder.
+// Each item is either a service call ref or an inline manual event.
+model DayPlanItem {
+  id             String   @id @default(cuid())
+  planDate       DateTime // The calendar date (at midnight)
+  sortOrder      Int      @default(0)
+  type           String   // "service_call" | "manual"
+  serviceCallId  String?  // If type=service_call
+  serviceCall    ServiceCall? @relation(fields: [serviceCallId], references: [id], onDelete: Cascade)
+  // Inline manual event (if type=manual)
+  title          String?
+  scheduledTime  String?  // "HH:MM"
+  address        String?
+  notes          String?
+}
+
+// Manual calendar events: non-service-call entries (pickups, deliveries, appointments, etc.)
+// Ordered by scheduledTime, then sortOrder for same-time events
+model CalendarEvent {
+  id             String   @id @default(cuid())
+  eventDate      DateTime // Date of the event (stored at midnight or specific time)
+  scheduledTime  String?  // "HH:MM" for ordering (e.g. "09:00", "14:30")
+  sortOrder      Int      @default(0) // For manual ordering within the same time
+  title          String   // e.g. "Pickup at Richelieu", "Delivery to client"
+  address        String?  // Destination for route planning
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// Distributors: reference list for ordering, contact info, account numbers
+model Distributor {
+  id             String   @id @default(cuid())
+  referenceName  String   // Your internal reference (e.g. "Richelieu", "Distributor A")
+  companyName   String   // Official company name
+  phoneNumber   String?
+  extension     String?
+  accountNumber String?  // Your account number with them
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}

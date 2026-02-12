@@ -1,0 +1,780 @@
+"use client";
+
+/**
+ * Canonical service call form — source of reference for all service call data entry.
+ * Used by /service-calls (standalone create) and ServiceCallsTab (project edit).
+ */
+
+import { useState } from "react";
+import { SignaturePad } from "./SignaturePad";
+import { ServiceCallPrintView } from "./ServiceCallPrintView";
+import {
+  CHECKLIST_KEYS,
+  SATISFACTION_CRITERIA,
+  SATISFACTION_LEVELS,
+  SERVICE_CALL_TYPES,
+  parseChecklistJson,
+  parseReasonsForServiceJson,
+  parseSatisfactionJson,
+  parseServiceCallTypesJson,
+  stringifyChecklist,
+  stringifyReasonsForService,
+  stringifySatisfaction,
+  stringifyServiceCallTypes,
+} from "@/lib/serviceCallTypes";
+
+/**
+ * Format stored date for <input type="date"> using local date components.
+ * Avoids timezone shift (e.g. UTC midnight "2026-02-13" would show as Feb 12 in EST).
+ */
+function toDateInputValue(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+/**
+ * Parse "YYYY-MM-DD" from date input and store as ISO.
+ * Uses local date constructor so the stored instant represents that calendar day in user's timezone.
+ */
+function fromDateInputValue(value: string): string | null {
+  if (!value?.trim()) return null;
+  const [y, m, d] = value.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d).toISOString();
+}
+
+export type ServiceCallFormItemFile = {
+  id: string;
+  fileName: string;
+  storagePath: string;
+};
+
+export type ServiceCallFormItem = {
+  id: string;
+  description: string;
+  quantity?: string | null;
+  providedBy?: string | null;
+  files?: ServiceCallFormItemFile[];
+};
+
+export type ServiceCallFormValue = {
+  clientName: string | null;
+  jobNumber: string | null;
+  address: string | null;
+  contactPerson: string | null;
+  clientPhone: string | null;
+  clientEmail: string | null;
+  serviceDate: string | null;
+  timeOfArrival: string | null;
+  timeOfDeparture: string | null;
+  technicianName: string | null;
+  serviceCallNumber: string | null;
+  serviceCallType: string | null;
+  reasonForService: string | null;
+  workPerformed: string | null;
+  checklistJson: string | null;
+  serviceCompleted: boolean | null;
+  additionalVisitRequired: boolean | null;
+  additionalVisitReason: string | null;
+  estimatedFollowUpDate: string | null;
+  satisfactionJson: string | null;
+  clientAcknowledgmentType: string | null;
+  followUpReason: string | null;
+  clientSignature: string | null;
+  responsibleSignature: string | null;
+  notes: string | null;
+};
+
+export type ProjectPrefill = {
+  clientFirstName?: string | null;
+  clientLastName?: string | null;
+  clientPhone?: string | null;
+  clientAddress?: string | null;
+  clientEmail?: string | null;
+};
+
+/** Default empty form value — use as initial state for create flows */
+export const EMPTY_SERVICE_CALL_FORM: ServiceCallFormValue = {
+  clientName: null,
+  jobNumber: null,
+  address: null,
+  contactPerson: null,
+  clientPhone: null,
+  clientEmail: null,
+  serviceDate: null,
+  timeOfArrival: null,
+  timeOfDeparture: null,
+  technicianName: null,
+  serviceCallNumber: null,
+  serviceCallType: null,
+  reasonForService: null,
+  workPerformed: null,
+  checklistJson: null,
+  serviceCompleted: null,
+  additionalVisitRequired: null,
+  additionalVisitReason: null,
+  estimatedFollowUpDate: null,
+  satisfactionJson: null,
+  clientAcknowledgmentType: null,
+  followUpReason: null,
+  clientSignature: null,
+  responsibleSignature: null,
+  notes: null,
+};
+
+export function generateItemId() {
+  return `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+function toDateTimeLocal(iso: string | null): string {
+  if (!iso) return "";
+  try {
+    const d = new Date(iso);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  } catch {
+    return "";
+  }
+}
+
+type Props = {
+  value: ServiceCallFormValue;
+  onChange: <K extends keyof ServiceCallFormValue>(key: K, value: ServiceCallFormValue[K]) => void;
+  items: ServiceCallFormItem[];
+  onAddItem: (item: { description: string; quantity?: string | null; providedBy?: string | null }) => void | Promise<void>;
+  onRemoveItem: (id: string) => void | Promise<void>;
+  projectPrefill?: ProjectPrefill;
+  newItemDesc: string;
+  onNewItemDescChange: (v: string) => void;
+  newItemQty?: string;
+  onNewItemQtyChange?: (v: string) => void;
+  newItemProvidedBy?: "" | "company" | "client";
+  onNewItemProvidedByChange?: (v: "" | "company" | "client") => void;
+  addingItem?: boolean;
+  /** Footer slot: Save, Print, Cancel buttons — parent provides for flexibility */
+  renderActions?: () => React.ReactNode;
+  /** When true, service call # is read-only (auto-generated by job number) */
+  serviceCallNumberReadOnly?: boolean;
+  /** When provided, enables file upload per materials item */
+  onAddFile?: (itemId: string, file: File) => Promise<void>;
+  onRemoveFile?: (itemId: string, fileId: string) => Promise<void>;
+};
+
+export function ServiceCallForm({
+  value,
+  onChange,
+  items,
+  onAddItem,
+  onRemoveItem,
+  projectPrefill = {},
+  newItemDesc,
+  onNewItemDescChange,
+  newItemQty = "",
+  onNewItemQtyChange,
+  newItemProvidedBy = "",
+  onNewItemProvidedByChange,
+  addingItem = false,
+  renderActions,
+  onAddFile,
+  onRemoveFile,
+}: Props) {
+  const [newReason, setNewReason] = useState("");
+  const [newReasonType, setNewReasonType] = useState<"" | (typeof SERVICE_CALL_TYPES)[number]>("");
+  const clientNamePrefill = [projectPrefill.clientFirstName, projectPrefill.clientLastName]
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+  const clientPhonePrefill = projectPrefill.clientPhone ?? "";
+  const addressPrefill = projectPrefill.clientAddress ?? "";
+  const clientEmailPrefill = projectPrefill.clientEmail ?? "";
+
+  const update = onChange;
+
+  return (
+    <div className="space-y-6">
+      {/* Print view: visible only when printing */}
+      <div className="hidden print:block">
+        <ServiceCallPrintView
+          clientName={value.clientName}
+          jobNumber={value.jobNumber}
+          address={value.address}
+          contactPerson={value.contactPerson}
+          clientPhone={value.clientPhone}
+          clientEmail={value.clientEmail}
+          serviceDate={value.serviceDate}
+          timeOfArrival={value.timeOfArrival}
+          timeOfDeparture={value.timeOfDeparture}
+          technicianName={value.technicianName}
+          serviceCallNumber={value.serviceCallNumber}
+          serviceCallType={value.serviceCallType}
+          reasonForService={value.reasonForService}
+          workPerformed={value.workPerformed}
+          checklistJson={value.checklistJson}
+          items={items}
+          serviceCompleted={value.serviceCompleted}
+          additionalVisitRequired={value.additionalVisitRequired}
+          additionalVisitReason={value.additionalVisitReason}
+          estimatedFollowUpDate={value.estimatedFollowUpDate}
+          satisfactionJson={value.satisfactionJson}
+          clientAcknowledgmentType={value.clientAcknowledgmentType}
+          followUpReason={value.followUpReason}
+          clientSignature={value.clientSignature}
+          responsibleSignature={value.responsibleSignature}
+        />
+      </div>
+
+      <div className="space-y-6 print:hidden">
+        {/* Client Information */}
+        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Client information</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Client name</label>
+              <input
+                type="text"
+                value={value.clientName ?? clientNamePrefill}
+                onChange={(e) => update("clientName", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                placeholder="Full name"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Job number</label>
+              <input
+                type="text"
+                value={value.jobNumber ?? ""}
+                onChange={(e) => update("jobNumber", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                placeholder="Job #"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Service address</label>
+              <textarea
+                value={value.address ?? addressPrefill}
+                onChange={(e) => update("address", e.target.value)}
+                rows={2}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                placeholder="Street, city, postal code"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Contact person</label>
+              <input
+                type="text"
+                value={value.contactPerson ?? ""}
+                onChange={(e) => update("contactPerson", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Phone</label>
+              <input
+                type="tel"
+                value={value.clientPhone ?? clientPhonePrefill}
+                onChange={(e) => update("clientPhone", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Email</label>
+              <input
+                type="email"
+                value={value.clientEmail ?? clientEmailPrefill}
+                onChange={(e) => update("clientEmail", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Service Call Details */}
+        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Service call details</h3>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Service date</label>
+              <input
+                type="date"
+                value={toDateInputValue(value.serviceDate)}
+                onChange={(e) => update("serviceDate", fromDateInputValue(e.target.value))}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">
+                Arrival <span className="text-gray-500">(on site)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="datetime-local"
+                  value={toDateTimeLocal(value.timeOfArrival)}
+                  onChange={(e) =>
+                    update("timeOfArrival", e.target.value ? new Date(e.target.value).toISOString() : null)
+                  }
+                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => update("timeOfArrival", new Date().toISOString())}
+                  className="shrink-0 rounded border border-gray-300 px-2 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                >
+                  Now
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">
+                Departure <span className="text-gray-500">(on site)</span>
+              </label>
+              <div className="flex gap-2">
+                <input
+                  type="datetime-local"
+                  value={toDateTimeLocal(value.timeOfDeparture)}
+                  onChange={(e) =>
+                    update("timeOfDeparture", e.target.value ? new Date(e.target.value).toISOString() : null)
+                  }
+                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                />
+                <button
+                  type="button"
+                  onClick={() => update("timeOfDeparture", new Date().toISOString())}
+                  className="shrink-0 rounded border border-gray-300 px-2 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                >
+                  Now
+                </button>
+              </div>
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Technician(s)</label>
+              <input
+                type="text"
+                value={value.technicianName ?? ""}
+                onChange={(e) => update("technicianName", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Service call #</label>
+              <input
+                type="text"
+                value={value.serviceCallNumber ?? ""}
+                onChange={(e) => update("serviceCallNumber", e.target.value)}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Service type(s) — select all that apply</label>
+              <div className="flex flex-wrap gap-3">
+                {SERVICE_CALL_TYPES.map((t) => {
+                  const selected = parseServiceCallTypesJson(value.serviceCallType);
+                  const checked = selected.includes(t);
+                  return (
+                    <label key={t} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => {
+                          const next = checked
+                            ? selected.filter((x) => x !== t)
+                            : [...selected, t];
+                          update("serviceCallType", next.length ? stringifyServiceCallTypes(next) : null);
+                        }}
+                        className="rounded border-gray-300"
+                      />
+                      <span>{t.charAt(0).toUpperCase() + t.slice(1)}</span>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Reasons for service call — add one at a time, with type</label>
+              <div className="flex flex-wrap gap-2">
+                <input
+                  type="text"
+                  placeholder="Description (e.g. Door hinge repair, Drawer adjustment…)"
+                  value={newReason}
+                  onChange={(e) => setNewReason(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      const txt = newReason.trim();
+                      if (!txt) return;
+                      const reasons = parseReasonsForServiceJson(value.reasonForService);
+                      const type = newReasonType && SERVICE_CALL_TYPES.includes(newReasonType) ? newReasonType : null;
+                      update("reasonForService", stringifyReasonsForService([...reasons, { description: txt, serviceType: type }]));
+                      setNewReason("");
+                      setNewReasonType("");
+                    }
+                  }}
+                  className="flex-1 min-w-[180px] rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                />
+                <select
+                  value={newReasonType}
+                  onChange={(e) => setNewReasonType(e.target.value as "" | (typeof SERVICE_CALL_TYPES)[number])}
+                  className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  title="Service type for this item"
+                >
+                  <option value="">Type</option>
+                  {SERVICE_CALL_TYPES.map((t) => (
+                    <option key={t} value={t}>
+                      {t.charAt(0).toUpperCase() + t.slice(1)}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const txt = newReason.trim();
+                    if (!txt) return;
+                    const reasons = parseReasonsForServiceJson(value.reasonForService);
+                    const type = newReasonType && SERVICE_CALL_TYPES.includes(newReasonType) ? newReasonType : null;
+                    update("reasonForService", stringifyReasonsForService([...reasons, { description: txt, serviceType: type }]));
+                    setNewReason("");
+                    setNewReasonType("");
+                  }}
+                  disabled={!newReason.trim()}
+                  className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+                >
+                  Add
+                </button>
+              </div>
+              {(() => {
+                const reasons = parseReasonsForServiceJson(value.reasonForService);
+                if (reasons.length === 0) return null;
+                return (
+                  <ul className="mt-3 space-y-2">
+                    {reasons.map((r, i) => (
+                      <li
+                        key={`${i}-${r.description}`}
+                        className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-sm"
+                      >
+                        <span className="text-gray-900">
+                          {r.description}
+                          {r.serviceType && (
+                            <span className="ml-2 text-gray-500">
+                              ({r.serviceType.charAt(0).toUpperCase() + r.serviceType.slice(1)})
+                            </span>
+                          )}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = reasons.filter((_, j) => j !== i);
+                            update("reasonForService", next.length ? stringifyReasonsForService(next) : null);
+                          }}
+                          className="text-red-600 hover:text-red-800"
+                        >
+                          Remove
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                );
+              })()}
+            </div>
+            <div className="sm:col-span-2">
+              <label className="mb-1 block text-xs font-medium text-gray-600">Work performed</label>
+              <textarea
+                value={value.workPerformed ?? ""}
+                onChange={(e) => update("workPerformed", e.target.value)}
+                rows={4}
+                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Technician Checklist */}
+        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Technician checklist (on site)</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {CHECKLIST_KEYS.map(({ key, label }) => {
+              const checklist = parseChecklistJson(value.checklistJson);
+              const checked = !!checklist[key];
+              return (
+                <label key={key} className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => {
+                      const next = { ...checklist, [key]: e.target.checked };
+                      update("checklistJson", stringifyChecklist(next));
+                    }}
+                    className="rounded border-gray-300"
+                  />
+                  <span>{label}</span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+
+        {/* Materials / Parts Used */}
+        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Materials / parts used</h3>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="Description…"
+              value={newItemDesc}
+              onChange={(e) => onNewItemDescChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAddItem({
+                    description: newItemDesc.trim(),
+                    quantity: newItemQty?.trim() || null,
+                    providedBy: newItemProvidedBy || null,
+                  });
+                }
+              }}
+              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+            />
+            {onNewItemQtyChange != null && (
+              <input
+                type="text"
+                placeholder="Qty"
+                value={newItemQty}
+                onChange={(e) => onNewItemQtyChange(e.target.value)}
+                className="w-20 rounded border border-gray-300 px-2 py-2 text-sm text-gray-900"
+              />
+            )}
+            {onNewItemProvidedByChange != null && (
+              <select
+                value={newItemProvidedBy}
+                onChange={(e) => onNewItemProvidedByChange(e.target.value as "" | "company" | "client")}
+                className="rounded border border-gray-300 px-2 py-2 text-sm text-gray-900"
+              >
+                <option value="">Provided by</option>
+                <option value="company">Company</option>
+                <option value="client">Client</option>
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                onAddItem({
+                  description: newItemDesc.trim(),
+                  quantity: newItemQty?.trim() || null,
+                  providedBy: newItemProvidedBy || null,
+                })
+              }
+              disabled={addingItem || !newItemDesc.trim()}
+              className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {addingItem ? "Adding…" : "Add"}
+            </button>
+          </div>
+          {items.length > 0 && (
+            <ul className="mt-3 space-y-3">
+              {items.map((item) => {
+                const canAddFiles = onAddFile && onRemoveFile && !item.id.startsWith("tmp-");
+                const itemFiles = item.files ?? [];
+                return (
+                  <li
+                    key={item.id}
+                    className="rounded border border-gray-200 bg-white px-3 py-2 text-sm"
+                  >
+                    <div className="flex items-center justify-between">
+                      <span>
+                        {item.description}
+                        {item.quantity && ` · Qty: ${item.quantity}`}
+                        {item.providedBy && ` · ${item.providedBy}`}
+                      </span>
+                      <button type="button" onClick={() => onRemoveItem(item.id)} className="text-red-600 hover:text-red-800">
+                        Remove item
+                      </button>
+                    </div>
+                    {canAddFiles && (
+                      <div className="mt-2 border-t border-gray-100 pt-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="cursor-pointer rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                            + Add file
+                            <input
+                              type="file"
+                              className="hidden"
+                              multiple
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (!files?.length) return;
+                                for (let i = 0; i < files.length; i++) {
+                                  onAddFile?.(item.id, files[i]!);
+                                }
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          {itemFiles.map((f) => (
+                            <span
+                              key={f.id}
+                              className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs"
+                            >
+                              <a href={`/${f.storagePath}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                {f.fileName}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => onRemoveFile?.(item.id, f.id)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+        </section>
+
+        {/* Service Status */}
+        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Service status</h3>
+          <div className="space-y-4">
+            <div className="flex items-center gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={value.serviceCompleted === true}
+                  onChange={(e) => update("serviceCompleted", e.target.checked ? true : null)}
+                  className="rounded"
+                />
+                Service completed
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="checkbox"
+                  checked={value.additionalVisitRequired === true}
+                  onChange={(e) => update("additionalVisitRequired", e.target.checked ? true : null)}
+                  className="rounded"
+                />
+                Additional visit required
+              </label>
+            </div>
+            {(value.additionalVisitRequired || value.additionalVisitReason) && (
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">If yes, explain</label>
+                <textarea
+                  value={value.additionalVisitReason ?? ""}
+                  onChange={(e) => update("additionalVisitReason", e.target.value)}
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                />
+              </div>
+            )}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-gray-600">Estimated follow-up date</label>
+              <input
+                type="date"
+                value={toDateInputValue(value.estimatedFollowUpDate)}
+                onChange={(e) => update("estimatedFollowUpDate", fromDateInputValue(e.target.value))}
+                className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              />
+            </div>
+          </div>
+        </section>
+
+        {/* Client Satisfaction */}
+        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">Client satisfaction</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-gray-200">
+                  <th className="py-2 text-left font-medium text-gray-700">Criteria</th>
+                  {SATISFACTION_LEVELS.map((l) => (
+                    <th key={l} className="py-2 text-center font-medium capitalize text-gray-600">
+                      {l}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {SATISFACTION_CRITERIA.map(({ key, label }) => {
+                  const sat = parseSatisfactionJson(value.satisfactionJson);
+                  return (
+                    <tr key={key} className="border-b border-gray-100">
+                      <td className="py-2 text-gray-700">{label}</td>
+                      {SATISFACTION_LEVELS.map((level) => (
+                        <td key={level} className="py-2 text-center">
+                          <input
+                            type="radio"
+                            name={`sat-${key}`}
+                            checked={sat[key] === level}
+                            onChange={() => {
+                              const next = { ...sat, [key]: level };
+                              update("satisfactionJson", stringifySatisfaction(next));
+                            }}
+                            className="rounded-full"
+                          />
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          <div className="mt-4">
+            <label className="mb-2 block text-xs font-medium text-gray-600">Client acknowledgment</label>
+            <div className="flex gap-4">
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="ackType"
+                  checked={value.clientAcknowledgmentType === "completed"}
+                  onChange={() => update("clientAcknowledgmentType", "completed")}
+                />
+                Option 1 – Service completed
+              </label>
+              <label className="flex items-center gap-2 text-sm">
+                <input
+                  type="radio"
+                  name="ackType"
+                  checked={value.clientAcknowledgmentType === "partial"}
+                  onChange={() => update("clientAcknowledgmentType", "partial")}
+                />
+                Option 2 – Partial / follow-up required
+              </label>
+            </div>
+            {value.clientAcknowledgmentType === "partial" && (
+              <div className="mt-2">
+                <label className="mb-1 block text-xs text-gray-600">Reason for follow-up</label>
+                <textarea
+                  value={value.followUpReason ?? ""}
+                  onChange={(e) => update("followUpReason", e.target.value)}
+                  rows={2}
+                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                />
+              </div>
+            )}
+          </div>
+        </section>
+
+        {/* Signatures */}
+        <div className="grid gap-6 border-t border-gray-200 pt-6 sm:grid-cols-2">
+          <SignaturePad
+            label="Client signature"
+            value={value.clientSignature}
+            onChange={(v) => update("clientSignature", v)}
+          />
+          <SignaturePad
+            label="Service call responsible signature"
+            value={value.responsibleSignature}
+            onChange={(v) => update("responsibleSignature", v)}
+          />
+        </div>
+
+        {renderActions?.()}
+      </div>
+    </div>
+  );
+}
