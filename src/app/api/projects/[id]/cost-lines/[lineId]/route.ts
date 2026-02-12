@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { costLineUpdateSchema } from "@/lib/validators";
+import { triggerFinancialRecalc } from "@/lib/observability/recalculateProjectState";
 
 export async function PATCH(
   request: Request,
@@ -32,6 +33,7 @@ export async function PATCH(
     },
   });
   await logAudit(projectId, "cost_updated");
+  triggerFinancialRecalc(projectId);
   return NextResponse.json(line);
 }
 
@@ -42,5 +44,6 @@ export async function DELETE(
   const { id: projectId, lineId } = await params;
   await prisma.costLine.delete({ where: { id: lineId } });
   await logAudit(projectId, "cost_deleted");
+  triggerFinancialRecalc(projectId);
   return NextResponse.json({ ok: true });
 }

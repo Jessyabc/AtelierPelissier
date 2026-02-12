@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { panelPartSchema } from "@/lib/validators";
+import { triggerMaterialInventoryOrderRecalc } from "@/lib/observability/recalculateProjectState";
 
 export async function GET(
   _request: Request,
@@ -45,5 +46,6 @@ export async function POST(
       thicknessIn: data.thicknessIn ?? null,
     },
   });
+  triggerMaterialInventoryOrderRecalc(projectId);
   return NextResponse.json(part);
 }

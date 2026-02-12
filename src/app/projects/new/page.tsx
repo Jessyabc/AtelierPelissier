@@ -83,7 +83,7 @@ export default function NewProjectPage() {
             type="text"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={`w-full rounded border px-3 py-2 text-gray-900 ${fieldErrors.name ? "border-red-500" : "border-gray-300"}`}
+            className={`neo-input w-full px-4 py-2.5 ${fieldErrors.name ? "ring-2 ring-red-400" : ""}`}
             placeholder="e.g. Main bath vanity"
             aria-invalid={!!fieldErrors.name}
             aria-describedby={fieldErrors.name ? "name-error" : undefined}
@@ -130,7 +130,7 @@ export default function NewProjectPage() {
                 type="text"
                 value={clientFirstName}
                 onChange={(e) => setClientFirstName(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
                 placeholder="First name"
               />
             </div>
@@ -143,7 +143,7 @@ export default function NewProjectPage() {
                 type="text"
                 value={clientLastName}
                 onChange={(e) => setClientLastName(e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
                 placeholder="Last name"
               />
             </div>
@@ -157,7 +157,7 @@ export default function NewProjectPage() {
               type="email"
               value={clientEmail}
               onChange={(e) => setClientEmail(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="client@example.com"
             />
           </div>
@@ -170,7 +170,7 @@ export default function NewProjectPage() {
               type="tel"
               value={clientPhone}
               onChange={(e) => setClientPhone(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="(555) 000-0000"
             />
           </div>
@@ -183,7 +183,7 @@ export default function NewProjectPage() {
               value={clientAddress}
               onChange={(e) => setClientAddress(e.target.value)}
               rows={2}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="Street, city, postal code"
             />
           </div>
@@ -194,14 +194,14 @@ export default function NewProjectPage() {
           <button
             type="submit"
             disabled={loading}
-            className="btn-primary rounded px-4 py-2 text-sm font-medium transition-colors disabled:opacity-50"
+            className="neo-btn-primary px-5 py-2.5 text-sm font-medium disabled:opacity-50"
           >
             {loading ? "Creating…" : "Create project (draft)"}
           </button>
           <button
             type="button"
             onClick={() => router.push("/")}
-            className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="neo-btn px-4 py-2 text-sm font-medium"
           >
             Cancel
           </button>

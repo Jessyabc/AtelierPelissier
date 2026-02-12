@@ -82,11 +82,11 @@ export function CostsTab({
         Compare estimated costs vs actual invoice costs by category. Add actual cost lines below.
       </p>
 
-      <div className="flex flex-wrap gap-2 items-center">
+      <div className="flex flex-wrap gap-3 items-center">
         <select
           value={newKind}
           onChange={(e) => setNewKind(e.target.value as "estimate" | "actual")}
-          className="rounded border border-gray-300 px-3 py-2"
+          className="neo-select px-4 py-2.5"
         >
           <option value="estimate">Estimate</option>
           <option value="actual">Actual</option>
@@ -96,7 +96,7 @@ export function CostsTab({
           placeholder="Category"
           value={newCategory}
           onChange={(e) => setNewCategory(e.target.value)}
-          className="rounded border border-gray-300 px-3 py-2"
+          className="neo-input px-4 py-2.5"
         />
         <input
           type="number"
@@ -105,27 +105,27 @@ export function CostsTab({
           placeholder="Amount"
           value={newAmount}
           onChange={(e) => setNewAmount(e.target.value)}
-          className="w-28 rounded border border-gray-300 px-3 py-2"
+          className="neo-input w-28 px-4 py-2.5"
         />
         <button
           type="button"
           onClick={addLine}
           disabled={saving || !newAmount}
-          className="rounded bg-gray-800 px-4 py-2 text-sm text-white hover:bg-gray-700 disabled:opacity-50"
+          className="neo-btn-primary px-4 py-2.5 text-sm disabled:opacity-50"
         >
           Add
         </button>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse border border-gray-200">
+      <div className="overflow-x-auto neo-panel-inset rounded-xl">
+        <table className="w-full border-collapse">
           <thead>
-            <tr className="bg-gray-50">
-              <th className="border border-gray-200 px-3 py-2 text-left text-sm font-medium">Category</th>
-              <th className="border border-gray-200 px-3 py-2 text-right text-sm font-medium">Estimated</th>
-              <th className="border border-gray-200 px-3 py-2 text-right text-sm font-medium">Actual</th>
-              <th className="border border-gray-200 px-3 py-2 text-right text-sm font-medium">Variance</th>
-              <th className="border border-gray-200 px-3 py-2 text-right text-sm font-medium">Variance %</th>
+            <tr>
+              <th className="px-4 py-3 text-left text-sm font-medium text-gray-600">Category</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Estimated</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Actual</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Variance</th>
+              <th className="px-4 py-3 text-right text-sm font-medium text-gray-600">Variance %</th>
             </tr>
           </thead>
           <tbody>
@@ -135,14 +135,14 @@ export function CostsTab({
               const variance = act - est;
               const variancePct = est ? (variance / est) * 100 : 0;
               return (
-                <tr key={cat}>
-                  <td className="border border-gray-200 px-3 py-2">{cat}</td>
-                  <td className="border border-gray-200 px-3 py-2 text-right">{formatCurrency(est)}</td>
-                  <td className="border border-gray-200 px-3 py-2 text-right">{formatCurrency(act)}</td>
-                  <td className={`border border-gray-200 px-3 py-2 text-right ${variance >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                <tr key={cat} className="border-t border-gray-200/50">
+                  <td className="px-4 py-2.5">{cat}</td>
+                  <td className="px-4 py-2.5 text-right">{formatCurrency(est)}</td>
+                  <td className="px-4 py-2.5 text-right">{formatCurrency(act)}</td>
+                  <td className={`px-4 py-2.5 text-right ${variance >= 0 ? "text-gray-900" : "text-red-600"}`}>
                     {formatCurrency(variance)}
                   </td>
-                  <td className={`border border-gray-200 px-3 py-2 text-right ${variancePct >= 0 ? "text-gray-900" : "text-red-600"}`}>
+                  <td className={`px-4 py-2.5 text-right ${variancePct >= 0 ? "text-gray-900" : "text-red-600"}`}>
                     {est ? `${variancePct >= 0 ? "+" : ""}${variancePct.toFixed(1)}%` : "—"}
                   </td>
                 </tr>
@@ -150,14 +150,14 @@ export function CostsTab({
             })}
           </tbody>
           <tfoot>
-            <tr className="bg-gray-100 font-medium">
-              <td className="border border-gray-200 px-3 py-2">Total</td>
-              <td className="border border-gray-200 px-3 py-2 text-right">{formatCurrency(estimateTotal)}</td>
-              <td className="border border-gray-200 px-3 py-2 text-right">{formatCurrency(actualTotal)}</td>
-              <td className={`border border-gray-200 px-3 py-2 text-right ${varianceTotal >= 0 ? "text-gray-900" : "text-red-600"}`}>
+            <tr className="border-t-2 border-gray-300/50 font-medium">
+              <td className="px-4 py-3">Total</td>
+              <td className="px-4 py-3 text-right">{formatCurrency(estimateTotal)}</td>
+              <td className="px-4 py-3 text-right">{formatCurrency(actualTotal)}</td>
+              <td className={`px-4 py-3 text-right ${varianceTotal >= 0 ? "text-gray-900" : "text-red-600"}`}>
                 {formatCurrency(varianceTotal)}
               </td>
-              <td className={`border border-gray-200 px-3 py-2 text-right ${variancePctTotal >= 0 ? "text-gray-900" : "text-red-600"}`}>
+              <td className={`px-4 py-3 text-right ${variancePctTotal >= 0 ? "text-gray-900" : "text-red-600"}`}>
                 {estimateTotal ? `${variancePctTotal >= 0 ? "+" : ""}${variancePctTotal.toFixed(1)}%` : "—"}
               </td>
             </tr>

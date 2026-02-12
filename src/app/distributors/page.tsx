@@ -172,7 +172,7 @@ export default function DistributorsPage() {
               type="text"
               value={form.referenceName}
               onChange={(e) => setForm((f) => ({ ...f, referenceName: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="e.g. Richelieu, Distributor A"
             />
           </div>
@@ -182,7 +182,7 @@ export default function DistributorsPage() {
               type="text"
               value={form.companyName}
               onChange={(e) => setForm((f) => ({ ...f, companyName: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="Official company name"
             />
           </div>
@@ -192,7 +192,7 @@ export default function DistributorsPage() {
               type="tel"
               value={form.phoneNumber}
               onChange={(e) => setForm((f) => ({ ...f, phoneNumber: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="(555) 000-0000"
             />
           </div>
@@ -202,7 +202,7 @@ export default function DistributorsPage() {
               type="text"
               value={form.extension}
               onChange={(e) => setForm((f) => ({ ...f, extension: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="ext. 123"
             />
           </div>
@@ -212,7 +212,7 @@ export default function DistributorsPage() {
               type="text"
               value={form.accountNumber}
               onChange={(e) => setForm((f) => ({ ...f, accountNumber: e.target.value }))}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="Account # with this distributor"
             />
           </div>
@@ -222,7 +222,7 @@ export default function DistributorsPage() {
               value={form.notes}
               onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
               rows={2}
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="w-full neo-input px-4 py-2.5 text-sm"
               placeholder="Optional notes"
             />
           </div>
@@ -231,7 +231,7 @@ export default function DistributorsPage() {
           type="button"
           onClick={addDistributor}
           disabled={saving || !form.referenceName.trim() || !form.companyName.trim()}
-          className="mt-4 btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="mt-4 neo-btn-primary px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Adding…" : "Add distributor"}
         </button>
@@ -243,7 +243,7 @@ export default function DistributorsPage() {
           {list.length} distributor{list.length !== 1 ? "s" : ""}
         </h2>
         {list.length === 0 ? (
-          <p className="rounded border border-dashed border-gray-300 p-6 text-center text-sm text-gray-500">
+          <p className="neo-panel-inset p-6 rounded-xl text-center text-sm text-gray-500">
             No distributors yet. Add one above.
           </p>
         ) : (
@@ -264,7 +264,7 @@ export default function DistributorsPage() {
                           onChange={(e) =>
                             setEditForm((f) => ({ ...f, referenceName: e.target.value }))
                           }
-                          className="w-full rounded border px-2 py-1.5 text-sm"
+                          className="neo-input w-full px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
@@ -275,7 +275,7 @@ export default function DistributorsPage() {
                           onChange={(e) =>
                             setEditForm((f) => ({ ...f, companyName: e.target.value }))
                           }
-                          className="w-full rounded border px-2 py-1.5 text-sm"
+                          className="neo-input w-full px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
@@ -286,7 +286,7 @@ export default function DistributorsPage() {
                           onChange={(e) =>
                             setEditForm((f) => ({ ...f, phoneNumber: e.target.value }))
                           }
-                          className="w-full rounded border px-2 py-1.5 text-sm"
+                          className="neo-input w-full px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
@@ -297,7 +297,7 @@ export default function DistributorsPage() {
                           onChange={(e) =>
                             setEditForm((f) => ({ ...f, extension: e.target.value }))
                           }
-                          className="w-full rounded border px-2 py-1.5 text-sm"
+                          className="neo-input w-full px-3 py-2 text-sm"
                         />
                       </div>
                       <div className="sm:col-span-2">
@@ -308,7 +308,7 @@ export default function DistributorsPage() {
                           onChange={(e) =>
                             setEditForm((f) => ({ ...f, accountNumber: e.target.value }))
                           }
-                          className="w-full rounded border px-2 py-1.5 text-sm"
+                          className="neo-input w-full px-3 py-2 text-sm"
                         />
                       </div>
                       <div className="sm:col-span-2">
@@ -319,7 +319,7 @@ export default function DistributorsPage() {
                             setEditForm((f) => ({ ...f, notes: e.target.value }))
                           }
                           rows={2}
-                          className="w-full rounded border px-2 py-1.5 text-sm"
+                          className="neo-input w-full px-3 py-2 text-sm"
                         />
                       </div>
                     </div>
@@ -328,7 +328,7 @@ export default function DistributorsPage() {
                         type="button"
                         onClick={() => updateDistributor(d.id)}
                         disabled={saving}
-                        className="btn-primary rounded px-3 py-1.5 text-sm disabled:opacity-50"
+                        className="neo-btn-primary px-4 py-2 text-sm disabled:opacity-50"
                       >
                         Save
                       </button>
@@ -338,7 +338,7 @@ export default function DistributorsPage() {
                           setEditingId(null);
                           setEditForm(EMPTY);
                         }}
-                        className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700"
+                        className="neo-btn px-3 py-1.5 text-sm"
                       >
                         Cancel
                       </button>
@@ -368,14 +368,14 @@ export default function DistributorsPage() {
                       <button
                         type="button"
                         onClick={() => startEdit(d)}
-                        className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50"
+                        className="neo-btn px-2 py-1 text-xs"
                       >
                         Edit
                       </button>
                       <button
                         type="button"
                         onClick={() => deleteDistributor(d.id)}
-                        className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50"
+                        className="neo-btn px-2 py-1 text-xs text-red-600"
                       >
                         Delete
                       </button>

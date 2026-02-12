@@ -33,7 +33,7 @@ export function ConfirmModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            className="neo-btn px-4 py-2 text-sm font-medium"
           >
             Cancel
           </button>
@@ -43,7 +43,7 @@ export function ConfirmModal({
             className={
               danger
                 ? "rounded bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700"
-                : "btn-primary rounded px-4 py-2 text-sm font-medium"
+                : "neo-btn-primary px-4 py-2 text-sm font-medium"
             }
           >
             {confirmLabel}

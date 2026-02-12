@@ -227,7 +227,7 @@ export function ServiceCallForm({
 
       <div className="space-y-6 print:hidden">
         {/* Client Information */}
-        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+        <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Client information</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -236,7 +236,7 @@ export function ServiceCallForm({
                 type="text"
                 value={value.clientName ?? clientNamePrefill}
                 onChange={(e) => update("clientName", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
                 placeholder="Full name"
               />
             </div>
@@ -246,7 +246,7 @@ export function ServiceCallForm({
                 type="text"
                 value={value.jobNumber ?? ""}
                 onChange={(e) => update("jobNumber", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
                 placeholder="Job #"
               />
             </div>
@@ -256,7 +256,7 @@ export function ServiceCallForm({
                 value={value.address ?? addressPrefill}
                 onChange={(e) => update("address", e.target.value)}
                 rows={2}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
                 placeholder="Street, city, postal code"
               />
             </div>
@@ -266,7 +266,7 @@ export function ServiceCallForm({
                 type="text"
                 value={value.contactPerson ?? ""}
                 onChange={(e) => update("contactPerson", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
             <div>
@@ -275,7 +275,7 @@ export function ServiceCallForm({
                 type="tel"
                 value={value.clientPhone ?? clientPhonePrefill}
                 onChange={(e) => update("clientPhone", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
             <div className="sm:col-span-2">
@@ -284,14 +284,14 @@ export function ServiceCallForm({
                 type="email"
                 value={value.clientEmail ?? clientEmailPrefill}
                 onChange={(e) => update("clientEmail", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
           </div>
         </section>
 
         {/* Service Call Details */}
-        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+        <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Service call details</h3>
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
@@ -300,7 +300,7 @@ export function ServiceCallForm({
                 type="date"
                 value={toDateInputValue(value.serviceDate)}
                 onChange={(e) => update("serviceDate", fromDateInputValue(e.target.value))}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
             <div>
@@ -314,12 +314,12 @@ export function ServiceCallForm({
                   onChange={(e) =>
                     update("timeOfArrival", e.target.value ? new Date(e.target.value).toISOString() : null)
                   }
-                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  className="flex-1 neo-input px-4 py-2.5 text-sm"
                 />
                 <button
                   type="button"
                   onClick={() => update("timeOfArrival", new Date().toISOString())}
-                  className="shrink-0 rounded border border-gray-300 px-2 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                  className="shrink-0 neo-btn px-2 py-2 text-xs"
                 >
                   Now
                 </button>
@@ -336,12 +336,12 @@ export function ServiceCallForm({
                   onChange={(e) =>
                     update("timeOfDeparture", e.target.value ? new Date(e.target.value).toISOString() : null)
                   }
-                  className="flex-1 rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  className="flex-1 neo-input px-4 py-2.5 text-sm"
                 />
                 <button
                   type="button"
                   onClick={() => update("timeOfDeparture", new Date().toISOString())}
-                  className="shrink-0 rounded border border-gray-300 px-2 py-2 text-xs text-gray-700 hover:bg-gray-100"
+                  className="shrink-0 neo-btn px-2 py-2 text-xs"
                 >
                   Now
                 </button>
@@ -353,7 +353,7 @@ export function ServiceCallForm({
                 type="text"
                 value={value.technicianName ?? ""}
                 onChange={(e) => update("technicianName", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
             <div>
@@ -362,7 +362,7 @@ export function ServiceCallForm({
                 type="text"
                 value={value.serviceCallNumber ?? ""}
                 onChange={(e) => update("serviceCallNumber", e.target.value)}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
             <div className="sm:col-span-2">
@@ -410,12 +410,12 @@ export function ServiceCallForm({
                       setNewReasonType("");
                     }
                   }}
-                  className="flex-1 min-w-[180px] rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  className="flex-1 min-w-[180px] neo-input px-4 py-2.5 text-sm"
                 />
                 <select
                   value={newReasonType}
                   onChange={(e) => setNewReasonType(e.target.value as "" | (typeof SERVICE_CALL_TYPES)[number])}
-                  className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  className="neo-input px-4 py-2.5 text-sm"
                   title="Service type for this item"
                 >
                   <option value="">Type</option>
@@ -437,7 +437,7 @@ export function ServiceCallForm({
                     setNewReasonType("");
                   }}
                   disabled={!newReason.trim()}
-                  className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+                  className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
                 >
                   Add
                 </button>
@@ -450,7 +450,7 @@ export function ServiceCallForm({
                     {reasons.map((r, i) => (
                       <li
                         key={`${i}-${r.description}`}
-                        className="flex items-center justify-between rounded border border-gray-200 bg-white px-3 py-2 text-sm"
+                        className="flex items-center justify-between neo-panel-inset px-3 py-2 text-sm rounded-lg"
                       >
                         <span className="text-gray-900">
                           {r.description}
@@ -482,14 +482,14 @@ export function ServiceCallForm({
                 value={value.workPerformed ?? ""}
                 onChange={(e) => update("workPerformed", e.target.value)}
                 rows={4}
-                className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full neo-input px-4 py-2.5 text-sm"
               />
             </div>
           </div>
         </section>
 
         {/* Technician Checklist */}
-        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+        <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Technician checklist (on site)</h3>
           <div className="grid gap-2 sm:grid-cols-2">
             {CHECKLIST_KEYS.map(({ key, label }) => {
@@ -514,7 +514,7 @@ export function ServiceCallForm({
         </section>
 
         {/* Materials / Parts Used */}
-        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+        <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Materials / parts used</h3>
           <div className="flex flex-wrap gap-2">
             <input
@@ -532,7 +532,7 @@ export function ServiceCallForm({
                   });
                 }
               }}
-              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+              className="neo-input px-4 py-2.5 text-sm"
             />
             {onNewItemQtyChange != null && (
               <input
@@ -540,14 +540,14 @@ export function ServiceCallForm({
                 placeholder="Qty"
                 value={newItemQty}
                 onChange={(e) => onNewItemQtyChange(e.target.value)}
-                className="w-20 rounded border border-gray-300 px-2 py-2 text-sm text-gray-900"
+                className="neo-input w-20 px-3 py-2 text-sm"
               />
             )}
             {onNewItemProvidedByChange != null && (
               <select
                 value={newItemProvidedBy}
                 onChange={(e) => onNewItemProvidedByChange(e.target.value as "" | "company" | "client")}
-                className="rounded border border-gray-300 px-2 py-2 text-sm text-gray-900"
+                className="neo-input px-3 py-2 text-sm"
               >
                 <option value="">Provided by</option>
                 <option value="company">Company</option>
@@ -564,7 +564,7 @@ export function ServiceCallForm({
                 })
               }
               disabled={addingItem || !newItemDesc.trim()}
-              className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+              className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
             >
               {addingItem ? "Adding…" : "Add"}
             </button>
@@ -577,7 +577,7 @@ export function ServiceCallForm({
                 return (
                   <li
                     key={item.id}
-                    className="rounded border border-gray-200 bg-white px-3 py-2 text-sm"
+                    className="neo-panel-inset px-3 py-2 text-sm rounded-lg"
                   >
                     <div className="flex items-center justify-between">
                       <span>
@@ -592,7 +592,7 @@ export function ServiceCallForm({
                     {canAddFiles && (
                       <div className="mt-2 border-t border-gray-100 pt-2">
                         <div className="flex flex-wrap items-center gap-2">
-                          <label className="cursor-pointer rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-50">
+                          <label className="cursor-pointer neo-btn px-2 py-1 text-xs">
                             + Add file
                             <input
                               type="file"
@@ -636,7 +636,7 @@ export function ServiceCallForm({
         </section>
 
         {/* Service Status */}
-        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+        <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Service status</h3>
           <div className="space-y-4">
             <div className="flex items-center gap-4">
@@ -666,7 +666,7 @@ export function ServiceCallForm({
                   value={value.additionalVisitReason ?? ""}
                   onChange={(e) => update("additionalVisitReason", e.target.value)}
                   rows={2}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  className="w-full neo-input px-4 py-2.5 text-sm"
                 />
               </div>
             )}
@@ -676,14 +676,14 @@ export function ServiceCallForm({
                 type="date"
                 value={toDateInputValue(value.estimatedFollowUpDate)}
                 onChange={(e) => update("estimatedFollowUpDate", fromDateInputValue(e.target.value))}
-                className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                className="w-full max-w-xs neo-input px-4 py-2.5 text-sm"
               />
             </div>
           </div>
         </section>
 
         {/* Client Satisfaction */}
-        <section className="rounded border border-gray-200 bg-gray-50/50 p-4">
+        <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Client satisfaction</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -752,7 +752,7 @@ export function ServiceCallForm({
                   value={value.followUpReason ?? ""}
                   onChange={(e) => update("followUpReason", e.target.value)}
                   rows={2}
-                  className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+                  className="w-full neo-input px-4 py-2.5 text-sm"
                 />
               </div>
             )}

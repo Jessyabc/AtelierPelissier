@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ConfirmModal } from "@/components/ConfirmModal";
+import { HomeStats, type StatsData } from "@/components/HomeStats";
 
 type Project = {
   id: string;
@@ -105,6 +106,7 @@ function filterProjects(
 export default function DashboardPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
+  const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [slowHint, setSlowHint] = useState(false);
@@ -115,6 +117,13 @@ export default function DashboardPage() {
 
   useEffect(() => {
     loadProjects(setProjects, setLoading, setError);
+  }, []);
+
+  useEffect(() => {
+    fetch("/api/stats")
+      .then((r) => r.ok ? r.json() : null)
+      .then((d) => d && setStats(d))
+      .catch(() => {});
   }, []);
 
   useEffect(() => {
@@ -175,16 +184,16 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="rounded-lg border border-gray-200 bg-white p-4 sm:p-6 shadow-sm">
+      <div className="neo-card p-6 sm:p-8">
         <p className="text-gray-600">Loading dashboard…</p>
         {slowHint && (
           <p className="mt-3 text-sm text-gray-500">
             Taking a while?{" "}
-            <button type="button" onClick={onRetry} className="text-gray-700 underline">
+            <button type="button" onClick={onRetry} className="neo-btn px-3 py-1.5 text-sm">
               Retry
             </button>{" "}
             or{" "}
-            <Link href="/projects/new" className="text-gray-700 underline">
+            <Link href="/projects/new" className="text-[var(--accent-hover)] hover:underline">
               create a new project
             </Link>
             .
@@ -196,14 +205,13 @@ export default function DashboardPage() {
 
   if (error) {
     return (
-      <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 sm:p-6">
+      <div className="neo-card p-6 sm:p-8 severity-medium">
         <p className="text-amber-800">{error}</p>
-        <p className="mt-2">
-          <button type="button" onClick={onRetry} className="text-amber-800 underline">
+        <p className="mt-3 flex gap-3">
+          <button type="button" onClick={onRetry} className="neo-btn px-3 py-1.5 text-sm">
             Retry
           </button>
-          {" · "}
-          <Link href="/projects/new" className="text-amber-800 underline">
+          <Link href="/projects/new" className="neo-btn-primary px-4 py-2 text-sm inline-block">
             New project
           </Link>
         </p>
@@ -213,36 +221,34 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      {stats && <HomeStats data={stats} />}
+
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Dashboard</h1>
+        <h1 className="text-xl font-semibold text-gray-900">Projects</h1>
         <Link
           href="/projects/new"
-          className="btn-primary rounded px-4 py-2 text-sm font-medium transition-colors"
+          className="neo-btn-primary inline-block px-5 py-2.5 text-sm font-medium"
         >
           New Project
         </Link>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
         <input
           type="search"
           placeholder="Search by project or client name…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-sm text-gray-900 sm:max-w-xs"
+          className="neo-input w-full px-4 py-3 text-sm sm:max-w-sm"
           aria-label="Search projects"
         />
-        <div className="flex flex-wrap gap-2">
+        <div className="neo-segment">
           {(["all", "drafts", "saved", "estimates"] as const).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
-              className={`rounded px-3 py-1.5 text-sm font-medium ${
-                filter === f
-                  ? "bg-gray-800 text-white"
-                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-              }`}
+              className={filter === f ? "neo-btn-pressed px-4 py-2 text-sm font-medium" : "neo-segment-btn"}
             >
               {f === "all" ? "All" : f === "drafts" ? "Drafts" : f === "saved" ? "Saved" : "With estimates"}
             </button>
@@ -253,13 +259,13 @@ export default function DashboardPage() {
       <section>
         <h2 className="mb-3 text-lg font-medium text-gray-800">Ongoing projects</h2>
         {ongoing.length === 0 ? (
-          <p className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500">
+          <p className="neo-card p-6 text-sm text-gray-500">
             No saved projects yet. Create a project and click “Save project” to move it here.
           </p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {ongoing.map((p) => (
-              <li key={p.id} className="rounded-lg border border-gray-300 bg-white shadow-sm">
+              <li key={p.id} className="neo-card">
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
@@ -280,14 +286,14 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => handleDuplicate(p.id)}
                       disabled={duplicateId !== null}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      className="neo-btn px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                     >
                       {duplicateId === p.id ? "…" : "Duplicate"}
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeleteId(p.id)}
-                      className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                      className="neo-btn px-3 py-1.5 text-xs font-medium text-red-600"
                     >
                       Delete
                     </button>
@@ -302,17 +308,17 @@ export default function DashboardPage() {
       <section>
         <h2 className="mb-3 text-lg font-medium text-gray-800">Drafts</h2>
         {drafts.length === 0 ? (
-          <p className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500">
+          <p className="neo-card p-6 text-sm text-gray-500">
             No drafts. New projects are saved as drafts until you save them.
           </p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {drafts.map((p) => (
-              <li key={p.id} className="rounded-lg border border-gray-300 bg-white shadow-sm">
+              <li key={p.id} className="neo-card">
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
-                    <span className="ml-2 rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-600">Draft</span>
+                    <span className="ml-2 neo-btn-pressed inline-block px-2 py-0.5 text-xs text-gray-600 rounded-lg">Draft</span>
                     <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
                     <span className="ml-2 text-sm text-gray-500">{new Date(p.updatedAt).toLocaleDateString()}</span>
                   </Link>
@@ -321,14 +327,14 @@ export default function DashboardPage() {
                       type="button"
                       onClick={() => handleDuplicate(p.id)}
                       disabled={duplicateId !== null}
-                      className="rounded border border-gray-300 px-2 py-1 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                      className="neo-btn px-3 py-1.5 text-xs font-medium disabled:opacity-50"
                     >
                       {duplicateId === p.id ? "…" : "Duplicate"}
                     </button>
                     <button
                       type="button"
                       onClick={() => setDeleteId(p.id)}
-                      className="rounded border border-red-200 px-2 py-1 text-xs font-medium text-red-700 hover:bg-red-50"
+                      className="neo-btn px-3 py-1.5 text-xs font-medium text-red-600"
                     >
                       Delete
                     </button>
@@ -343,16 +349,16 @@ export default function DashboardPage() {
       <section>
         <h2 className="mb-3 text-lg font-medium text-gray-800">Estimates</h2>
         {withEstimates.length === 0 ? (
-          <p className="rounded-lg border border-gray-200 bg-white p-4 text-sm text-gray-500">
+          <p className="neo-card p-6 text-sm text-gray-500">
             No estimates yet. Add cost lines in the Costs tab of a project.
           </p>
         ) : (
-          <ul className="space-y-2">
+          <ul className="space-y-3">
             {withEstimates.map((p) => (
               <li key={p.id}>
                 <Link
                   href={`/projects/${p.id}`}
-                  className="block rounded-lg border border-gray-300 bg-white p-4 shadow-sm transition-colors hover:border-gray-400 hover:bg-gray-50"
+                  className="block neo-card p-4 transition-all hover:shadow-[6px_6px_12px_var(--shadow-dark),-6px_-6px_12px_var(--shadow-light)]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="font-medium text-gray-900">{p.name}</span>

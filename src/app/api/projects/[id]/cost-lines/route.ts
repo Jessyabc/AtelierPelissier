@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { costLineSchema } from "@/lib/validators";
+import { triggerFinancialRecalc } from "@/lib/observability/recalculateProjectState";
 
 export async function GET(
   _request: Request,
@@ -39,5 +40,6 @@ export async function POST(
     data: { projectId, kind, category, amount },
   });
   await logAudit(projectId, "cost_added", `${kind}: ${category} $${amount}`);
+  triggerFinancialRecalc(projectId);
   return NextResponse.json(line);
 }

@@ -28,14 +28,19 @@ model Project {
   clientPhone     String?
   clientAddress   String?
 
-  vanityInputs     VanityInputs?
-  sideUnitInputs  SideUnitInputs?
-  kitchenInputs   KitchenInputs?
-  projectSettings ProjectSettings?
-  panelParts      PanelPart[]
-  costLines       CostLine[]
-  auditLogs       AuditLog[]
-  serviceCalls    ServiceCall[]
+  vanityInputs       VanityInputs?
+  sideUnitInputs    SideUnitInputs?
+  kitchenInputs     KitchenInputs?
+  projectSettings   ProjectSettings?
+  panelParts        PanelPart[]
+  costLines         CostLine[]
+  auditLogs         AuditLog[]
+  serviceCalls      ServiceCall[]
+  stockMovements       StockMovement[]
+  materialRequirements MaterialRequirement[]
+  orders               Order[]
+  orderLines           OrderLine[]
+  deviations           Deviation[]
 }
 
 model AuditLog {
@@ -103,16 +108,27 @@ model ProjectSettings {
   taxRate        Float    @default(0.14975)
   sheetFormatId  String?
   sheetFormat    SheetFormat? @relation(fields: [sheetFormatId], references: [id])
+  // Phase 2: per-project overrides (null = use global)
+  targetMarginOverride        Float?
+  warningMarginOverride       Float?
+  highRiskMarginOverride      Float?
+  criticalMarginOverride      Float?
+  wasteFactorOverride         Float?
+  inventoryShortageHighOverride Float?
 }
 
 model SheetFormat {
   id          String   @id @default(cuid())
+  name        String?  // e.g. "4x8 standard"
   label       String   // e.g. "9'1\" x 4'7\""
   lengthIn    Float
   widthIn     Float
   isCustom    Boolean  @default(false)
 
-  projects    ProjectSettings[]
+  projects            ProjectSettings[]
+  defaultForInventory InventoryItem[]
+  supplierOverrides   SupplierCatalogItem[]
+  globalDefault       GlobalSettings[]
 }
 
 model PanelPart {
@@ -128,12 +144,14 @@ model PanelPart {
 }
 
 model CostLine {
-  id        String   @id @default(cuid())
-  projectId String
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  kind      String   // estimate | actual
-  category  String
-  amount    Float
+  id                   String   @id @default(cuid())
+  projectId            String
+  project              Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  kind                 String   // estimate | actual
+  category             String
+  amount               Float
+  vendorInvoiceLineId  String?
+  vendorInvoiceLine    VendorInvoiceLine? @relation(fields: [vendorInvoiceLineId], references: [id])
 }
 
 // Service call: on-site visit record (matches legacy PDF form)
@@ -244,4 +262,214 @@ model Distributor {
   notes         String?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+// --- Observability layer (Phase 1) + Phase 2 ---
+
+model InventoryItem {
+  id                   String   @id @default(cuid())
+  materialCode         String   @unique
+  description          String
+  stockQty             Float    @default(0) // Phase 1 legacy; Phase 2 prefers onHand
+  onHand               Float    @default(0) // Physical stock (Phase 2)
+  unit                 String   @default("sheets")
+  minThreshold         Float    @default(0)
+  reorderPoint         Float    @default(0)
+  reorderQty           Float    @default(0)
+  costDefault          Float    @default(0)
+  category             String   @default("sheetGoods") // sheetGoods | hardware | finish | delivery | outsourced | labor | misc
+  defaultSheetFormatId String?
+  defaultSheetFormat   SheetFormat? @relation(fields: [defaultSheetFormatId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  movements     StockMovement[]
+  catalogItems  SupplierCatalogItem[]
+  orderLines    OrderLine[]
+}
+
+model StockMovement {
+  id              String   @id @default(cuid())
+  inventoryItemId String
+  inventoryItem   InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+
+  projectId   String?
+  project     Project? @relation(fields: [projectId], references: [id])
+  orderLineId String?
+
+  type     String // receive | allocate | deallocate | consume | return | adjust
+  quantity Float
+  note     String?
+
+  createdAt DateTime @default(now())
+}
+
+model MaterialRequirement {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  materialCode String
+  requiredQty  Float
+  allocatedQty Float    @default(0)
+
+  @@unique([projectId, materialCode])
+}
+
+model Supplier {
+  id          String   @id @default(cuid())
+  name        String
+  contactInfo String?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  catalogItems    SupplierCatalogItem[]
+  orders          Order[]
+  vendorInvoices  VendorInvoice[]
+}
+
+model SupplierCatalogItem {
+  id                   String   @id @default(cuid())
+  supplierId           String
+  supplier             Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  supplierSku          String
+  inventoryItemId      String
+  inventoryItem        InventoryItem @relation(fields: [inventoryItemId], references: [id], onDelete: Cascade)
+  unitCost             Float
+  leadTimeDays         Int?
+  sheetFormatOverrideId String?
+  sheetFormatOverride   SheetFormat? @relation(fields: [sheetFormatOverrideId], references: [id])
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  @@unique([supplierId, supplierSku])
+}
+
+model Order {
+  id                   String   @id @default(cuid())
+  supplier             String   // Phase 1 legacy string
+  supplierId           String?
+  supplierRef          Supplier? @relation(fields: [supplierId], references: [id])
+  status               String   // draft | placed | partial | received | cancelled
+  expectedDeliveryDate DateTime?
+  projectId            String?
+  project              Project? @relation(fields: [projectId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  lines OrderLine[]
+}
+
+model OrderLine {
+  id               String   @id @default(cuid())
+  orderId          String
+  order            Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  inventoryItemId  String?
+  inventoryItem    InventoryItem? @relation(fields: [inventoryItemId], references: [id])
+  materialCode     String   // For non-catalog items or legacy
+  quantity         Float
+  receivedQty      Float    @default(0)
+  unitCost         Float    @default(0)
+  projectId        String?
+  project          Project? @relation(fields: [projectId], references: [id])
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model Deviation {
+  id String @id @default(cuid())
+
+  projectId String?
+  project   Project? @relation(fields: [projectId], references: [id])
+
+  type       String  // margin_risk | cost_overrun | inventory_shortage | order_delay | timeline_risk
+  severity   String  // low | medium | high | critical
+  groupKey   String?
+  message    String
+  impactValue Float?
+
+  resolved Boolean @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model GlobalRiskSettings {
+  id String @id @default(cuid())
+
+  targetMargin        Float @default(0.25)
+  warningMargin       Float @default(0.25)
+  highRiskMargin      Float @default(0.18)
+  criticalMargin      Float @default(0.12)
+  wasteFactor         Float @default(1.15)
+  inventoryShortageHigh Float @default(0.20)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model ProjectTypeRiskOverride {
+  id String @id @default(cuid())
+
+  projectType String
+
+  targetMargin        Float?
+  warningMargin      Float?
+  highRiskMargin     Float?
+  criticalMargin     Float?
+  wasteFactor        Float?
+  inventoryShortageHigh Float?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// --- Phase 2: Global settings (singleton) ---
+model GlobalSettings {
+  id                    String   @id @default(cuid())
+  defaultMarkup         Float    @default(2.5)
+  targetMarginPct       Float    @default(0.25)
+  warningMarginPct      Float    @default(0.25)
+  highRiskMarginPct     Float    @default(0.18)
+  criticalMarginPct     Float    @default(0.12)
+  wasteFactor           Float    @default(1.15)
+  inventoryShortageHigh Float    @default(0.2)
+  taxEnabledDefault     Boolean  @default(false)
+  defaultTaxRate        Float    @default(0.14975)
+  defaultSheetFormatId  String?
+  defaultSheetFormat    SheetFormat? @relation(fields: [defaultSheetFormatId], references: [id])
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+}
+
+// --- Phase 2: Vendor invoices (estimate vs actual) ---
+model VendorInvoice {
+  id           String   @id @default(cuid())
+  supplierId   String
+  supplier     Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+  invoiceNumber String
+  invoiceDate  DateTime
+  fileUrl      String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lines VendorInvoiceLine[]
+}
+
+model VendorInvoiceLine {
+  id                   String   @id @default(cuid())
+  invoiceId            String
+  invoice              VendorInvoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  descriptionRaw       String
+  qty                  Float    @default(1)
+  unitCost             Float
+  mappedInventoryItemId String?
+  mappedProjectId      String?
+  mappedCategory       String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+
+  costLines CostLine[]
 }

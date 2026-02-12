@@ -42,13 +42,13 @@ export function QuoteTab({ project }: { project: Project }) {
         <button
           type="button"
           onClick={() => window.print()}
-          className="btn-primary rounded px-4 py-2 text-sm font-medium print:hidden"
+          className="neo-btn-primary px-4 py-2 text-sm font-medium print:hidden"
         >
           Print quote
         </button>
       </div>
 
-      <div id="quote-print" className="rounded-lg border border-gray-200 bg-white p-6 print:border-0 print:shadow-none">
+      <div id="quote-print" className="neo-card p-6 print:border-0 print:shadow-none print:bg-white">
         <div className="mb-6 border-b border-gray-200 pb-4">
           <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
           <p className="text-sm text-gray-600">{formatTypes(project.types)}</p>

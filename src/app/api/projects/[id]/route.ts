@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { updateProjectSchema } from "@/lib/validators";
+import { recalculateProjectState } from "@/lib/observability/recalculateProjectState";
 
 export async function GET(
   _request: Request,
@@ -18,6 +19,9 @@ export async function GET(
         kitchenInputs: true,
         panelParts: true,
         costLines: true,
+        materialRequirements: true,
+        deviations: { where: { resolved: false } },
+        orders: { include: { lines: true } },
       },
     });
     if (!project) {
@@ -113,6 +117,7 @@ export async function PATCH(
     data.clientAddress !== undefined
   )
     await logAudit(id, "client_updated");
+  recalculateProjectState(id).catch(() => {});
   return NextResponse.json(project);
 }
 

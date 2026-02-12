@@ -322,12 +322,12 @@ function CalendarContent() {
 
       <div className="flex flex-wrap items-center gap-4">
         <div className="flex items-center gap-2">
-          <button type="button" onClick={prevMonth} className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">←</button>
+          <button type="button" onClick={prevMonth} className="neo-btn px-3 py-1.5 text-sm font-medium">←</button>
           <h2 className="min-w-[200px] text-center text-lg font-medium text-gray-800">{MONTHS[month]} {year}</h2>
-          <button type="button" onClick={nextMonth} className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">→</button>
+          <button type="button" onClick={nextMonth} className="neo-btn px-3 py-1.5 text-sm font-medium">→</button>
         </div>
-        <button type="button" onClick={goToday} className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">Today</button>
-        <button type="button" onClick={() => fetchEvents()} disabled={loading} className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50" title="Refresh">Refresh</button>
+        <button type="button" onClick={goToday} className="neo-btn px-3 py-1.5 text-sm font-medium">Today</button>
+        <button type="button" onClick={() => fetchEvents()} disabled={loading} className="neo-btn px-3 py-1.5 text-sm font-medium disabled:opacity-50" title="Refresh">Refresh</button>
         <Link href="/service-calls" className="rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900">New service call</Link>
       </div>
 
@@ -369,10 +369,10 @@ function CalendarContent() {
                             </>
                           );
                           if (ev.type === "manual" || !ev.projectId) {
-                            return <div key={ev.id} className="block rounded border border-gray-200 bg-amber-50/80 px-2 py-1.5 text-xs">{content}</div>;
+                            return <div key={ev.id} className="block neo-card-accent px-2 py-1.5 text-xs rounded-lg">{content}</div>;
                           }
                           return (
-                            <Link key={ev.id} href={`/projects/${ev.projectId}`} onClick={(e) => e.stopPropagation()} className="block rounded border border-gray-200 bg-white px-2 py-1.5 text-xs hover:border-gray-300 hover:bg-gray-50">
+                            <Link key={ev.id} href={`/projects/${ev.projectId}`} onClick={(e) => e.stopPropagation()} className="block neo-card px-2 py-1.5 text-xs hover:shadow-[6px_6px_12px_var(--shadow-dark),-6px_-6px_12px_var(--shadow-light)]">
                               {content}
                             </Link>
                           );
@@ -400,10 +400,10 @@ function CalendarContent() {
                 {selectedDate} — Day schedule
               </h2>
               <div className="flex gap-2">
-                <button type="button" onClick={printDay} disabled={dayEvents.length === 0} className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50">
+                <button type="button" onClick={printDay} disabled={dayEvents.length === 0} className="neo-btn px-3 py-1.5 text-sm font-medium disabled:opacity-50">
                   Print day
                 </button>
-                <button type="button" onClick={closeDay} className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50">
+                <button type="button" onClick={closeDay} className="neo-btn px-3 py-1.5 text-sm font-medium">
                   Close
                 </button>
               </div>
@@ -411,13 +411,13 @@ function CalendarContent() {
 
             <div className="p-4 space-y-4">
               {/* Add existing service call */}
-              <div className="rounded border border-gray-200 bg-gray-50 p-4">
+              <div className="neo-panel-inset p-4 rounded-xl">
                 <h3 className="mb-3 text-sm font-semibold text-gray-800">Add existing service call</h3>
                 <div className="flex flex-wrap gap-2">
                   <select
                     value={addExistingScId}
                     onChange={(e) => setAddExistingScId(e.target.value)}
-                    className="min-w-[200px] rounded border border-gray-300 px-2 py-1.5 text-sm"
+                    className="neo-input min-w-[200px] px-3 py-2 text-sm"
                   >
                     <option value="">— Select —</option>
                     {serviceCalls
@@ -440,13 +440,13 @@ function CalendarContent() {
               </div>
 
               {/* Add new event */}
-              <div className="rounded border border-gray-200 bg-gray-50 p-4">
+              <div className="neo-panel-inset p-4 rounded-xl">
                 <h3 className="mb-3 text-sm font-semibold text-gray-800">Add new event</h3>
                 <div className="grid gap-2 sm:grid-cols-2">
-                  <input type="text" placeholder="Title *" value={addManualTitle} onChange={(e) => setAddManualTitle(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm" />
-                  <input type="time" placeholder="Time" value={addManualTime} onChange={(e) => setAddManualTime(e.target.value)} className="rounded border border-gray-300 px-2 py-1.5 text-sm" />
-                  <input type="text" placeholder="Address / destination" value={addManualAddress} onChange={(e) => setAddManualAddress(e.target.value)} className="sm:col-span-2 rounded border border-gray-300 px-2 py-1.5 text-sm" />
-                  <input type="text" placeholder="Notes" value={addManualNotes} onChange={(e) => setAddManualNotes(e.target.value)} className="sm:col-span-2 rounded border border-gray-300 px-2 py-1.5 text-sm" />
+                  <input type="text" placeholder="Title *" value={addManualTitle} onChange={(e) => setAddManualTitle(e.target.value)} className="neo-input px-3 py-2 text-sm" />
+                  <input type="time" placeholder="Time" value={addManualTime} onChange={(e) => setAddManualTime(e.target.value)} className="neo-input px-3 py-2 text-sm" />
+                  <input type="text" placeholder="Address / destination" value={addManualAddress} onChange={(e) => setAddManualAddress(e.target.value)} className="sm:col-span-2 neo-input px-3 py-2 text-sm" />
+                  <input type="text" placeholder="Notes" value={addManualNotes} onChange={(e) => setAddManualNotes(e.target.value)} className="sm:col-span-2 neo-input px-3 py-2 text-sm" />
                 </div>
                 <button type="button" onClick={addManualEvent} disabled={addingManual || !addManualTitle.trim()} className="mt-2 rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-50">
                   {addingManual ? "Adding…" : "Add"}
@@ -461,7 +461,7 @@ function CalendarContent() {
               ) : (
                 <ul className="space-y-2">
                   {dayEvents.map((ev, idx) => (
-                    <li key={ev.id} className="flex items-center gap-2 rounded border border-gray-200 bg-white p-3">
+                    <li key={ev.id} className="flex items-center gap-2 neo-card p-3">
                       <span className="w-12 shrink-0 text-xs text-gray-500">{ev.time || "—"}</span>
                       <div className="min-w-0 flex-1">
                         <span className="font-medium text-gray-900">{ev.title}</span>

@@ -81,7 +81,7 @@ export function SettingsTab({
             step={0.1}
             value={markup}
             onChange={(e) => setMarkup(Number(e.target.value))}
-            className="w-full rounded border border-gray-300 px-3 py-2"
+            className="neo-input w-full px-4 py-2.5"
           />
         </div>
         <div className="flex items-center gap-2">
@@ -102,7 +102,7 @@ export function SettingsTab({
             step={0.00001}
             value={taxRate}
             onChange={(e) => setTaxRate(Number(e.target.value))}
-            className="w-full rounded border border-gray-300 px-3 py-2"
+            className="neo-input w-full px-4 py-2.5"
           />
         </div>
         <div>
@@ -110,7 +110,7 @@ export function SettingsTab({
           <select
             value={sheetFormatId}
             onChange={(e) => setSheetFormatId(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2"
+            className="neo-input w-full px-4 py-2.5"
           >
             <option value="">— None —</option>
             {formats.map((f) => (
@@ -125,7 +125,7 @@ export function SettingsTab({
         type="button"
         onClick={save}
         disabled={saving}
-        className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        className="neo-btn-primary px-5 py-2.5 text-sm font-medium disabled:opacity-50"
       >
         {saving ? "Saving…" : "Save settings"}
       </button>

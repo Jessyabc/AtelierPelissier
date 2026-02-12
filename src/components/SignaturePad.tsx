@@ -110,7 +110,7 @@ export function SignaturePad({ value, onChange, label, disabled }: Props) {
   return (
     <div>
       <label className="mb-1 block text-sm font-medium text-gray-700">{label}</label>
-      <div className="relative rounded border border-gray-300 bg-white">
+      <div className="relative neo-panel-inset rounded-xl overflow-hidden">
         <canvas
           ref={canvasRef}
           width={400}

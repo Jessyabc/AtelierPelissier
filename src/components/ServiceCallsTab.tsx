@@ -334,7 +334,7 @@ export function ServiceCallsTab({
           type="button"
           onClick={createNew}
           disabled={creating || !hasJobNumber}
-          className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
         >
           {creating ? "Creating…" : "Add service call"}
         </button>
@@ -351,7 +351,7 @@ export function ServiceCallsTab({
         <select
           value={selectedId ?? ""}
           onChange={(e) => setSelectedId(e.target.value || null)}
-          className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-900"
+          className="neo-input px-4 py-2.5 text-sm"
         >
           {list.map((sc) => (
             <option key={sc.id} value={sc.id}>
@@ -364,7 +364,7 @@ export function ServiceCallsTab({
           type="button"
           onClick={createNew}
           disabled={creating || !hasJobNumber}
-          className="rounded border border-gray-300 px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="neo-btn px-3 py-2 text-sm font-medium disabled:opacity-50"
         >
           {creating ? "…" : "+ Add"}
         </button>
@@ -393,14 +393,14 @@ export function ServiceCallsTab({
                 type="button"
                 onClick={save}
                 disabled={saving}
-                className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+                className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
               >
                 {saving ? "Saving…" : "Save service call"}
               </button>
               <button
                 type="button"
                 onClick={() => window.print()}
-                className="rounded border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                className="neo-btn px-4 py-2 text-sm font-medium"
               >
                 Print
               </button>

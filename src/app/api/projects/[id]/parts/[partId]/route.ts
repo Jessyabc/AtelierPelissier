@@ -1,12 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { panelPartUpdateSchema } from "@/lib/validators";
+import { triggerMaterialInventoryOrderRecalc } from "@/lib/observability/recalculateProjectState";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; partId: string }> }
 ) {
-  const { partId } = await params;
+  const { id: projectId, partId } = await params;
   let body: unknown;
   try {
     body = await request.json();
@@ -33,6 +34,7 @@ export async function PATCH(
       ...(data.thicknessIn !== undefined && { thicknessIn: data.thicknessIn }),
     },
   });
+  triggerMaterialInventoryOrderRecalc(projectId);
   return NextResponse.json(part);
 }
 
@@ -40,7 +42,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string; partId: string }> }
 ) {
-  const { partId } = await params;
+  const { id: projectId, partId } = await params;
   await prisma.panelPart.delete({ where: { id: partId } });
+  triggerMaterialInventoryOrderRecalc(projectId);
   return NextResponse.json({ ok: true });
 }

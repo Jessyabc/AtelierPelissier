@@ -159,14 +159,14 @@ export default function ProjectPage() {
         </Link>
         <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
         {project.isDraft && (
-          <span className="rounded bg-amber-100 px-2 py-0.5 text-sm text-amber-800">Draft</span>
+          <span className="neo-btn-pressed inline-block rounded-lg px-2 py-0.5 text-sm text-amber-800">Draft</span>
         )}
         {project.isDraft && (
           <button
             type="button"
             onClick={handleSaveProject}
             disabled={savingProject}
-            className="btn-primary rounded px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+            className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             {savingProject ? "Saving…" : "Save project"}
           </button>
@@ -175,27 +175,27 @@ export default function ProjectPage() {
           type="button"
           onClick={() => handleDuplicate()}
           disabled={duplicating}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          className="neo-btn px-3 py-1.5 text-sm font-medium disabled:opacity-50"
         >
           {duplicating ? "…" : "Duplicate"}
         </button>
         <button
           type="button"
           onClick={() => setDeleteConfirm(true)}
-          className="rounded border border-red-200 px-3 py-1.5 text-sm font-medium text-red-700 hover:bg-red-50"
+          className="neo-btn px-3 py-1.5 text-sm font-medium text-red-600"
         >
           Delete
         </button>
       </div>
       {saveError && (
-        <p className="mb-2 rounded bg-amber-50 p-2 text-sm text-amber-800">{saveError}</p>
+        <p className="neo-panel-inset mb-4 p-4 text-sm text-amber-800">{saveError}</p>
       )}
       <ProjectTabs
         tabs={TABS}
         activeTab={activeTab}
         onSelect={(tab) => setActiveTab(tab as (typeof TABS)[number])}
       />
-      <div className="mt-4 rounded-lg border border-gray-200 bg-white p-4 sm:p-6">
+      <div className="neo-card mt-4 p-6 sm:p-8">
         {activeTab === "Vanity" && <VanityTab projectId={id} project={project} onUpdate={fetchProject} />}
         {activeTab === "Side Unit" && <SideUnitTab projectId={id} project={project} onUpdate={fetchProject} />}
         {activeTab === "Kitchen" && <KitchenTab projectId={id} project={project} onUpdate={fetchProject} />}

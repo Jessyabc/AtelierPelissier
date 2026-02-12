@@ -247,7 +247,7 @@ export default function ServiceCallsPage() {
           <button
             type="button"
             onClick={() => setShowCreate(true)}
-            className="btn-primary rounded px-4 py-2 text-sm font-medium"
+            className="neo-btn-primary px-4 py-2 text-sm font-medium"
           >
             New service call
           </button>

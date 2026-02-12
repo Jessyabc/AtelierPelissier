@@ -5,11 +5,16 @@ import { usePathname } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 
 const MENU_ITEMS = [
-  { href: "/", label: "Dashboard" },
+  { href: "/", label: "Projects" },
+  { href: "/dashboard", label: "Executive Dashboard" },
   { href: "/projects/new", label: "New project" },
+  { href: "/inventory", label: "Inventory" },
+  { href: "/purchasing", label: "Purchasing" },
+  { href: "/costing", label: "Costing" },
   { href: "/service-calls", label: "Service calls" },
   { href: "/calendar", label: "Calendar" },
   { href: "/distributors", label: "Distributors" },
+  { href: "/settings/risk", label: "Risk settings" },
   { href: "#", label: "Export data (backup)", exportData: true },
 ];
 
@@ -50,7 +55,7 @@ export function AppHeader() {
           </button>
           {open && (
             <nav
-              className="absolute left-0 top-full z-50 mt-2 min-w-[180px] rounded-lg border border-gray-200 bg-white py-1 shadow-lg"
+              className="neo-dropdown absolute left-0 top-full z-50 mt-3 min-w-[200px] rounded-xl py-2"
               role="menu"
             >
               {MENU_ITEMS.map((item) =>
@@ -75,7 +80,7 @@ export function AppHeader() {
                       }
                     }}
                     role="menuitem"
-                    className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100"
+                    className="block w-full px-5 py-2.5 text-left text-sm text-gray-700 hover:bg-white/50 transition-colors"
                   >
                     {item.label}
                   </button>
@@ -85,10 +90,10 @@ export function AppHeader() {
                     href={item.href}
                     onClick={() => setOpen(false)}
                     role="menuitem"
-                    className={`block px-4 py-2 text-sm hover:bg-gray-100 ${
+                    className={`block px-5 py-2.5 text-sm transition-colors ${
                       pathname === item.href
-                        ? "font-medium text-brand-dark bg-gray-50"
-                        : "text-gray-700"
+                        ? "font-medium text-[var(--accent-hover)] bg-white/60"
+                        : "text-gray-700 hover:bg-white/50"
                     }`}
                   >
                     {item.label}

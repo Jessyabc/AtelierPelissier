@@ -123,7 +123,7 @@ export function ClientTab({
           type="text"
           value={jobNumber}
           onChange={(e) => setJobNumber(e.target.value)}
-          className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 text-gray-900"
+          className="w-full max-w-xs neo-input px-4 py-2.5"
           placeholder="e.g. MC-6199"
         />
       </div>
@@ -134,7 +134,7 @@ export function ClientTab({
             type="text"
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+            className="w-full neo-input px-4 py-2.5"
             placeholder="First name"
           />
         </div>
@@ -144,7 +144,7 @@ export function ClientTab({
             type="text"
             value={lastName}
             onChange={(e) => setLastName(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+            className="w-full neo-input px-4 py-2.5"
             placeholder="Last name"
           />
         </div>
@@ -155,7 +155,7 @@ export function ClientTab({
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+          className="w-full neo-input px-4 py-2.5"
           placeholder="client@example.com"
         />
       </div>
@@ -165,7 +165,7 @@ export function ClientTab({
           type="tel"
           value={phone}
           onChange={(e) => setPhone(e.target.value)}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+          className="w-full neo-input px-4 py-2.5"
           placeholder="(555) 000-0000"
         />
       </div>
@@ -175,7 +175,7 @@ export function ClientTab({
           value={address}
           onChange={(e) => setAddress(e.target.value)}
           rows={3}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+          className="w-full neo-input px-4 py-2.5"
           placeholder="Street, city, postal code"
         />
       </div>
@@ -185,7 +185,7 @@ export function ClientTab({
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}
-          className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900"
+          className="w-full neo-input px-4 py-2.5"
           placeholder="Free-form notes for this job"
         />
       </div>
@@ -195,7 +195,7 @@ export function ClientTab({
           type="button"
           onClick={save}
           disabled={saving}
-          className="btn-primary rounded px-4 py-2 text-sm font-medium disabled:opacity-50"
+          className="neo-btn-primary px-5 py-2.5 text-sm font-medium disabled:opacity-50"
         >
           {saving ? "Saving…" : "Save client info"}
         </button>

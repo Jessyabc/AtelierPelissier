@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { projectSettingsSchema } from "@/lib/validators";
+import { triggerSettingsRecalc } from "@/lib/observability/recalculateProjectState";
 
 export async function PATCH(
   request: Request,
@@ -45,5 +46,6 @@ export async function PATCH(
     where: { projectId },
     include: { sheetFormat: true },
   });
+  triggerSettingsRecalc(projectId);
   return NextResponse.json(settings ?? {});
 }

@@ -3,34 +3,224 @@
 @tailwind utilities;
 
 :root {
-  /* Atelier Pelissier brand */
+  /* Neumorphic palette – soft gray/white, light blue accent */
+  --bg: #e8eef2;
+  --bg-light: #f2f6f8;
+  --bg-raised: #f5f8fa;
+  --shadow-dark: #c5ced6;
+  --shadow-light: #ffffff;
+  --accent: #7eb8da;
+  --accent-soft: #b8d8ed;
+  --accent-hover: #6ba8cc;
+  --foreground: #2d3748;
+  --foreground-muted: #64748b;
+
+  /* Brand (kept for header) */
   --brand-dark: #1b1b1d;
   --brand-blue: #17adff;
   --brand-green: #51ff7d;
-  --foreground: #171717;
-  --background: #e5e5e5;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: linear-gradient(145deg, var(--bg-light) 0%, var(--bg) 100%);
+  min-height: 100vh;
 }
 
-/* Ensure header uses brand dark */
+/* Header – keeps dark brand bar */
 .app-header {
   background-color: var(--brand-dark);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
 }
 
-/* Primary button so it always has contrast */
-.btn-primary {
-  background-color: var(--brand-dark);
+/* ─── Neumorphic design system ─── */
+
+/* Inset input (search, text fields) */
+.neo-input {
+  background: var(--bg);
+  border: none;
+  border-radius: 12px;
+  box-shadow: inset 4px 4px 8px var(--shadow-dark), inset -4px -4px 8px var(--shadow-light);
+  color: var(--foreground);
+  transition: box-shadow 0.15s ease;
+}
+.neo-input::placeholder {
+  color: var(--foreground-muted);
+}
+.neo-input:focus {
+  outline: none;
+  box-shadow: inset 5px 5px 10px var(--shadow-dark), inset -5px -5px 10px var(--shadow-light);
+}
+
+/* Raised input (optional variant) */
+.neo-input-raised {
+  background: var(--bg-raised);
+  border: none;
+  border-radius: 12px;
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  color: var(--foreground);
+}
+
+/* Primary button (raised, blue accent) */
+.neo-btn-primary {
+  background: linear-gradient(145deg, var(--accent) 0%, var(--accent-hover) 100%);
+  border: none;
+  border-radius: 12px;
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
   color: white;
+  font-weight: 500;
+  transition: all 0.15s ease;
+}
+.neo-btn-primary:hover {
+  box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+  transform: translateY(1px);
+}
+.neo-btn-primary:active {
+  box-shadow: inset 3px 3px 6px rgba(0, 0, 0, 0.2);
+  transform: translateY(2px);
+}
+
+/* Secondary button (raised, neutral) */
+.neo-btn {
+  background: var(--bg);
+  border: none;
+  border-radius: 12px;
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
+  color: var(--foreground);
+  transition: all 0.15s ease;
+}
+.neo-btn:hover {
+  box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+}
+.neo-btn:active {
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+}
+
+/* Pressed/selected state for toggle groups */
+.neo-btn-pressed {
+  background: var(--bg);
+  border: none;
+  border-radius: 12px;
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+  color: var(--foreground);
+}
+
+/* Card / panel (raised) */
+.neo-card {
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+}
+
+/* Card with blue tint */
+.neo-card-accent {
+  background: linear-gradient(145deg, #eef7fb 0%, #e0eef6 100%);
+  border-radius: 16px;
+  box-shadow: 8px 8px 16px #c8d8e4, -8px -8px 16px #ffffff;
+}
+
+/* Inset panel */
+.neo-panel-inset {
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: inset 5px 5px 10px var(--shadow-dark), inset -5px -5px 10px var(--shadow-light);
+}
+
+/* Select / dropdown */
+.neo-select {
+  background: var(--bg);
+  border: none;
+  border-radius: 12px;
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+  color: var(--foreground);
+}
+
+/* Small icon-style button */
+.neo-icon-btn {
+  background: var(--bg);
+  border: none;
+  border-radius: 50%;
+  box-shadow: 4px 4px 8px var(--shadow-dark), -4px -4px 8px var(--shadow-light);
+  transition: all 0.15s ease;
+}
+.neo-icon-btn:hover {
+  box-shadow: 3px 3px 6px var(--shadow-dark), -3px -3px 6px var(--shadow-light);
+}
+.neo-icon-btn:active {
+  box-shadow: inset 2px 2px 4px var(--shadow-dark), inset -2px -2px 4px var(--shadow-light);
+}
+
+/* Segment / toggle group container */
+.neo-segment {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 5px;
+  background: var(--bg);
+  border-radius: 14px;
+  box-shadow: inset 3px 3px 6px var(--shadow-dark), inset -3px -3px 6px var(--shadow-light);
+}
+.neo-segment-btn {
+  background: transparent;
+  border: none;
+  border-radius: 10px;
+  padding: 6px 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--foreground-muted);
+  transition: all 0.15s ease;
+}
+.neo-segment-btn:hover {
+  color: var(--foreground);
+}
+
+/* Legacy aliases (dashboard) */
+.neumorphic-panel {
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light);
+}
+.neumorphic-panel-inset {
+  background: var(--bg);
+  border-radius: 16px;
+  box-shadow: inset 5px 5px 10px var(--shadow-dark), inset -5px -5px 10px var(--shadow-light);
+}
+.neumorphic-panel-blue {
+  background: linear-gradient(145deg, #eef7fb 0%, #e0eef6 100%);
+  border-radius: 16px;
+  box-shadow: 8px 8px 16px #c8d8e4, -8px -8px 16px #ffffff;
+}
+
+/* Subtle severity glow */
+.severity-low { box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light), 0 0 12px rgba(59, 130, 246, 0.25); }
+.severity-medium { box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light), 0 0 12px rgba(234, 179, 8, 0.3); }
+.severity-high { box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light), 0 0 12px rgba(249, 115, 22, 0.35); }
+.severity-critical { box-shadow: 8px 8px 16px var(--shadow-dark), -8px -8px 16px var(--shadow-light), 0 0 12px rgba(239, 68, 68, 0.4); }
+
+/* Dropdown menu (needs to float above) */
+.neo-dropdown {
+  background: var(--bg-raised);
+  border-radius: 12px;
+  box-shadow: 8px 8px 20px var(--shadow-dark), -4px -4px 12px var(--shadow-light);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* Legacy btn-primary override – use neo style when not in header */
+.btn-primary {
+  background: linear-gradient(145deg, var(--accent) 0%, var(--accent-hover) 100%);
+  color: white;
+  border: none;
+  border-radius: 12px;
+  box-shadow: 5px 5px 10px var(--shadow-dark), -5px -5px 10px var(--shadow-light);
 }
 .btn-primary:hover {
-  filter: brightness(0.9);
+  filter: brightness(1.05);
 }
 
 @media print {
+  body {
+    background: white;
+  }
   header,
   .print\:hidden,
   a[href="/"],
@@ -51,7 +241,6 @@ body {
   #service-calls-list-print {
     max-width: 100% !important;
   }
-  /* Day schedule print: hide all except the day print clone */
   body.printing-day * {
     visibility: hidden !important;
   }
