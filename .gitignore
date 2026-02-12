@@ -31,8 +31,7 @@ yarn-error.log*
 .DS_Store
 Thumbs.db
 
-# Prisma
-prisma/*.db
+# Prisma — dev.db is committed for sync across clones; journal files are transient
 prisma/*.db-journal
 
 # Uploads (user files)
