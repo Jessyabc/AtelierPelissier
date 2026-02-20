@@ -22,6 +22,20 @@ export async function GET(
         materialRequirements: true,
         deviations: { where: { resolved: false } },
         orders: { include: { lines: true } },
+        parentProject: { select: { id: true, name: true, jobNumber: true } },
+        subProjects: {
+          select: {
+            id: true,
+            name: true,
+            isDone: true,
+            isDraft: true,
+            updatedAt: true,
+            processTemplateId: true,
+            processTemplate: { select: { id: true, name: true } },
+            taskItems: { select: { id: true, label: true, isDone: true, sortOrder: true }, orderBy: { sortOrder: "asc" } },
+          },
+          orderBy: { updatedAt: "desc" },
+        },
       },
     });
     if (!project) {
@@ -58,6 +72,7 @@ export async function PATCH(
     type?: string;
     types?: string;
     isDraft?: boolean;
+    isDone?: boolean;
     jobNumber?: string | null;
     notes?: string | null;
     clientFirstName?: string | null;
@@ -65,6 +80,7 @@ export async function PATCH(
     clientEmail?: string | null;
     clientPhone?: string | null;
     clientAddress?: string | null;
+    processTemplateId?: string | null;
   } = {};
   if (data.name != null) updateData.name = data.name;
   if (data.types != null) {
@@ -72,6 +88,7 @@ export async function PATCH(
     updateData.type = data.types[0] ?? undefined;
   }
   if (data.isDraft != null) updateData.isDraft = data.isDraft;
+  if (data.isDone != null) updateData.isDone = data.isDone;
   if (data.jobNumber !== undefined) updateData.jobNumber = data.jobNumber;
   if (data.notes !== undefined) updateData.notes = data.notes;
   if (data.clientFirstName !== undefined) updateData.clientFirstName = data.clientFirstName;
@@ -79,6 +96,7 @@ export async function PATCH(
   if (data.clientEmail !== undefined) updateData.clientEmail = data.clientEmail;
   if (data.clientPhone !== undefined) updateData.clientPhone = data.clientPhone;
   if (data.clientAddress !== undefined) updateData.clientAddress = data.clientAddress;
+  if (data.processTemplateId !== undefined) updateData.processTemplateId = data.processTemplateId;
 
   if (Object.keys(updateData).length === 0) {
     const project = await prisma.project.findUnique({
@@ -109,6 +127,7 @@ export async function PATCH(
     },
   });
   if (data.isDraft === false) await logAudit(id, "saved");
+  if (data.isDone === true) await logAudit(id, "marked_done");
   else if (
     data.clientFirstName !== undefined ||
     data.clientLastName !== undefined ||

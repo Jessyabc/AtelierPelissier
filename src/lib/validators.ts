@@ -19,6 +19,7 @@ export const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required").max(200).trim(),
   types: z.array(projectTypeEnum).min(1, "Select at least one type").default(["vanity"]),
   jobNumber: z.string().max(100).trim().optional(),
+  parentProjectId: z.string().cuid().optional().nullable(),
   // Client info (optional on create; can be filled later)
   clientFirstName: z.string().max(100).trim().optional(),
   clientLastName: z.string().max(100).trim().optional(),
@@ -31,6 +32,7 @@ export const updateProjectSchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
   types: z.array(projectTypeEnum).optional(),
   isDraft: z.boolean().optional(),
+  isDone: z.boolean().optional(),
   jobNumber: z.string().max(100).trim().optional().nullable(),
   notes: z.string().max(5000).trim().optional().nullable(),
   clientFirstName: z.string().max(100).trim().optional().nullable(),
@@ -38,6 +40,7 @@ export const updateProjectSchema = z.object({
   clientEmail: z.string().max(200).trim().optional().nullable(),
   clientPhone: z.string().max(50).trim().optional().nullable(),
   clientAddress: z.string().max(500).trim().optional().nullable(),
+  processTemplateId: z.string().cuid().optional().nullable(),
 });
 
 export const vanityInputsSchema = z.object({

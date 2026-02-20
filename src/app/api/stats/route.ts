@@ -43,16 +43,9 @@ export async function GET() {
           serviceCompleted: true,
         },
       }),
-      Promise.all([
-        prisma.calendarEvent.count({
-          where: { eventDate: { gte: todayStart, lte: todayEnd } },
-        }),
-        prisma.serviceCall.count({
-          where: {
-            serviceDate: { gte: todayStart, lte: todayEnd },
-          },
-        }),
-      ]).then(([a, b]) => a + b),
+      prisma.calendarEvent.count({
+        where: { eventDate: { gte: todayStart, lte: todayEnd } },
+      }),
       prisma.distributor.count(),
       prisma.order.groupBy({
         by: ["status"],

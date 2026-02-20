@@ -8,6 +8,7 @@ const MENU_ITEMS = [
   { href: "/", label: "Projects" },
   { href: "/dashboard", label: "Executive Dashboard" },
   { href: "/projects/new", label: "New project" },
+  { href: "/processes", label: "Processes" },
   { href: "/inventory", label: "Inventory" },
   { href: "/purchasing", label: "Purchasing" },
   { href: "/costing", label: "Costing" },

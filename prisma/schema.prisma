@@ -13,8 +13,14 @@ model Project {
   type      String   // legacy: first type; use types for full list
   types     String   @default("vanity") // comma-separated: vanity,side_unit,kitchen
   isDraft   Boolean  @default(true)
+  isDone    Boolean  @default(false) // Project completed/delivered
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  // Parent project — when set, this is a sub-project (e.g. B/O return visit)
+  parentProjectId String?
+  parentProject   Project?  @relation("ProjectHierarchy", fields: [parentProjectId], references: [id], onDelete: Cascade)
+  subProjects     Project[] @relation("ProjectHierarchy")
 
   // Job identifier (e.g. MC-6199) — used for service call numbering
   jobNumber String?
@@ -41,6 +47,22 @@ model Project {
   orders               Order[]
   orderLines           OrderLine[]
   deviations           Deviation[]
+  taskItems            ProjectTaskItem[]
+
+  // Process template — for tasks (sub-projects): which workflow this task follows
+  processTemplateId String?
+  processTemplate   ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
+}
+
+// Checklist items for a project (or sub-project) — things to be done
+model ProjectTaskItem {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  label     String
+  isDone    Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
 }
 
 model AuditLog {
@@ -472,4 +494,45 @@ model VendorInvoiceLine {
   updatedAt            DateTime @updatedAt
 
   costLines CostLine[]
+}
+
+// --- Process visualization layer ---
+model ProcessTemplate {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  steps       ProcessStep[]
+  edges       ProcessStepEdge[]
+  projects    Project[]
+}
+
+model ProcessStep {
+  id          String   @id @default(cuid())
+  templateId  String
+  template    ProcessTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label       String
+  description String?
+  type        String   // "start" | "step" | "decision" | "end"
+  isOptional  Boolean  @default(false)
+  positionX   Float    @default(0)
+  positionY   Float    @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  outgoingEdges ProcessStepEdge[] @relation("OutgoingEdges")
+  incomingEdges ProcessStepEdge[] @relation("IncomingEdges")
+}
+
+model ProcessStepEdge {
+  id             String   @id @default(cuid())
+  templateId     String
+  template       ProcessTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  sourceStepId   String
+  sourceStep     ProcessStep @relation("OutgoingEdges", fields: [sourceStepId], references: [id], onDelete: Cascade)
+  targetStepId   String
+  targetStep     ProcessStep @relation("IncomingEdges", fields: [targetStepId], references: [id], onDelete: Cascade)
+  conditionLabel String?  // e.g. "Yes", "No" for decision branches
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }

@@ -1,13 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const PROJECT_TYPES = [
   { value: "vanity", label: "Vanity" },
   { value: "side_unit", label: "Side Unit" },
   { value: "kitchen", label: "Kitchen" },
 ] as const;
+
+type TaskDraft = { name: string; items: string[]; processTemplateId?: string };
 
 export default function NewProjectPage() {
   const router = useRouter();
@@ -18,6 +20,11 @@ export default function NewProjectPage() {
   const [clientEmail, setClientEmail] = useState("");
   const [clientPhone, setClientPhone] = useState("");
   const [clientAddress, setClientAddress] = useState("");
+  const [tasks, setTasks] = useState<TaskDraft[]>([]);
+  const [newTaskName, setNewTaskName] = useState("");
+  const [newTaskItems, setNewTaskItems] = useState("");
+  const [newTaskProcessId, setNewTaskProcessId] = useState("");
+  const [processTemplates, setProcessTemplates] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string[]>>({});
@@ -28,6 +35,29 @@ export default function NewProjectPage() {
       return next.length ? next : ["vanity"];
     });
   }
+
+  function addTask() {
+    if (!newTaskName.trim()) return;
+    const items = newTaskItems.split("\n").map((s) => s.trim()).filter(Boolean);
+    setTasks((t) => [
+      ...t,
+      { name: newTaskName.trim(), items, processTemplateId: newTaskProcessId.trim() || undefined },
+    ]);
+    setNewTaskName("");
+    setNewTaskItems("");
+    setNewTaskProcessId("");
+  }
+
+  function removeTask(idx: number) {
+    setTasks((t) => t.filter((_, i) => i !== idx));
+  }
+
+  useEffect(() => {
+    fetch("/api/process-templates")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setProcessTemplates(Array.isArray(data) ? data : []))
+      .catch(() => setProcessTemplates([]));
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -61,6 +91,17 @@ export default function NewProjectPage() {
         const issues = data.issues as Record<string, string[] | undefined> | undefined;
         if (issues) setFieldErrors(issues as Record<string, string[]>);
         throw new Error(data.error || "Validation failed");
+      }
+      for (const task of tasks) {
+        await fetch(`/api/projects/${data.id}/sub-projects`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: task.name,
+            items: task.items,
+            processTemplateId: task.processTemplateId,
+          }),
+        });
       }
       router.push(`/projects/${data.id}`);
     } catch (err) {
@@ -187,6 +228,81 @@ export default function NewProjectPage() {
               placeholder="Street, city, postal code"
             />
           </div>
+        </fieldset>
+
+        <fieldset className="rounded-lg border border-gray-200 bg-gray-50/50 p-4">
+          <legend className="text-sm font-medium text-gray-700">Tasks (optional)</legend>
+          <p className="mb-3 text-xs text-gray-500">
+            Add tasks with checklist items now, or add them later from the project page.
+          </p>
+          {tasks.length > 0 && (
+            <ul className="mb-3 space-y-2">
+              {tasks.map((t, i) => (
+                <li key={i} className="flex items-center justify-between gap-2 rounded bg-white px-3 py-2 text-sm">
+                  <div>
+                    <span className="font-medium">{t.name}</span>
+                    {t.processTemplateId && (
+                      <span className="ml-2 text-xs text-gray-500">
+                        ({processTemplates.find((p) => p.id === t.processTemplateId)?.name ?? "process"})
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    {t.items.length > 0 && (
+                      <span className="text-gray-500 text-xs">{t.items.length} items</span>
+                    )}
+                    <button
+                    type="button"
+                    onClick={() => removeTask(i)}
+                      className="text-red-600 text-xs hover:underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="space-y-2">
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={newTaskName}
+                onChange={(e) => setNewTaskName(e.target.value)}
+                placeholder="Task name"
+                className="neo-input flex-1 px-3 py-2 text-sm"
+                onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), addTask())}
+              />
+              <select
+                value={newTaskProcessId}
+                onChange={(e) => setNewTaskProcessId(e.target.value)}
+                className="neo-input w-40 px-3 py-2 text-sm shrink-0"
+                title="Link to process"
+              >
+                <option value="">No process</option>
+                {processTemplates.map((t) => (
+                  <option key={t.id} value={t.id}>{t.name}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={addTask}
+                disabled={!newTaskName.trim()}
+                className="neo-btn px-3 py-2 text-sm shrink-0"
+              >
+                Add task
+              </button>
+            </div>
+          </div>
+          {newTaskName.trim() && (
+            <textarea
+              value={newTaskItems}
+              onChange={(e) => setNewTaskItems(e.target.value)}
+              placeholder="Items (one per line)"
+              rows={2}
+              className="neo-input mt-2 w-full px-3 py-2 text-sm"
+            />
+          )}
         </fieldset>
 
         {error && <p className="text-sm text-red-600">{error}</p>}

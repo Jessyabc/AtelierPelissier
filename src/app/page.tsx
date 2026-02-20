@@ -13,25 +13,16 @@ type Project = {
   type: string;
   types: string;
   isDraft: boolean;
+  isDone: boolean;
   updatedAt: string;
   clientFirstName: string | null;
   clientLastName: string | null;
   costLines: Array<{ amount: number }>;
+  subProjects?: Array<{ id: string; name: string; isDone: boolean; isDraft: boolean }>;
 };
 
 const LOAD_TIMEOUT_MS = 8000;
-type FilterKind = "all" | "drafts" | "saved" | "estimates";
-
-function getProjectsUrl(): string {
-  if (typeof window === "undefined") return "/api/projects";
-  return `${window.location.origin}/api/projects`;
-}
-
-function fetchWithTimeout(url: string, ms: number) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ms);
-  return fetch(url, { signal: controller.signal }).finally(() => clearTimeout(timeout));
-}
+type FilterKind = "all" | "drafts" | "saved" | "done" | "estimates";
 
 function formatTypes(typesStr?: string | null, fallbackType?: string | null): string {
   if (typesStr && typesStr.trim()) {
@@ -49,40 +40,6 @@ function estimateTotal(costLines: Array<{ amount: number }>): number {
   return costLines.reduce((sum, l) => sum + l.amount, 0);
 }
 
-function loadProjects(
-  setProjects: (p: Project[]) => void,
-  setLoading: (v: boolean) => void,
-  setError: (e: string | null) => void
-) {
-  setError(null);
-  setLoading(true);
-  const url = getProjectsUrl();
-  fetchWithTimeout(url, LOAD_TIMEOUT_MS)
-    .then((res) => {
-      if (!res.ok) {
-        return res.json().then((body) => {
-          throw new Error(body?.error || `Error ${res.status}`);
-        }).catch(() => {
-          throw new Error(res.status === 503 ? "Request timed out" : "Could not load projects");
-        });
-      }
-      return res.json();
-    })
-    .then((data) => {
-      setProjects(Array.isArray(data) ? data : []);
-      setError(null);
-    })
-    .catch((err) => {
-      setProjects([]);
-      setError(
-        err?.message === "The user aborted a request." || err?.name === "AbortError"
-          ? "Request timed out"
-          : err?.message || "Failed to load projects"
-      );
-    })
-    .finally(() => setLoading(false));
-}
-
 function filterProjects(
   projects: Project[],
   search: string,
@@ -98,7 +55,8 @@ function filterProjects(
     });
   }
   if (filter === "drafts") list = list.filter((p) => p.isDraft);
-  else if (filter === "saved") list = list.filter((p) => !p.isDraft);
+  else if (filter === "saved") list = list.filter((p) => !p.isDraft && !p.isDone);
+  else if (filter === "done") list = list.filter((p) => p.isDone);
   else if (filter === "estimates") list = list.filter((p) => (p.costLines?.length ?? 0) > 0);
   return list;
 }
@@ -114,17 +72,43 @@ export default function DashboardPage() {
   const [filter, setFilter] = useState<FilterKind>("all");
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [duplicateId, setDuplicateId] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
+  // Single load: fetch projects and stats in parallel
   useEffect(() => {
-    loadProjects(setProjects, setLoading, setError);
-  }, []);
-
-  useEffect(() => {
-    fetch("/api/stats")
-      .then((r) => r.ok ? r.json() : null)
-      .then((d) => d && setStats(d))
-      .catch(() => {});
-  }, []);
+    setError(null);
+    setLoading(true);
+    const projectsUrl = typeof window !== "undefined" ? `${window.location.origin}/api/projects` : "/api/projects";
+    const ac = new AbortController();
+    Promise.all([
+      fetch(projectsUrl, { signal: ac.signal }).then((r) => {
+        if (!r.ok) throw new Error("Failed to load projects");
+        return r.json();
+      }),
+      fetch("/api/stats", { signal: ac.signal }).then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([projectsData, statsData]) => {
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
+        if (statsData) setStats(statsData);
+        setError(null);
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          setProjects([]);
+          setError(
+            err?.message === "Failed to load projects" || err?.message?.includes("aborted")
+              ? "Request timed out"
+              : (err as Error)?.message || "Failed to load"
+          );
+        }
+      })
+      .finally(() => setLoading(false));
+    const t = setTimeout(() => ac.abort(), LOAD_TIMEOUT_MS);
+    return () => {
+      clearTimeout(t);
+      ac.abort();
+    };
+  }, [retryKey]);
 
   useEffect(() => {
     if (!loading) return;
@@ -143,12 +127,13 @@ export default function DashboardPage() {
 
   const onRetry = () => {
     setSlowHint(false);
-    loadProjects(setProjects, setLoading, setError);
+    setRetryKey((k) => k + 1);
   };
 
   const filtered = filterProjects(projects, search, filter);
   const drafts = filtered.filter((p) => p.isDraft);
-  const ongoing = filtered.filter((p) => !p.isDraft);
+  const ongoing = filtered.filter((p) => !p.isDraft && !p.isDone);
+  const done = filtered.filter((p) => p.isDone);
   const withEstimates = filtered.filter((p) => (p.costLines?.length ?? 0) > 0);
 
   async function handleDelete(projectId: string) {
@@ -157,7 +142,7 @@ export default function DashboardPage() {
       if (!res.ok) throw new Error("Delete failed");
       toast.success("Project deleted");
       setDeleteId(null);
-      loadProjects(setProjects, setLoading, setError);
+      setRetryKey((k) => k + 1);
     } catch {
       toast.error("Failed to delete project");
     }
@@ -243,14 +228,14 @@ export default function DashboardPage() {
           aria-label="Search projects"
         />
         <div className="neo-segment">
-          {(["all", "drafts", "saved", "estimates"] as const).map((f) => (
+          {(["all", "drafts", "saved", "done", "estimates"] as const).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={filter === f ? "neo-btn-pressed px-4 py-2 text-sm font-medium" : "neo-segment-btn"}
             >
-              {f === "all" ? "All" : f === "drafts" ? "Drafts" : f === "saved" ? "Saved" : "With estimates"}
+              {f === "all" ? "All" : f === "drafts" ? "Drafts" : f === "saved" ? "Saved" : f === "done" ? "Done" : "With estimates"}
             </button>
           ))}
         </div>
@@ -269,6 +254,9 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
+                    {p.subProjects && p.subProjects.length > 0 && (
+                      <span className="ml-2 text-xs text-gray-500">({p.subProjects.length} tasks)</span>
+                    )}
                     <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
                     <span className="ml-2 text-sm text-gray-500">
                       {[p.clientFirstName, p.clientLastName].filter(Boolean).join(" ") || "—"}
@@ -319,6 +307,50 @@ export default function DashboardPage() {
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
                     <span className="ml-2 neo-btn-pressed inline-block px-2 py-0.5 text-xs text-gray-600 rounded-lg">Draft</span>
+                    <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
+                    <span className="ml-2 text-sm text-gray-500">{new Date(p.updatedAt).toLocaleDateString()}</span>
+                  </Link>
+                  <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
+                    <button
+                      type="button"
+                      onClick={() => handleDuplicate(p.id)}
+                      disabled={duplicateId !== null}
+                      className="neo-btn px-3 py-1.5 text-xs font-medium disabled:opacity-50"
+                    >
+                      {duplicateId === p.id ? "…" : "Duplicate"}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDeleteId(p.id)}
+                      className="neo-btn px-3 py-1.5 text-xs font-medium text-red-600"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section>
+        <h2 className="mb-3 text-lg font-medium text-gray-800">Done</h2>
+        {done.length === 0 ? (
+          <p className="neo-card p-6 text-sm text-gray-500">
+            No completed projects yet. Mark a project as done from its detail page.
+          </p>
+        ) : (
+          <ul className="space-y-3">
+            {done.map((p) => (
+              <li key={p.id} className="neo-card">
+                <div className="flex flex-wrap items-center justify-between gap-2 p-4">
+                  <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
+                    <span className="font-medium text-gray-900">{p.name}</span>
+                    <span className="ml-2 inline-block rounded-lg bg-green-100 px-2 py-0.5 text-xs text-green-800">Done</span>
+                    {p.subProjects && p.subProjects.length > 0 && (
+                      <span className="ml-2 text-xs text-gray-500">({p.subProjects.length} tasks)</span>
+                    )}
                     <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
                     <span className="ml-2 text-sm text-gray-500">{new Date(p.updatedAt).toLocaleDateString()}</span>
                   </Link>

@@ -23,6 +23,18 @@ type Project = {
   type: string;
   types: string;
   isDraft: boolean;
+  isDone: boolean;
+  parentProject?: { id: string; name: string; jobNumber: string | null } | null;
+  subProjects?: Array<{
+    id: string;
+    name: string;
+    isDone: boolean;
+    isDraft: boolean;
+    updatedAt: string;
+    processTemplateId: string | null;
+    processTemplate?: { id: string; name: string } | null;
+    taskItems: Array<{ id: string; label: string; isDone: boolean; sortOrder: number }>;
+  }>;
   clientFirstName: string | null;
   clientLastName: string | null;
   clientEmail: string | null;
@@ -48,6 +60,14 @@ export default function ProjectPage() {
   const [saveError, setSaveError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [duplicating, setDuplicating] = useState(false);
+  const [togglingDone, setTogglingDone] = useState(false);
+  const [addingSubProject, setAddingSubProject] = useState(false);
+  const [newSubName, setNewSubName] = useState("");
+  const [newSubItems, setNewSubItems] = useState<string>("");
+  const [newSubProcessId, setNewSubProcessId] = useState<string>("");
+  const [processTemplates, setProcessTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [addingItemFor, setAddingItemFor] = useState<string | null>(null);
+  const [newItemLabel, setNewItemLabel] = useState("");
 
   const fetchProject = useCallback(async () => {
     try {
@@ -68,6 +88,13 @@ export default function ProjectPage() {
   useEffect(() => {
     fetchProject();
   }, [fetchProject]);
+
+  useEffect(() => {
+    fetch("/api/process-templates")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data) => setProcessTemplates(Array.isArray(data) ? data : []))
+      .catch(() => setProcessTemplates([]));
+  }, []);
 
   async function handleSaveProject() {
     if (!project) return;
@@ -115,6 +142,87 @@ export default function ProjectPage() {
     }
   }
 
+  async function handleToggleDone() {
+    if (!project) return;
+    setTogglingDone(true);
+    try {
+      const res = await fetch(`/api/projects/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDone: !project.isDone }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      await fetchProject();
+      toast.success(project.isDone ? "Marked as not done" : "Marked as done");
+    } catch {
+      toast.error("Failed to update");
+    } finally {
+      setTogglingDone(false);
+    }
+  }
+
+  async function handleAddSubProject() {
+    if (!newSubName.trim()) return;
+    setAddingSubProject(true);
+    try {
+      const items = newSubItems
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean);
+      const res = await fetch(`/api/projects/${id}/sub-projects`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: newSubName.trim(),
+          items,
+          processTemplateId: newSubProcessId.trim() || undefined,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed");
+      toast.success("Task added");
+      setNewSubName("");
+      setNewSubItems("");
+      setNewSubProcessId("");
+      await fetchProject();
+    } catch {
+      toast.error("Failed to add task");
+    } finally {
+      setAddingSubProject(false);
+    }
+  }
+
+  async function handleAddItem(subProjectId: string) {
+    if (!newItemLabel.trim() || addingItemFor !== subProjectId) return;
+    try {
+      const res = await fetch(`/api/projects/${subProjectId}/task-items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ label: newItemLabel.trim() }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      setNewItemLabel("");
+      setAddingItemFor(null);
+      await fetchProject();
+    } catch {
+      toast.error("Failed to add item");
+    }
+  }
+
+  async function handleToggleItem(subProjectId: string, itemId: string, isDone: boolean) {
+    try {
+      const res = await fetch(`/api/projects/${subProjectId}/task-items/${itemId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isDone: !isDone }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      await fetchProject();
+    } catch {
+      toast.error("Failed to update");
+    }
+  }
+
   async function handleDuplicate() {
     setDuplicating(true);
     try {
@@ -153,11 +261,23 @@ export default function ProjectPage() {
 
   return (
     <div>
-      <div className="mb-4 flex flex-wrap items-center gap-3 sm:gap-4">
-        <Link href="/" className="text-gray-600 hover:underline">
-          ← Dashboard
-        </Link>
+      <div className="mb-4">
+        <div className="flex flex-wrap items-center gap-2 text-sm text-gray-600">
+          <Link href="/" className="hover:underline">Dashboard</Link>
+          {project.parentProject && (
+            <>
+              <span>/</span>
+              <Link href={`/projects/${project.parentProject.id}`} className="hover:underline">
+                {project.parentProject.name}
+              </Link>
+            </>
+          )}
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-3 sm:gap-4">
         <h2 className="text-lg font-semibold text-gray-900">{project.name}</h2>
+        {project.parentProject && (
+          <span className="text-xs text-gray-500 rounded-lg bg-gray-100 px-2 py-0.5">Sub-project</span>
+        )}
         {project.isDraft && (
           <span className="neo-btn-pressed inline-block rounded-lg px-2 py-0.5 text-sm text-amber-800">Draft</span>
         )}
@@ -169,6 +289,26 @@ export default function ProjectPage() {
             className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
           >
             {savingProject ? "Saving…" : "Save project"}
+          </button>
+        )}
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={project.isDone}
+            onChange={handleToggleDone}
+            disabled={togglingDone}
+            className="rounded border-gray-300"
+          />
+          <span className="text-sm font-medium text-gray-700">Done</span>
+        </label>
+        {!project.parentProject && (
+          <button
+            type="button"
+            onClick={handleAddSubProject}
+            disabled={addingSubProject}
+            className="neo-btn px-3 py-1.5 text-sm font-medium disabled:opacity-50"
+          >
+            {addingSubProject ? "…" : "Add task"}
           </button>
         )}
         <button
@@ -186,7 +326,157 @@ export default function ProjectPage() {
         >
           Delete
         </button>
+        </div>
       </div>
+
+      {!project.parentProject && (
+        <div className="neo-card mb-4 p-4">
+          <h3 className="text-sm font-medium text-gray-700 mb-3">Tasks</h3>
+          <p className="text-xs text-gray-500 mb-3">
+            Tasks are work items within this project (e.g. B/O return, follow-up). Each task has a checklist of items to be done.
+          </p>
+
+          {addingSubProject ? (
+            <div className="space-y-3 p-4 rounded-lg bg-gray-50/80 mb-4">
+              <input
+                type="text"
+                value={newSubName}
+                onChange={(e) => setNewSubName(e.target.value)}
+                placeholder="Task name (e.g. B/O return)"
+                className="neo-input w-full px-3 py-2 text-sm"
+              />
+              <div>
+                <label className="mb-1 block text-xs font-medium text-gray-600">Process (optional)</label>
+                <select
+                  value={newSubProcessId}
+                  onChange={(e) => setNewSubProcessId(e.target.value)}
+                  className="neo-input w-full px-3 py-2 text-sm"
+                >
+                  <option value="">— None —</option>
+                  {processTemplates.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                <p className="mt-1 text-xs text-gray-500">Link to a process template. Checklist items will be seeded from its steps.</p>
+              </div>
+              <textarea
+                value={newSubItems}
+                onChange={(e) => setNewSubItems(e.target.value)}
+                placeholder="Items (one per line)
+e.g. Receive handles
+Install on site
+Client sign-off"
+                rows={3}
+                className="neo-input w-full px-3 py-2 text-sm"
+              />
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={handleAddSubProject}
+                  disabled={!newSubName.trim() || addingSubProject}
+                  className="neo-btn-primary px-3 py-1.5 text-sm"
+                >
+                  Add task
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setAddingSubProject(false); setNewSubName(""); setNewSubItems(""); setNewSubProcessId(""); }}
+                  className="neo-btn px-3 py-1.5 text-sm"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {project.subProjects && project.subProjects.length > 0 ? (
+            <div className="space-y-4">
+              {project.subProjects.map((sp) => (
+                <div key={sp.id} className="rounded-lg border border-gray-200 p-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                    <span className="font-medium text-gray-900">{sp.name}</span>
+                    <div className="flex items-center gap-2">
+                      {sp.processTemplate && (
+                        <Link
+                          href={`/processes/${sp.processTemplate.id}`}
+                          className="text-xs text-[var(--accent-hover)] hover:underline"
+                        >
+                          {sp.processTemplate.name}
+                        </Link>
+                      )}
+                      <Link
+                        href={`/projects/${sp.id}`}
+                        className="text-xs text-[var(--accent-hover)] hover:underline"
+                      >
+                        Open full project
+                      </Link>
+                    </div>
+                  </div>
+                  <ul className="space-y-1.5">
+                    {(sp.taskItems ?? []).map((item) => (
+                      <li key={item.id} className="flex items-center gap-2">
+                        <input
+                          type="checkbox"
+                          checked={item.isDone}
+                          onChange={() => handleToggleItem(sp.id, item.id, item.isDone)}
+                          className="rounded border-gray-300"
+                        />
+                        <span className={item.isDone ? "text-gray-500 line-through text-sm" : "text-sm text-gray-800"}>
+                          {item.label}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
+                  {addingItemFor === sp.id ? (
+                    <div className="flex gap-2 mt-2">
+                      <input
+                        type="text"
+                        value={newItemLabel}
+                        onChange={(e) => setNewItemLabel(e.target.value)}
+                        placeholder="New item"
+                        className="neo-input flex-1 px-2 py-1.5 text-sm"
+                        onKeyDown={(e) => e.key === "Enter" && handleAddItem(sp.id)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleAddItem(sp.id)}
+                        disabled={!newItemLabel.trim()}
+                        className="neo-btn px-2 py-1.5 text-xs"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAddingItemFor(null); setNewItemLabel(""); }}
+                        className="neo-btn px-2 py-1.5 text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAddingItemFor(sp.id)}
+                      className="mt-2 text-xs text-gray-500 hover:text-gray-700"
+                    >
+                      + Add item
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : !addingSubProject ? (
+            <button
+              type="button"
+              onClick={() => setAddingSubProject(true)}
+              className="text-sm text-[var(--accent-hover)] hover:underline"
+            >
+              + Add first task
+            </button>
+          ) : null}
+        </div>
+      )}
+
       {saveError && (
         <p className="neo-panel-inset mb-4 p-4 text-sm text-amber-800">{saveError}</p>
       )}
