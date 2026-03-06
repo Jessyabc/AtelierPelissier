@@ -9,6 +9,10 @@ const updateSchema = z.object({
   status: z.enum(["draft", "placed", "received", "partial", "cancelled"]).optional(),
   projectId: z.string().optional().nullable(),
   expectedDeliveryDate: z.string().datetime().optional().nullable(),
+  placedAt: z.string().datetime().optional().nullable(),
+  leadTimeDays: z.number().int().min(0).optional().nullable(),
+  backorderExpectedDate: z.string().datetime().optional().nullable(),
+  backorderNotes: z.string().max(500).optional().nullable(),
 });
 
 export async function PATCH(
@@ -29,9 +33,25 @@ export async function PATCH(
       { status: 400 }
     );
   }
+  const data = parsed.data;
+  const updateData: Record<string, unknown> = {};
+  if (data.supplier !== undefined) updateData.supplier = data.supplier;
+  if (data.supplierId !== undefined) updateData.supplierId = data.supplierId;
+  if (data.status !== undefined) updateData.status = data.status;
+  if (data.projectId !== undefined) updateData.projectId = data.projectId;
+  if (data.expectedDeliveryDate !== undefined) updateData.expectedDeliveryDate = data.expectedDeliveryDate ? new Date(data.expectedDeliveryDate) : null;
+  if (data.placedAt !== undefined) updateData.placedAt = data.placedAt ? new Date(data.placedAt) : null;
+  if (data.leadTimeDays !== undefined) updateData.leadTimeDays = data.leadTimeDays;
+  if (data.backorderExpectedDate !== undefined) updateData.backorderExpectedDate = data.backorderExpectedDate ? new Date(data.backorderExpectedDate) : null;
+  if (data.backorderNotes !== undefined) updateData.backorderNotes = data.backorderNotes?.trim() || null;
+  // When status changes to placed, set placedAt if not already set
+  if (data.status === "placed") {
+    const existing = await prisma.order.findUnique({ where: { id }, select: { placedAt: true } });
+    if (existing && !existing.placedAt) updateData.placedAt = new Date();
+  }
   const order = await prisma.order.update({
     where: { id },
-    data: parsed.data,
+    data: updateData,
   });
   triggerOrderInventoryRecalc(order.projectId);
   return NextResponse.json(order);

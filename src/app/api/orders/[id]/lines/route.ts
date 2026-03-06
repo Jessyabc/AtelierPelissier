@@ -10,6 +10,7 @@ const createSchema = z.object({
   receivedQty: z.number().min(0).default(0),
   unitCost: z.number().min(0).default(0),
   projectId: z.string().optional().nullable(),
+  projectItemId: z.string().optional().nullable(),
 });
 
 export async function POST(
@@ -46,6 +47,7 @@ export async function POST(
       receivedQty: data.receivedQty ?? 0,
       unitCost: data.unitCost ?? 0,
       projectId: data.projectId ?? null,
+      projectItemId: data.projectItemId ?? null,
     },
   });
   triggerOrderInventoryRecalc(order.projectId);

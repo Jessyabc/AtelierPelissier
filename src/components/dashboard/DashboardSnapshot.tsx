@@ -10,6 +10,7 @@ type Snapshot = {
   totalCostVariance: number;
   inventoryBelowThreshold: number;
   openOrders: number;
+  backorderedOrdersCount?: number;
 };
 
 export function DashboardSnapshot({ data }: { data: Snapshot }) {
@@ -40,6 +41,11 @@ export function DashboardSnapshot({ data }: { data: Snapshot }) {
       label: "Open orders",
       value: data.openOrders,
       variant: "neutral",
+    },
+    {
+      label: "Backordered",
+      value: data.backorderedOrdersCount ?? 0,
+      variant: (data.backorderedOrdersCount ?? 0) > 0 ? "caution" : "neutral",
     },
   ];
 

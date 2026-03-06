@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { getOrderedStepLabels } from "@/lib/processTemplate";
 
 /**
  * POST: Create a sub-project under this project (e.g. B/O return visit).
@@ -44,19 +45,11 @@ export async function POST(
   // If linked to a process, verify it exists and get step labels for seeding checklist
   let processStepLabels: string[] = [];
   if (processTemplateId) {
-    const template = await prisma.processTemplate.findUnique({
-      where: { id: processTemplateId },
-      include: {
-        steps: {
-          where: { type: "step" },
-          orderBy: [{ positionY: "asc" }, { positionX: "asc" }],
-        },
-      },
-    });
-    if (!template) {
+    const labels = await getOrderedStepLabels(processTemplateId);
+    if (labels === null) {
       return NextResponse.json({ error: "Process template not found" }, { status: 404 });
     }
-    processStepLabels = template.steps.map((s) => s.label).filter(Boolean);
+    processStepLabels = labels;
   }
 
   const itemLabels = [...processStepLabels, ...customItems];

@@ -9,6 +9,10 @@ const createSchema = z.object({
   status: z.enum(["draft", "placed", "received", "partial", "cancelled"]).default("draft"),
   projectId: z.string().optional().nullable(),
   expectedDeliveryDate: z.string().datetime().optional().nullable(),
+  placedAt: z.string().datetime().optional().nullable(),
+  leadTimeDays: z.number().int().min(0).optional().nullable(),
+  backorderExpectedDate: z.string().datetime().optional().nullable(),
+  backorderNotes: z.string().max(500).optional().nullable(),
 });
 
 export async function GET() {
@@ -42,6 +46,7 @@ export async function POST(request: Request) {
     if (sup?.name) supplierName = sup.name;
   }
   if (!supplierName) supplierName = "Unknown";
+  const placedAt = data.placedAt ? new Date(data.placedAt) : (data.status === "placed" ? new Date() : null);
   const order = await prisma.order.create({
     data: {
       supplier: supplierName,
@@ -49,6 +54,10 @@ export async function POST(request: Request) {
       status: data.status ?? "draft",
       projectId: data.projectId ?? null,
       expectedDeliveryDate: data.expectedDeliveryDate ? new Date(data.expectedDeliveryDate) : null,
+      placedAt,
+      leadTimeDays: data.leadTimeDays ?? null,
+      backorderExpectedDate: data.backorderExpectedDate ? new Date(data.backorderExpectedDate) : null,
+      backorderNotes: data.backorderNotes?.trim() || null,
     },
   });
   triggerOrderInventoryRecalc(order.projectId);

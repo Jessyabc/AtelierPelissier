@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { DashboardSnapshot } from "@/components/dashboard/DashboardSnapshot";
 import { DeviationPanel } from "@/components/dashboard/DeviationPanel";
@@ -26,6 +27,8 @@ type DashboardData = {
   totalCostVariance: number;
   inventoryBelowThreshold: number;
   openOrders: number;
+  backorderedOrdersCount?: number;
+  projectsBlockedByBackorder?: string[];
   projects: Project[];
 };
 
@@ -101,6 +104,30 @@ export default function DashboardPage() {
         <section>
           <h2 className="mb-4 text-lg font-medium text-gray-800">Executive snapshot</h2>
           <DashboardSnapshot data={data} />
+        </section>
+      )}
+
+      {data && (data.projectsBlockedByBackorder?.length ?? 0) > 0 && (
+        <section className="neo-card p-4 severity-medium border-l-4 border-amber-500">
+          <h2 className="mb-2 text-sm font-semibold text-amber-800">Projects blocked by backorders</h2>
+          <ul className="text-sm text-amber-700">
+            {data.projectsBlockedByBackorder!.map((projectId) => {
+              const project = data.projects.find((p) => p.id === projectId);
+              return (
+                <li key={projectId}>
+                  <Link
+                    href={`/projects/${projectId}`}
+                    className="text-amber-800 underline hover:no-underline"
+                  >
+                    {project?.name ?? projectId}
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="mt-2 text-xs text-amber-600">
+            These projects have orders marked as backordered. Check Purchasing for details.
+          </p>
         </section>
       )}
 

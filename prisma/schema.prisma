@@ -7,6 +7,22 @@ datasource db {
   url      = "file:./dev.db"
 }
 
+// Reusable client — searchable, prevents duplicates across projects
+model Client {
+  id          String   @id @default(cuid())
+  firstName   String
+  lastName    String
+  email       String?
+  phone       String?
+  phone2      String?
+  address     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  primaryProjects   Project[] @relation("PrimaryClient")
+  secondaryProjects Project[] @relation("SecondaryClient")
+}
+
 model Project {
   id        String   @id @default(cuid())
   name      String
@@ -22,16 +38,23 @@ model Project {
   parentProject   Project?  @relation("ProjectHierarchy", fields: [parentProjectId], references: [id], onDelete: Cascade)
   subProjects     Project[] @relation("ProjectHierarchy")
 
-  // Job identifier (e.g. MC-6199) — used for service call numbering
+  // Invoice / Job number (e.g. MC-6199) — primary project identifier
   jobNumber String?
   // Free-form notes for the job
   notes     String?
 
-  // Client info
+  // Client link — prefer these when set; embedded fields used for legacy/display
+  clientId   String?
+  client     Client?  @relation("PrimaryClient", fields: [clientId], references: [id], onDelete: SetNull)
+  client2Id  String?
+  client2    Client?  @relation("SecondaryClient", fields: [client2Id], references: [id], onDelete: SetNull)
+
+  // Embedded client info (legacy; synced from Client when clientId set)
   clientFirstName String?
   clientLastName  String?
   clientEmail     String?
   clientPhone     String?
+  clientPhone2    String?
   clientAddress   String?
 
   vanityInputs       VanityInputs?
@@ -52,6 +75,37 @@ model Project {
   // Process template — for tasks (sub-projects): which workflow this task follows
   processTemplateId String?
   processTemplate   ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
+
+  // Phase 2: Deliverables within the project (vanity, kitchen, panel, etc.) — each has its own process checklist
+  projectItems ProjectItem[]
+}
+
+// Phase 2: One deliverable within a project (vanity, side unit, kitchen, panel, custom thing)
+model ProjectItem {
+  id                 String   @id @default(cuid())
+  projectId          String
+  project            Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  type               String   // vanity | side_unit | kitchen | panel | custom
+  label              String   // e.g. "Main bath vanity", "Kitchen cabinets"
+  processTemplateId  String?
+  processTemplate    ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
+  sortOrder          Int      @default(0)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  taskItems   ProjectItemTaskItem[]
+  orderLines  OrderLine[]
+}
+
+// Phase 2: Checklist steps for a project item (each item follows its own process)
+model ProjectItemTaskItem {
+  id           String     @id @default(cuid())
+  projectItemId String
+  projectItem   ProjectItem @relation(fields: [projectItemId], references: [id], onDelete: Cascade)
+  label        String
+  isDone       Boolean    @default(false)
+  sortOrder    Int        @default(0)
+  createdAt    DateTime   @default(now())
 }
 
 // Checklist items for a project (or sub-project) — things to be done
@@ -377,6 +431,11 @@ model Order {
   expectedDeliveryDate DateTime?
   projectId            String?
   project              Project? @relation(fields: [projectId], references: [id])
+  // Phase 3: Procurement oversight
+  placedAt             DateTime?  // When order was actually placed (vs draft)
+  leadTimeDays         Int?       // Supplier lead time (override or from catalog)
+  backorderExpectedDate DateTime? // If backordered, when is it now expected
+  backorderNotes       String?    // "4+ weeks" etc.
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -396,6 +455,8 @@ model OrderLine {
   unitCost         Float    @default(0)
   projectId        String?
   project          Project? @relation(fields: [projectId], references: [id])
+  projectItemId   String?  // Phase 3: Which deliverable needs this (optional)
+  projectItem      ProjectItem? @relation(fields: [projectItemId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 }
@@ -503,9 +564,10 @@ model ProcessTemplate {
   description String?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-  steps       ProcessStep[]
-  edges       ProcessStepEdge[]
-  projects    Project[]
+  steps        ProcessStep[]
+  edges        ProcessStepEdge[]
+  projects     Project[]
+  projectItems ProjectItem[]
 }
 
 model ProcessStep {

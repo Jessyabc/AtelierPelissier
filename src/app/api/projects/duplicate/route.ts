@@ -23,7 +23,9 @@ export async function POST(request: Request) {
       kitchenInputs: true,
       panelParts: true,
       costLines: true,
+      taskItems: { orderBy: { sortOrder: "asc" } },
       serviceCalls: { include: { items: true }, orderBy: { serviceDate: "asc" } },
+      projectItems: { include: { taskItems: true }, orderBy: { sortOrder: "asc" } },
     },
   });
   if (!source) {
@@ -40,10 +42,14 @@ export async function POST(request: Request) {
         isDraft: true,
         jobNumber: source.jobNumber ? `${source.jobNumber} (copy)` : null,
         notes: source.notes,
+        processTemplateId: source.processTemplateId,
+        clientId: source.clientId,
+        client2Id: source.client2Id,
         clientFirstName: source.clientFirstName,
         clientLastName: source.clientLastName,
         clientEmail: source.clientEmail,
         clientPhone: source.clientPhone,
+        clientPhone2: source.clientPhone2,
         clientAddress: source.clientAddress,
         projectSettings: {
           create: {
@@ -59,6 +65,17 @@ export async function POST(request: Request) {
         costLines: true,
       },
     });
+
+    for (const ti of source.taskItems) {
+      await prisma.projectTaskItem.create({
+        data: {
+          projectId: project.id,
+          label: ti.label,
+          isDone: false,
+          sortOrder: ti.sortOrder,
+        },
+      });
+    }
 
     if (source.vanityInputs) {
       const v = source.vanityInputs;
@@ -176,6 +193,31 @@ export async function POST(request: Request) {
       }
     }
 
+    // Copy project items (deliverables) and their task items
+    if (!source.parentProjectId && source.projectItems?.length) {
+      for (const pi of source.projectItems) {
+        const newItem = await prisma.projectItem.create({
+          data: {
+            projectId: project.id,
+            type: pi.type,
+            label: pi.label,
+            processTemplateId: pi.processTemplateId,
+            sortOrder: pi.sortOrder,
+          },
+        });
+        for (const task of pi.taskItems) {
+          await prisma.projectItemTaskItem.create({
+            data: {
+              projectItemId: newItem.id,
+              label: task.label,
+              isDone: false,
+              sortOrder: task.sortOrder,
+            },
+          });
+        }
+      }
+    }
+
     await logAudit(project.id, "duplicated", `From: ${source.name}`);
     const full = await prisma.project.findUnique({
       where: { id: project.id },
@@ -187,6 +229,7 @@ export async function POST(request: Request) {
         panelParts: true,
         costLines: true,
         serviceCalls: { include: { items: true } },
+        projectItems: { include: { taskItems: true }, orderBy: { sortOrder: "asc" } },
       },
     });
     return NextResponse.json(full);

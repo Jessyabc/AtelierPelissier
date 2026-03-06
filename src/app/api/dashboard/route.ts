@@ -47,6 +47,16 @@ export async function GET() {
   ).length;
 
   const openOrders = orders.length;
+  const backorderedOrders = orders.filter(
+    (o) => o.backorderNotes || o.backorderExpectedDate
+  );
+  const projectsBlockedByBackorder = Array.from(
+    new Set(
+      backorderedOrders
+        .map((o) => o.projectId)
+        .filter((id): id is string => !!id)
+    )
+  );
 
   return NextResponse.json({
     totalProjects,
@@ -56,6 +66,8 @@ export async function GET() {
     totalCostVariance,
     inventoryBelowThreshold,
     openOrders,
+    backorderedOrdersCount: backorderedOrders.length,
+    projectsBlockedByBackorder,
     projects,
   });
 }

@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 
 const MENU_ITEMS = [
+  { href: "/home", label: "Home" },
+  { href: "/structure", label: "App structure" },
   { href: "/", label: "Projects" },
   { href: "/dashboard", label: "Executive Dashboard" },
   { href: "/projects/new", label: "New project" },

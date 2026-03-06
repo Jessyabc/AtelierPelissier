@@ -21,6 +21,10 @@ type Order = {
   expectedDeliveryDate: string | null;
   projectId: string | null;
   createdAt: string;
+  placedAt: string | null;
+  leadTimeDays: number | null;
+  backorderExpectedDate: string | null;
+  backorderNotes: string | null;
   lines: OrderLine[];
 };
 
@@ -32,6 +36,12 @@ export default function PurchasingPage() {
   const [showNewOrder, setShowNewOrder] = useState(false);
   const [newOrderForm, setNewOrderForm] = useState({ supplierId: "", supplier: "", status: "draft" as const });
   const [creating, setCreating] = useState(false);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({
+    expectedDeliveryDate: "",
+    backorderExpectedDate: "",
+    backorderNotes: "",
+  });
 
   const fetchOrders = useCallback(async () => {
     setLoading(true);
@@ -92,6 +102,9 @@ export default function PurchasingPage() {
     if (!o.expectedDeliveryDate) return false;
     return new Date(o.expectedDeliveryDate) < new Date();
   });
+  const backorderedOrders = openOrders.filter(
+    (o) => o.backorderNotes || o.backorderExpectedDate
+  );
 
   const handleReceive = async (orderId: string, line: OrderLine, qty: number) => {
     setReceivingLine(line.id);
@@ -108,6 +121,44 @@ export default function PurchasingPage() {
       toast.error(e instanceof Error ? e.message : "Failed to receive");
     } finally {
       setReceivingLine(null);
+    }
+  };
+
+  const startEditOrder = (order: Order) => {
+    setEditingOrderId(order.id);
+    setEditForm({
+      expectedDeliveryDate: order.expectedDeliveryDate
+        ? order.expectedDeliveryDate.slice(0, 10)
+        : "",
+      backorderExpectedDate: order.backorderExpectedDate
+        ? order.backorderExpectedDate.slice(0, 10)
+        : "",
+      backorderNotes: order.backorderNotes ?? "",
+    });
+  };
+
+  const handleUpdateOrder = async () => {
+    if (!editingOrderId) return;
+    try {
+      const body: Record<string, unknown> = {};
+      if (editForm.expectedDeliveryDate)
+        body.expectedDeliveryDate = new Date(editForm.expectedDeliveryDate).toISOString();
+      else body.expectedDeliveryDate = null;
+      if (editForm.backorderExpectedDate)
+        body.backorderExpectedDate = new Date(editForm.backorderExpectedDate).toISOString();
+      else body.backorderExpectedDate = null;
+      body.backorderNotes = editForm.backorderNotes.trim() || null;
+      const res = await fetch(`/api/orders/${editingOrderId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      toast.success("Order updated");
+      setEditingOrderId(null);
+      await fetchOrders();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to update");
     }
   };
 
@@ -138,6 +189,35 @@ export default function PurchasingPage() {
         <p className="py-8 text-center text-gray-500">Loading…</p>
       ) : (
         <>
+          {backorderedOrders.length > 0 && (
+            <section className="neo-card p-4 severity-medium border-l-4 border-amber-500">
+              <h2 className="mb-2 text-sm font-semibold text-amber-800">Backordered</h2>
+              <ul className="space-y-2 text-sm text-amber-700">
+                {backorderedOrders.map((o) => (
+                  <li key={o.id}>
+                    <span className="font-medium">{o.supplier}</span>
+                    {o.backorderNotes && (
+                      <span className="ml-2">— {o.backorderNotes}</span>
+                    )}
+                    {o.backorderExpectedDate && (
+                      <span className="ml-2">
+                        (expected {new Date(o.backorderExpectedDate).toLocaleDateString()})
+                      </span>
+                    )}
+                    {o.projectId && (
+                      <Link
+                        href={`/projects/${o.projectId}`}
+                        className="ml-2 text-amber-800 underline hover:no-underline"
+                      >
+                        View project
+                      </Link>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           {lateOrders.length > 0 && (
             <section className="neo-card p-4 severity-medium">
               <h2 className="mb-2 text-sm font-semibold text-amber-800">Late / overdue</h2>
@@ -165,14 +245,83 @@ export default function PurchasingPage() {
                         <span className="ml-2 rounded px-2 py-0.5 text-xs font-medium bg-gray-100 text-gray-700">
                           {order.status}
                         </span>
+                        {order.placedAt && (
+                          <span className="ml-2 text-xs text-gray-500">
+                            Placed {new Date(order.placedAt).toLocaleDateString()}
+                          </span>
+                        )}
                         {order.expectedDeliveryDate && (
                           <span className="ml-2 text-sm text-gray-500">
                             Expected {new Date(order.expectedDeliveryDate).toLocaleDateString()}
                           </span>
                         )}
+                        {(order.backorderNotes || order.backorderExpectedDate) && (
+                          <span className="ml-2 rounded px-1.5 py-0.5 text-xs font-medium bg-amber-100 text-amber-800">
+                            Backordered
+                          </span>
+                        )}
                       </div>
-                      <span className="text-sm text-gray-500">Order #{order.id.slice(-6)}</span>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => startEditOrder(order)}
+                          className="text-xs text-gray-500 hover:text-gray-700"
+                        >
+                          Edit
+                        </button>
+                        <span className="text-sm text-gray-500">Order #{order.id.slice(-6)}</span>
+                      </div>
                     </div>
+                    {editingOrderId === order.id && (
+                      <div className="mt-3 p-3 rounded-lg bg-gray-50 space-y-2">
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600">Expected delivery</label>
+                            <input
+                              type="date"
+                              value={editForm.expectedDeliveryDate}
+                              onChange={(e) => setEditForm((f) => ({ ...f, expectedDeliveryDate: e.target.value }))}
+                              className="neo-input w-full px-2 py-1.5 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs font-medium text-gray-600">Backorder expected</label>
+                            <input
+                              type="date"
+                              value={editForm.backorderExpectedDate}
+                              onChange={(e) => setEditForm((f) => ({ ...f, backorderExpectedDate: e.target.value }))}
+                              className="neo-input w-full px-2 py-1.5 text-sm"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-xs font-medium text-gray-600">Backorder notes</label>
+                          <input
+                            type="text"
+                            value={editForm.backorderNotes}
+                            onChange={(e) => setEditForm((f) => ({ ...f, backorderNotes: e.target.value }))}
+                            placeholder="e.g. 4+ weeks"
+                            className="neo-input w-full px-2 py-1.5 text-sm"
+                          />
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={handleUpdateOrder}
+                            className="neo-btn-primary px-3 py-1.5 text-sm"
+                          >
+                            Save
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setEditingOrderId(null)}
+                            className="neo-btn px-3 py-1.5 text-sm"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     <div className="mt-3 overflow-x-auto">
                       <table className="w-full text-sm">
                         <thead>

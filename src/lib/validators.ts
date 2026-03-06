@@ -15,16 +15,32 @@ const nonNegativeInt = z.number().int().min(0);
 
 const projectTypeEnum = z.enum(["vanity", "side_unit", "kitchen"]);
 
+const clientInputSchema = z.object({
+  firstName: z.string().min(1).max(100).trim(),
+  lastName: z.string().min(1).max(100).trim(),
+  email: z.string().max(200).trim().optional(),
+  phone: z.string().max(50).trim().optional(),
+  phone2: z.string().max(50).trim().optional(),
+  address: z.string().max(500).trim().optional(),
+});
+
 export const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required").max(200).trim(),
   types: z.array(projectTypeEnum).min(1, "Select at least one type").default(["vanity"]),
   jobNumber: z.string().max(100).trim().optional(),
   parentProjectId: z.string().cuid().optional().nullable(),
-  // Client info (optional on create; can be filled later)
+  processTemplateId: z.string().cuid().optional(),
+  // Client: use existing by ID, or create from inline data
+  clientId: z.string().cuid().optional().nullable(),
+  client: clientInputSchema.optional(),
+  client2Id: z.string().cuid().optional().nullable(),
+  client2: clientInputSchema.optional(),
+  // Legacy embedded client (when no clientId)
   clientFirstName: z.string().max(100).trim().optional(),
   clientLastName: z.string().max(100).trim().optional(),
   clientEmail: z.string().max(200).trim().optional(),
   clientPhone: z.string().max(50).trim().optional(),
+  clientPhone2: z.string().max(50).trim().optional(),
   clientAddress: z.string().max(500).trim().optional(),
 });
 
@@ -39,7 +55,11 @@ export const updateProjectSchema = z.object({
   clientLastName: z.string().max(100).trim().optional().nullable(),
   clientEmail: z.string().max(200).trim().optional().nullable(),
   clientPhone: z.string().max(50).trim().optional().nullable(),
+  clientPhone2: z.string().max(50).trim().optional().nullable(),
   clientAddress: z.string().max(500).trim().optional().nullable(),
+  clientId: z.string().cuid().optional().nullable(),
+  client2Id: z.string().cuid().optional().nullable(),
+  client2: clientInputSchema.optional(),
   processTemplateId: z.string().cuid().optional().nullable(),
 });
 
