@@ -4,27 +4,54 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 
-const MENU_ITEMS = [
-  { href: "/home", label: "Home" },
-  { href: "/structure", label: "App structure" },
-  { href: "/", label: "Projects" },
-  { href: "/dashboard", label: "Executive Dashboard" },
-  { href: "/projects/new", label: "New project" },
-  { href: "/processes", label: "Processes" },
-  { href: "/inventory", label: "Inventory" },
-  { href: "/purchasing", label: "Purchasing" },
-  { href: "/costing", label: "Costing" },
-  { href: "/service-calls", label: "Service calls" },
-  { href: "/calendar", label: "Calendar" },
-  { href: "/distributors", label: "Distributors" },
-  { href: "/settings/risk", label: "Risk settings" },
-  { href: "#", label: "Export data (backup)", exportData: true },
+type MenuItemConfig = {
+  href: string;
+  label: string;
+  visible: boolean;
+  order: number;
+  exportData?: boolean;
+};
+
+const FALLBACK_MENU: MenuItemConfig[] = [
+  { href: "/home", label: "Operations Cockpit", visible: true, order: 0 },
+  { href: "/", label: "Projects", visible: true, order: 1 },
+  { href: "/projects/new", label: "New project", visible: true, order: 2 },
+  { href: "/assistant", label: "AI Assistant", visible: true, order: 3 },
+  { href: "/dashboard", label: "Executive Dashboard", visible: true, order: 4 },
+  { href: "/inventory", label: "Inventory", visible: true, order: 5 },
+  { href: "/distributors", label: "Suppliers & Purchasing", visible: true, order: 6 },
+  { href: "/costing", label: "Costing", visible: true, order: 7 },
+  { href: "/processes", label: "Processes", visible: true, order: 8 },
+  { href: "/service-calls", label: "Service calls", visible: true, order: 9 },
+  { href: "/calendar", label: "Calendar", visible: true, order: 10 },
+  { href: "/settings/risk", label: "Risk settings", visible: true, order: 11 },
+  { href: "/admin", label: "Admin Hub", visible: true, order: 12 },
+  { href: "#export", label: "Export data (backup)", visible: true, order: 13, exportData: true },
 ];
 
 export function AppHeader() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+  const [menuItems, setMenuItems] = useState<MenuItemConfig[]>(FALLBACK_MENU);
+  const [companyName, setCompanyName] = useState("Atelier Pelissier");
+  const [logoUrl, setLogoUrl] = useState("/logo.svg");
   const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/config")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((cfg) => {
+        if (!cfg) return;
+        if (cfg.companyName) setCompanyName(cfg.companyName);
+        if (cfg.logoUrl) setLogoUrl(cfg.logoUrl);
+        if (Array.isArray(cfg.menuConfig) && cfg.menuConfig.length > 0) {
+          setMenuItems(
+            [...cfg.menuConfig].sort((a: MenuItemConfig, b: MenuItemConfig) => a.order - b.order)
+          );
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
@@ -35,6 +62,8 @@ export function AppHeader() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
+
+  const visibleItems = menuItems.filter((m) => m.visible);
 
   return (
     <header className="app-header border-b border-black/20 px-4 py-3 sm:px-6 sm:py-4">
@@ -49,8 +78,8 @@ export function AppHeader() {
             aria-label="Open menu"
           >
             <img
-              src="/logo.svg"
-              alt="Atelier Pelissier"
+              src={logoUrl}
+              alt={companyName}
               className="h-8 w-auto sm:h-10"
               width={120}
               height={48}
@@ -61,8 +90,8 @@ export function AppHeader() {
               className="neo-dropdown absolute left-0 top-full z-50 mt-3 min-w-[200px] rounded-xl py-2"
               role="menu"
             >
-              {MENU_ITEMS.map((item) =>
-                (item as { exportData?: boolean }).exportData ? (
+              {visibleItems.map((item) =>
+                item.exportData ? (
                   <button
                     key={item.label}
                     type="button"
@@ -89,7 +118,7 @@ export function AppHeader() {
                   </button>
                 ) : (
                   <Link
-                    key={item.href as string}
+                    key={item.href}
                     href={item.href}
                     onClick={() => setOpen(false)}
                     role="menuitem"
@@ -106,7 +135,7 @@ export function AppHeader() {
             </nav>
           )}
         </div>
-        <span className="hidden text-sm text-white/70 sm:inline">Pricing Engine · Internal use</span>
+        <span className="hidden text-sm text-white/70 sm:inline">Operations · Internal use</span>
       </div>
     </header>
   );

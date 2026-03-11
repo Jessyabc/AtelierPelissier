@@ -31,6 +31,7 @@ type Props = {
   followUpReason?: string | null;
   clientSignature?: string | null;
   responsibleSignature?: string | null;
+  companyName?: string | null;
 };
 
 function formatDate(iso: string | null | undefined): string {
@@ -223,7 +224,7 @@ export function ServiceCallPrintView(props: Props) {
       </section>
 
       <p className="text-xs text-gray-500">
-        Atelier Pelissier · Service call · {new Date().toLocaleDateString("en-CA")}
+        {props.companyName ?? "Atelier Pelissier"} · Service call · {new Date().toLocaleDateString("en-CA")}
       </p>
     </div>
   );

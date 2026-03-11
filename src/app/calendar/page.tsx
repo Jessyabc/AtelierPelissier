@@ -87,6 +87,7 @@ function CalendarContent() {
   const [serviceCalls, setServiceCalls] = useState<{ id: string; projectId: string; jobNumber: string | null; serviceCallNumber: string | null; clientName: string; serviceDate: string | null }[]>([]);
   const [addExistingScId, setAddExistingScId] = useState("");
   const [addingExisting, setAddingExisting] = useState(false);
+  const [companyName, setCompanyName] = useState("Atelier Pelissier");
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -118,6 +119,9 @@ function CalendarContent() {
 
   useEffect(() => {
     fetchEvents();
+    fetch("/api/admin/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
+      if (cfg?.companyName) setCompanyName(cfg.companyName);
+    }).catch(() => {});
   }, [fetchEvents]);
 
   useEffect(() => {
@@ -490,7 +494,7 @@ function CalendarContent() {
         <div id="day-print" className="hidden print:block">
           <div className="p-6">
             <h1 className="text-lg font-bold text-gray-900">Daily schedule — {selectedDate}</h1>
-            <p className="text-sm text-gray-500 mb-4">Atelier Pelissier — Route & destinations</p>
+            <p className="text-sm text-gray-500 mb-4">{companyName} — Route & destinations</p>
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-300">

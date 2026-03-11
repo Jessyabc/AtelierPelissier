@@ -62,6 +62,7 @@ export default function ServiceCallsPage() {
   const [list, setList] = useState<ServiceCallListItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
+  const [companyName, setCompanyName] = useState("Atelier Pelissier");
 
   // Create form state
   const [form, setForm] = useState<ServiceCallFormValue>(EMPTY_SERVICE_CALL_FORM);
@@ -94,6 +95,9 @@ export default function ServiceCallsPage() {
 
   useEffect(() => {
     fetchList();
+    fetch("/api/admin/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
+      if (cfg?.companyName) setCompanyName(cfg.companyName);
+    }).catch(() => {});
   }, [fetchList]);
 
   // Refetch when tab becomes visible (e.g. returned from calendar) so list stays in sync
@@ -231,7 +235,7 @@ export default function ServiceCallsPage() {
           </tbody>
         </table>
         <p className="mt-4 text-xs text-gray-500">
-          Atelier Pelissier · {list.length} service call(s) · {new Date().toLocaleDateString("en-CA")}
+          {companyName} · {list.length} service call(s) · {new Date().toLocaleDateString("en-CA")}
         </p>
       </div>
 

@@ -96,6 +96,8 @@ export async function PATCH(
     clientAddress?: string | null;
     client2Id?: string | null;
     processTemplateId?: string | null;
+    targetDate?: Date | null;
+    sellingPrice?: number | null;
   } = {};
   if (data.name != null) updateData.name = data.name;
   if (data.types != null) {
@@ -112,6 +114,8 @@ export async function PATCH(
   if (data.clientPhone !== undefined) updateData.clientPhone = data.clientPhone;
   if (data.clientPhone2 !== undefined) updateData.clientPhone2 = data.clientPhone2;
   if (data.clientAddress !== undefined) updateData.clientAddress = data.clientAddress;
+  if (data.targetDate !== undefined) updateData.targetDate = data.targetDate ? new Date(data.targetDate as string) : null;
+  if (data.sellingPrice !== undefined) updateData.sellingPrice = data.sellingPrice;
   if (data.clientId !== undefined) updateData.clientId = data.clientId;
   if (data.client2Id !== undefined) updateData.client2Id = data.client2Id;
   if (data.processTemplateId !== undefined) updateData.processTemplateId = data.processTemplateId;

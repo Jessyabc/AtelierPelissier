@@ -4,6 +4,7 @@ import { z } from "zod";
 
 const updateSchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
+  email: z.string().max(200).trim().optional().nullable(),
   contactInfo: z.string().max(500).trim().optional().nullable(),
   notes: z.string().max(2000).trim().optional().nullable(),
 });
@@ -28,4 +29,13 @@ export async function PATCH(
     data: parsed.data,
   });
   return NextResponse.json(supplier);
+}
+
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id } = await params;
+  await prisma.supplier.delete({ where: { id } });
+  return NextResponse.json({ ok: true });
 }

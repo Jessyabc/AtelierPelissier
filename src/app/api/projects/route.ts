@@ -91,6 +91,7 @@ export async function POST(request: Request) {
     clientPhone,
     clientPhone2,
     clientAddress,
+    targetDate,
   } = parsed.data;
   const typesStr = typesList.join(",");
   const firstType = typesList[0] ?? "vanity";
@@ -189,6 +190,7 @@ export async function POST(request: Request) {
       clientId: resolvedClientId,
       client2Id: resolvedClient2Id,
       ...embeddedPrimary,
+      targetDate: targetDate ? new Date(targetDate) : null,
       projectSettings: {
         create: {
           markup: 2.5,

@@ -23,7 +23,7 @@ function formatTypes(typesStr: string): string {
     .join(", ");
 }
 
-export function QuoteTab({ project }: { project: Project }) {
+export function QuoteTab({ project, companyName }: { project: Project; companyName?: string }) {
   const estimateLines = project.costLines.filter((l) => l.kind === "estimate");
   const subtotal = estimateLines.reduce((s, l) => s + l.amount, 0);
   const settings = project.projectSettings;
@@ -102,7 +102,7 @@ export function QuoteTab({ project }: { project: Project }) {
         </div>
 
         <p className="mt-6 text-xs text-gray-500 print:mt-8">
-          Atelier Pelissier · Estimate · {new Date().toLocaleDateString("en-CA")}
+          {companyName ?? "Atelier Pelissier"} · Estimate · {new Date().toLocaleDateString("en-CA")}
         </p>
       </div>
     </div>

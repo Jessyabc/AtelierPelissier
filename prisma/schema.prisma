@@ -71,6 +71,14 @@ model Project {
   orderLines           OrderLine[]
   deviations           Deviation[]
   taskItems            ProjectTaskItem[]
+  aiConversations      AiConversation[]
+
+  // Financial: selling price for profit tracking
+  sellingPrice          Float?
+
+  // Phase 2: Operations — scheduling and delay tracking
+  targetDate            DateTime?
+  productionDelayWeeks  Int       @default(10)
 
   // Process template — for tasks (sub-projects): which workflow this task follows
   processTemplateId String?
@@ -396,6 +404,7 @@ model MaterialRequirement {
 model Supplier {
   id          String   @id @default(cuid())
   name        String
+  email       String?
   contactInfo String?
   notes       String?
   createdAt   DateTime @default(now())
@@ -419,6 +428,7 @@ model SupplierCatalogItem {
   sheetFormatOverride   SheetFormat? @relation(fields: [sheetFormatOverrideId], references: [id])
   createdAt            DateTime @default(now())
   updatedAt            DateTime @updatedAt
+  isDefault Boolean @default(false)
   @@unique([supplierId, supplierSku])
 }
 
@@ -428,6 +438,7 @@ model Order {
   supplierId           String?
   supplierRef          Supplier? @relation(fields: [supplierId], references: [id])
   status               String   // draft | placed | partial | received | cancelled
+  orderType            String   @default("order") // "order" | "reserve"
   expectedDeliveryDate DateTime?
   projectId            String?
   project              Project? @relation(fields: [projectId], references: [id])
@@ -459,6 +470,21 @@ model OrderLine {
   projectItem      ProjectItem? @relation(fields: [projectItemId], references: [id])
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+
+  receivingDeviations ReceivingDeviation[]
+}
+
+model ReceivingDeviation {
+  id          String    @id @default(cuid())
+  orderLineId String
+  orderLine   OrderLine @relation(fields: [orderLineId], references: [id], onDelete: Cascade)
+  expectedQty Float
+  receivedQty Float
+  reason      String
+  impact      String?   // system-generated impact description
+  resolution  String?   // reorder | borrow | accept
+  resolvedAt  DateTime?
+  createdAt   DateTime  @default(now())
 }
 
 model Deviation {
@@ -597,4 +623,64 @@ model ProcessStepEdge {
   conditionLabel String?  // e.g. "Yes", "No" for decision branches
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+}
+
+// --- Admin Configuration (singleton) ---
+
+model AppConfig {
+  id               String   @id @default(cuid())
+
+  // Branding
+  companyName      String   @default("Atelier Pelissier")
+  companyEmail     String?
+  companyPhone     String?
+  companyAddress   String?
+  logoUrl          String?
+
+  // JSON blobs for flexible admin-managed config
+  menuConfig       String?  // JSON: [{ href, label, visible, order }]
+  customRoomTypes  String?  // JSON: [{ value, label, icon, desc }]
+  processDefaults  String?  // JSON: { roomType: processTemplateId }
+  materialAliases  String?  // JSON: { "white melamine": "MEL-WHT-5/8-4x8", ... }
+  emailTemplates   String?  // JSON: { supplierOrder, supplierReserve, clientFollowup }
+  integrations     String?  // JSON: { mondayApiKey, sageEnabled, ... }
+
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+}
+
+model AppErrorLog {
+  id                  String   @id @default(cuid())
+  source              String   // "client" | "server" | "api"
+  severity            String   @default("error") // "error" | "warning"
+  message             String
+  stack               String?
+  route               String?
+  context             String?  // JSON: page, user action, relevant IDs
+  aiDiagnosticPrompt  String?  // Generated on demand
+  resolved            Boolean  @default(false)
+  createdAt           DateTime @default(now())
+}
+
+// --- AI Assistant ---
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  projectId String?
+  project   Project?    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  scope     String      // "project" | "global"
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  messages  AiMessage[]
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String         // "user" | "assistant" | "system"
+  content        String
+  functionCall   String?        // JSON: proposed action payload
+  actionStatus   String?        // "pending" | "approved" | "rejected" | "executed"
+  createdAt      DateTime       @default(now())
 }

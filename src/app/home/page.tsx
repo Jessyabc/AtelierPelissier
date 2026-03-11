@@ -1,149 +1,284 @@
 "use client";
 
+import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { ProjectHealthStrip } from "@/components/ops/ProjectHealthStrip";
+import { ShortagePanel } from "@/components/ops/ShortagePanel";
+import { OrdersInFlight } from "@/components/ops/OrdersInFlight";
+import { DeviationFeed } from "@/components/ops/DeviationFeed";
 
-export default function HomePage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+type CockpitData = {
+  projectHealth: ProjectHealth[];
+  shortagesBySupplier: SupplierShortageGroup[];
+  ordersInFlight: OrderInFlight[];
+  deviations: Deviation[];
+  stats: {
+    totalActive: number;
+    totalShortages: number;
+    ordersPending: number;
+    onTrackPct: number;
+  };
+};
 
-  function handleLogin(e: React.FormEvent) {
-    e.preventDefault();
-    router.push("/");
+export type ProjectHealth = {
+  id: string;
+  name: string;
+  jobNumber: string | null;
+  type: string;
+  isDraft: boolean;
+  targetDate: string | null;
+  productionDelayWeeks: number;
+  clientName: string | null;
+  deviationCount: number;
+  worstSeverity: string | null;
+  fulfillmentPct: number;
+  margin: number;
+  estimateCost: number;
+  actualCost: number;
+};
+
+export type ShortageItem = {
+  materialCode: string;
+  inventoryItemId: string;
+  description: string;
+  shortageQty: number;
+  requiredQty: number;
+  availableQty: number;
+  incomingQty: number;
+  projects: { id: string; name: string; jobNumber: string | null; requiredQty: number }[];
+};
+
+export type SupplierShortageGroup = {
+  supplierId: string;
+  supplierName: string;
+  supplierEmail: string | null;
+  items: ShortageItem[];
+};
+
+export type OrderLineInfo = {
+  id: string;
+  materialCode: string;
+  description: string;
+  quantity: number;
+  receivedQty: number;
+  unitCost: number;
+  hasDeviation: boolean;
+};
+
+export type OrderInFlight = {
+  id: string;
+  supplier: string;
+  status: string;
+  orderType: string;
+  expectedDeliveryDate: string | null;
+  placedAt: string | null;
+  isLate: boolean;
+  isBackordered: boolean;
+  backorderNotes: string | null;
+  backorderExpectedDate: string | null;
+  project: { id: string; name: string; jobNumber: string | null } | null;
+  totalLines: number;
+  receivedLines: number;
+  lines: OrderLineInfo[];
+};
+
+export type Deviation = {
+  id: string;
+  projectId: string | null;
+  type: string;
+  severity: string;
+  groupKey: string | null;
+  message: string;
+  impactValue: number | null;
+  createdAt: string;
+};
+
+export default function OperationsCockpit() {
+  const [data, setData] = useState<CockpitData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [purchaseSupplierGroup, setPurchaseSupplierGroup] = useState<SupplierShortageGroup | null>(null);
+  const [receiveOrderId, setReceiveOrderId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    try {
+      const res = await fetch("/api/ops/cockpit");
+      if (res.ok) setData(await res.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  function handleOrderFromSupplier(group: SupplierShortageGroup) {
+    setPurchaseSupplierGroup(group);
+    setPurchaseModalOpen(true);
   }
 
+  function handleReceiveOrder(orderId: string) {
+    setReceiveOrderId(orderId);
+  }
+
+  if (loading) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="neo-card p-8 text-center text-[var(--foreground-muted)]">
+          Loading operations cockpit...
+        </div>
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="neo-card p-8 text-center text-red-500">
+          Failed to load cockpit data. <button onClick={load} className="underline">Retry</button>
+        </div>
+      </div>
+    );
+  }
+
+  const { projectHealth, shortagesBySupplier, ordersInFlight, deviations, stats } = data;
+
   return (
-    <div className="max-w-4xl mx-auto space-y-12">
-      {/* Hero */}
-      <section className="text-center space-y-6 pt-4">
-        <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 tracking-tight">
-          Atelier Pelissier
-        </h1>
-        <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-          Custom cabinetry and millwork — vanities, side units, and kitchens —
-          built with precision and care.
-        </p>
-      </section>
+    <div className="max-w-7xl mx-auto space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--foreground)]">Operations Cockpit</h1>
+          <p className="text-sm text-[var(--foreground-muted)] mt-1">
+            Single view of everything that needs your attention
+          </p>
+        </div>
+        <button onClick={load} className="neo-btn px-4 py-2 text-sm">
+          Refresh
+        </button>
+      </div>
 
-      {/* Login */}
-      <section className="neo-card p-8 sm:p-10 max-w-md mx-auto">
-        <h2 className="text-xl font-semibold text-gray-900 mb-4">Sign in</h2>
-        <p className="text-sm text-gray-600 mb-6">
-          Enter your email and password to access the Pricing Engine.
-        </p>
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1.5">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
-              required
-              className="neo-input w-full px-4 py-3 text-sm"
-              autoComplete="email"
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1.5">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              className="neo-input w-full px-4 py-3 text-sm"
-              autoComplete="current-password"
-            />
-          </div>
-          <button
-            type="submit"
-            className="neo-btn-primary w-full px-5 py-3 text-sm font-medium"
-          >
-            Log in
-          </button>
-        </form>
-        <p className="mt-4 text-xs text-gray-500">
-          No account? Contact your administrator for access.
-        </p>
-      </section>
+      {/* Quick Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <StatCard label="Active Projects" value={stats.totalActive} />
+        <StatCard
+          label="Material Shortages"
+          value={stats.totalShortages}
+          alert={stats.totalShortages > 0}
+        />
+        <StatCard
+          label="Orders Pending"
+          value={stats.ordersPending}
+        />
+        <StatCard
+          label="On Track"
+          value={`${stats.onTrackPct}%`}
+          positive={stats.onTrackPct >= 80}
+        />
+      </div>
 
-      {/* Product intro */}
-      <section className="neo-card p-8 sm:p-10 space-y-6">
-        <h2 className="text-xl font-semibold text-gray-900">
-          Pricing Engine
-        </h2>
-        <p className="text-gray-700 leading-relaxed">
-          Our internal pricing and cost engine helps manage quotes, projects, and service
-          from estimate to delivery. One place for projects, clients, inventory, and
-          on-site visits.
-        </p>
-        <div className="flex flex-wrap gap-3 pt-2">
-          <Link
-            href="/projects/new"
-            className="neo-btn-primary px-5 py-2.5 text-sm font-medium inline-block"
-          >
+      {/* Project Health Strip */}
+      <ProjectHealthStrip projects={projectHealth} />
+
+      {/* Shortages by Supplier */}
+      {shortagesBySupplier.length > 0 && (
+        <ShortagePanel
+          groups={shortagesBySupplier}
+          onOrder={handleOrderFromSupplier}
+        />
+      )}
+
+      {/* Orders In-Flight */}
+      {ordersInFlight.length > 0 && (
+        <OrdersInFlight
+          orders={ordersInFlight}
+          onReceive={handleReceiveOrder}
+        />
+      )}
+
+      {/* Deviation Feed */}
+      {deviations.length > 0 && (
+        <DeviationFeed deviations={deviations} />
+      )}
+
+      {/* Empty state */}
+      {shortagesBySupplier.length === 0 && ordersInFlight.length === 0 && deviations.length === 0 && (
+        <div className="neo-card p-8 text-center">
+          <p className="text-[var(--foreground-muted)]">
+            All clear — no shortages, no pending orders, no deviations.
+          </p>
+          <Link href="/projects/new" className="neo-btn-primary px-5 py-2.5 text-sm font-medium inline-block mt-4">
             New Project
           </Link>
-          <Link
-            href="/"
-            className="neo-btn px-5 py-2.5 text-sm font-medium inline-block"
-          >
-            View Projects
-          </Link>
         </div>
-      </section>
+      )}
 
-      {/* Features grid */}
-      <section className="space-y-6">
-        <h2 className="text-xl font-semibold text-gray-900">What it does</h2>
-        <div className="grid sm:grid-cols-2 gap-6">
-          {[
-            {
-              title: "Projects & estimates",
-              desc: "Create projects for vanities, side units, and kitchens. Build estimates with configurable dimensions, door styles, countertops, and more.",
-              href: "/projects/new",
-            },
-            {
-              title: "Service calls",
-              desc: "Track on-site visits, work performed, materials used, and client sign-off. Day planning and calendar for scheduling technicians.",
-              href: "/service-calls",
-            },
-            {
-              title: "Inventory & purchasing",
-              desc: "Manage sheet goods, hardware, and materials. Track stock movements, reorder points, and supplier orders.",
-              href: "/inventory",
-            },
-            {
-              title: "Costing & risk",
-              desc: "Estimate vs. actual costs, margin tracking, and deviation alerts. Stay on top of project profitability.",
-              href: "/costing",
-            },
-          ].map((f) => (
-            <Link
-              key={f.title}
-              href={f.href}
-              className="neo-card p-6 block transition-all hover:shadow-[6px_6px_12px_var(--shadow-dark),-6px_-6px_12px_var(--shadow-light)]"
-            >
-              <h3 className="font-semibold text-gray-900 mb-2">{f.title}</h3>
-              <p className="text-sm text-gray-600 leading-relaxed">{f.desc}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
+      {/* Purchase Flow Modal */}
+      {purchaseModalOpen && purchaseSupplierGroup && (
+        <PurchaseFlowModalLazy
+          group={purchaseSupplierGroup}
+          onClose={() => { setPurchaseModalOpen(false); setPurchaseSupplierGroup(null); }}
+          onComplete={() => { setPurchaseModalOpen(false); setPurchaseSupplierGroup(null); load(); }}
+        />
+      )}
 
-      {/* Footer tagline */}
-      <section className="text-center py-6 text-sm text-gray-500">
-        <p>Internal use · Data stored locally on your machine</p>
-      </section>
+      {/* Receive Order Modal */}
+      {receiveOrderId && (
+        <ReceiveOrderModalLazy
+          orderId={receiveOrderId}
+          onClose={() => setReceiveOrderId(null)}
+          onComplete={() => { setReceiveOrderId(null); load(); }}
+        />
+      )}
     </div>
   );
+}
+
+function StatCard({
+  label,
+  value,
+  alert,
+  positive,
+}: {
+  label: string;
+  value: string | number;
+  alert?: boolean;
+  positive?: boolean;
+}) {
+  let cardClass = "neo-card p-4 text-center";
+  if (alert) cardClass = "neo-card p-4 text-center severity-high";
+  if (positive) cardClass = "neo-card p-4 text-center severity-low";
+
+  return (
+    <div className={cardClass}>
+      <div className="text-2xl font-bold text-[var(--foreground)]">{value}</div>
+      <div className="text-xs text-[var(--foreground-muted)] mt-1">{label}</div>
+    </div>
+  );
+}
+
+// Lazy wrappers — these components are built in subsequent steps
+function PurchaseFlowModalLazy({
+  group,
+  onClose,
+  onComplete,
+}: {
+  group: SupplierShortageGroup;
+  onClose: () => void;
+  onComplete: () => void;
+}) {
+  const { PurchaseFlowModal } = require("@/components/ops/PurchaseFlowModal");
+  return <PurchaseFlowModal group={group} onClose={onClose} onComplete={onComplete} />;
+}
+
+function ReceiveOrderModalLazy({
+  orderId,
+  onClose,
+  onComplete,
+}: {
+  orderId: string;
+  onClose: () => void;
+  onComplete: () => void;
+}) {
+  const { ReceiveOrderModal } = require("@/components/ops/ReceiveOrderModal");
+  return <ReceiveOrderModal orderId={orderId} onClose={onClose} onComplete={onComplete} />;
 }

@@ -15,6 +15,16 @@ export async function GET(
   return NextResponse.json(parts);
 }
 
+/** DELETE all parts for a project (used before re-saving full list) */
+export async function DELETE(
+  _request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: projectId } = await params;
+  await prisma.panelPart.deleteMany({ where: { projectId } });
+  return NextResponse.json({ ok: true });
+}
+
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> }

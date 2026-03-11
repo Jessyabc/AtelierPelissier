@@ -13,7 +13,7 @@ const depthInches = z.number().min(12).max(48);
 const heightInches = z.number().min(24).max(120);
 const nonNegativeInt = z.number().int().min(0);
 
-const projectTypeEnum = z.enum(["vanity", "side_unit", "kitchen"]);
+const projectTypeEnum = z.enum(["vanity", "side_unit", "kitchen", "closet", "commercial", "laundry", "entertainment", "custom"]);
 
 const clientInputSchema = z.object({
   firstName: z.string().min(1).max(100).trim(),
@@ -42,6 +42,7 @@ export const createProjectSchema = z.object({
   clientPhone: z.string().max(50).trim().optional(),
   clientPhone2: z.string().max(50).trim().optional(),
   clientAddress: z.string().max(500).trim().optional(),
+  targetDate: z.string().optional().nullable(),
 });
 
 export const updateProjectSchema = z.object({
@@ -61,6 +62,8 @@ export const updateProjectSchema = z.object({
   client2Id: z.string().cuid().optional().nullable(),
   client2: clientInputSchema.optional(),
   processTemplateId: z.string().cuid().optional().nullable(),
+  targetDate: z.string().optional().nullable(),
+  sellingPrice: z.number().min(0).optional().nullable(),
 });
 
 export const vanityInputsSchema = z.object({
