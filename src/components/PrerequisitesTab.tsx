@@ -175,11 +175,30 @@ export function PrerequisitesTab({
     [projectId, fetchLines, onUpdate]
   );
 
-  const projectLevelParts = (project.panelParts ?? []).filter((p) => !(p as PanelPart).cutlistId);
-  const projectForSheets: Project = {
-    ...project,
-    panelParts: projectLevelParts,
-  };
+  const addCutlist = useCallback(
+    async (projectItemId: string, name: string) => {
+      const trimmed = name.trim();
+      if (!trimmed) {
+        toast.error("Enter a cutlist name");
+        return;
+      }
+      const res = await fetch(`/api/projects/${projectId}/cutlists`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ projectItemId, name: trimmed }),
+      });
+      if (!res.ok) {
+        const d = await res.json();
+        toast.error(d?.error ?? "Failed to add cutlist");
+        return;
+      }
+      setAddingCutlistForRoomId(null);
+      setNewCutlistName("");
+      onUpdate();
+      toast.success("Cutlist added");
+    },
+    [projectId, onUpdate]
+  );
 
   return (
     <div className="space-y-8">
@@ -205,80 +224,86 @@ export function PrerequisitesTab({
         )}
       </div>
 
-      {/* Sheets / Cutlist */}
+      {/* Sheets / Cutlist — per room: material, sheet counts, parts (e.g. drawers) */}
       <div className="space-y-4">
-        <h2 className="text-base font-semibold text-[var(--foreground)]">Sheets / Cutlist</h2>
-        <div className="neo-card p-4">
-          <h3 className="text-sm font-semibold text-[var(--foreground-muted)] mb-3">Project-level</h3>
-          <CutListTab
-            projectId={projectId}
-            project={projectForSheets}
-            onUpdate={onUpdate}
-            cutlistId={null}
-          />
+        <div>
+          <h2 className="text-base font-semibold text-[var(--foreground)]">Sheets / Cutlist</h2>
+          <p className="text-xs text-[var(--foreground-muted)] mt-0.5">
+            Per room: add a cutlist for each room (e.g. Main Kitchen, Back Kitchen), then upload or paste parts to get material needed, number of sheets, and item counts.
+          </p>
         </div>
-        {project.projectItems?.map((room) => (
-          <div key={room.id} className="neo-card p-4 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <h3 className="text-sm font-semibold text-[var(--foreground)]">{room.label}</h3>
-              {addingCutlistForRoomId === room.id ? (
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={newCutlistName}
-                    onChange={(e) => setNewCutlistName(e.target.value)}
-                    placeholder="e.g. Finishing, Framing"
-                    className="neo-input w-40 px-2 py-1 text-sm"
-                    autoFocus
-                  />
-                  <button
-                    type="button"
-                    onClick={() => addCutlist(room.id, newCutlistName)}
-                    className="neo-btn-primary px-2 py-1 text-xs"
-                  >
-                    Add
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { setAddingCutlistForRoomId(null); setNewCutlistName(""); }}
-                    className="neo-btn px-2 py-1 text-xs"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setAddingCutlistForRoomId(room.id)}
-                  className="neo-btn px-2 py-1 text-xs"
-                >
-                  + Add cutlist
-                </button>
-              )}
-            </div>
-            {(room.cutlists ?? []).length === 0 && addingCutlistForRoomId !== room.id ? (
-              <p className="text-xs text-[var(--foreground-muted)]">No cutlists yet. Click &quot;+ Add cutlist&quot; to add one (e.g. Finishing, Framing).</p>
-            ) : (
-              (room.cutlists ?? []).map((cut) => {
-                const partsForCut = (project.panelParts ?? []).filter(
-                  (p) => (p as PanelPart).cutlistId === cut.id
-                );
-                const projectForCut: Project = { ...project, panelParts: partsForCut };
-                return (
-                  <div key={cut.id} className="neo-panel-inset p-3">
-                    <h4 className="text-xs font-medium text-[var(--foreground-muted)] mb-2">{cut.name}</h4>
-                    <CutListTab
-                      projectId={projectId}
-                      project={projectForCut}
-                      onUpdate={onUpdate}
-                      cutlistId={cut.id}
-                    />
-                  </div>
-                );
-              })
-            )}
+        {(!project.projectItems || project.projectItems.length === 0) ? (
+          <div className="neo-card p-4">
+            <p className="text-sm text-[var(--foreground-muted)]">
+              No rooms yet. Add rooms on the <strong>Overview</strong> tab (Timeline &amp; Rooms → &quot;+ Add Room&quot;), then return here to add a cutlist per room and enter material, sheet requirements, and items (e.g. drawers) for each.
+            </p>
           </div>
-        ))}
+        ) : (
+          <>
+            {project.projectItems.map((room) => (
+              <div key={room.id} className="neo-card p-4 space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold text-[var(--foreground)]">{room.label}</h3>
+                  {addingCutlistForRoomId === room.id ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newCutlistName}
+                        onChange={(e) => setNewCutlistName(e.target.value)}
+                        placeholder="e.g. Finishing, Framing"
+                        className="neo-input w-40 px-2 py-1 text-sm"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={() => addCutlist(room.id, newCutlistName)}
+                        className="neo-btn-primary px-2 py-1 text-xs"
+                      >
+                        Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setAddingCutlistForRoomId(null); setNewCutlistName(""); }}
+                        className="neo-btn px-2 py-1 text-xs"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setAddingCutlistForRoomId(room.id)}
+                      className="neo-btn px-2 py-1 text-xs"
+                    >
+                      + Add cutlist
+                    </button>
+                  )}
+                </div>
+                {(room.cutlists ?? []).length === 0 && addingCutlistForRoomId !== room.id ? (
+                  <p className="text-xs text-[var(--foreground-muted)]">No cutlists yet. Click &quot;+ Add cutlist&quot; to add one (e.g. Finishing, Framing), then upload a PDF or paste parts to get material and sheet counts.</p>
+                ) : (
+                  (room.cutlists ?? []).map((cut) => {
+                    const partsForCut = (project.panelParts ?? []).filter(
+                      (p) => (p as PanelPart).cutlistId === cut.id
+                    );
+                    const projectForCut: Project = { ...project, panelParts: partsForCut };
+                    return (
+                      <div key={cut.id} className="neo-panel-inset p-3">
+                        <h4 className="text-xs font-medium text-[var(--foreground-muted)] mb-2">{cut.name}</h4>
+                        <CutListTab
+                          projectId={projectId}
+                          project={projectForCut}
+                          onUpdate={onUpdate}
+                          cutlistId={cut.id}
+                        />
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            ))}
+          </>
+        )}
       </div>
 
       {/* Prerequisite lines by category */}
