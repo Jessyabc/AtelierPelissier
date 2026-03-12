@@ -83,8 +83,6 @@ export default function ProjectPage() {
   const [newItemTaskLabel, setNewItemTaskLabel] = useState("");
   const [addingWorkflowItem, setAddingWorkflowItem] = useState(false);
   const [newWorkflowItemLabel, setNewWorkflowItemLabel] = useState("");
-  const [assignProcessId, setAssignProcessId] = useState("");
-  const [assigningProcess, setAssigningProcess] = useState(false);
 
   // Selling price edit
   const [editingPrice, setEditingPrice] = useState(false);
@@ -140,18 +138,14 @@ export default function ProjectPage() {
     setNewWorkflowItemLabel(""); setAddingWorkflowItem(false); await fetchProject();
   }
 
-  async function handleAssignProcess() {
-    if (!assignProcessId.trim()) return; setAssigningProcess(true);
-    try {
-      await fetch(`/api/projects/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ processTemplateId: assignProcessId.trim() }) });
-      toast.success("Process assigned"); setAssignProcessId(""); await fetchProject();
-    } catch { toast.error("Failed"); } finally { setAssigningProcess(false); }
-  }
-
   async function handleAddProjectItem() {
     if (!newProjectItemLabel.trim()) return;
-    await fetch(`/api/projects/${id}/project-items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: newProjectItemType, label: newProjectItemLabel.trim(), processTemplateId: newProjectItemProcessId.trim() || undefined }) });
-    toast.success("Room added"); setNewProjectItemLabel(""); setAddingProjectItem(false); await fetchProject();
+    if (!newProjectItemProcessId?.trim()) {
+      toast.error("Select a process for this room");
+      return;
+    }
+    await fetch(`/api/projects/${id}/project-items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: newProjectItemType, label: newProjectItemLabel.trim(), processTemplateId: newProjectItemProcessId.trim() }) });
+    toast.success("Room added"); setNewProjectItemLabel(""); setNewProjectItemProcessId(""); setAddingProjectItem(false); await fetchProject();
   }
 
   async function handleDeleteProjectItem(itemId: string) {
@@ -206,9 +200,9 @@ export default function ProjectPage() {
   if (types.includes("kitchen")) extraTabs.push("Kitchen");
   const tabs = [...baseTabs.slice(0, 1), ...extraTabs, ...baseTabs.slice(1)];
 
-  // Total task progress
+  // Total task progress (per-room tasks only)
   const allItems = project.projectItems ?? [];
-  const allTasks = [...(project.taskItems ?? []), ...allItems.flatMap((i) => i.taskItems)];
+  const allTasks = allItems.flatMap((i) => i.taskItems);
   const totalDone = allTasks.filter((t) => t.isDone).length;
   const totalTasks = allTasks.length;
 
@@ -244,12 +238,12 @@ export default function ProjectPage() {
       {saveError && <p className="neo-panel-inset mb-4 p-3 text-sm text-amber-800">{saveError}</p>}
 
       {/* Tab bar */}
-      <div className="flex flex-wrap gap-1 mb-4 overflow-x-auto">
+      <div className="flex flex-wrap gap-1 mb-4 overflow-x-auto p-2.5 justify-center items-center text-center align-middle">
         {tabs.map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-3 py-1.5 text-xs rounded-lg transition-colors whitespace-nowrap ${
+            className={`px-3 py-1.5 text-xs rounded-lg transition-colors whitespace-nowrap mx-[5px] ${
               activeTab === tab ? "neo-btn-primary font-medium" : "neo-btn"
             }`}
           >
@@ -318,44 +312,8 @@ export default function ProjectPage() {
                 </div>
               </div>
 
-              {/* Assign process template if none */}
-              {!project.processTemplate && (!project.taskItems || project.taskItems.length === 0) && (
-                <div className="neo-panel-inset p-3 mb-4 flex flex-wrap items-center gap-2">
-                  <select value={assignProcessId} onChange={(e) => setAssignProcessId(e.target.value)} className="neo-select px-3 py-1.5 text-sm">
-                    <option value="">Assign process...</option>
-                    {processTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                  </select>
-                  <button onClick={handleAssignProcess} disabled={!assignProcessId || assigningProcess} className="neo-btn-primary px-3 py-1.5 text-xs disabled:opacity-50">Assign</button>
-                </div>
-              )}
-
               <div className="space-y-3">
-                {/* Project workflow */}
-                {(project.processTemplate || (project.taskItems && project.taskItems.length > 0)) && (
-                  <ProjectBoardCard
-                    id="project-workflow"
-                    label="Project Workflow"
-                    badge="Main"
-                    badgeVariant="gray"
-                    processTemplate={project.processTemplate}
-                    doneCount={(project.taskItems ?? []).filter((t) => t.isDone).length}
-                    totalCount={project.taskItems?.length ?? 0}
-                    currentStep={project.taskItems?.length ? project.taskItems.find((t) => !t.isDone)?.label ?? "All done" : "—"}
-                    isExpanded={expandedItemId === "project-workflow"}
-                    onToggleExpand={() => setExpandedItemId(expandedItemId === "project-workflow" ? null : "project-workflow")}
-                    taskItems={project.taskItems ?? []}
-                    onToggleTask={(tid) => handleToggleWorkflowItem(tid, (project.taskItems ?? []).find((t) => t.id === tid)?.isDone ?? false)}
-                    addingStep={addingWorkflowItem}
-                    newStepLabel={newWorkflowItemLabel}
-                    onNewStepChange={setNewWorkflowItemLabel}
-                    onAddStep={handleAddWorkflowItem}
-                    onCancelAddStep={() => { setAddingWorkflowItem(false); setNewWorkflowItemLabel(""); }}
-                    onStartAddStep={() => setAddingWorkflowItem(true)}
-                    onDelete={undefined}
-                  />
-                )}
-
-                {/* Room / deliverable cards */}
+                {/* Room / deliverable cards — process is always per room */}
                 {allItems.map((item) => {
                   const isExpanded = expandedItemId === item.id;
                   const done = item.taskItems.filter((t) => t.isDone).length;
@@ -401,13 +359,13 @@ export default function ProjectPage() {
                         <option value="entertainment">Entertainment</option>
                         <option value="custom">Custom</option>
                       </select>
-                      <select value={newProjectItemProcessId} onChange={(e) => setNewProjectItemProcessId(e.target.value)} className="neo-select px-3 py-2 text-sm">
-                        <option value="">No process</option>
+                      <select value={newProjectItemProcessId} onChange={(e) => setNewProjectItemProcessId(e.target.value)} className="neo-select px-3 py-2 text-sm" required aria-required="true">
+                        <option value="">Select process (required)</option>
                         {processTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
                       </select>
                     </div>
                     <div className="flex gap-2">
-                      <button onClick={handleAddProjectItem} disabled={!newProjectItemLabel.trim()} className="neo-btn-primary px-4 py-1.5 text-sm disabled:opacity-50">Add Room</button>
+                      <button onClick={handleAddProjectItem} disabled={!newProjectItemLabel.trim() || !newProjectItemProcessId?.trim()} className="neo-btn-primary px-4 py-1.5 text-sm disabled:opacity-50">Add Room</button>
                       <button onClick={() => { setAddingProjectItem(false); setNewProjectItemLabel(""); }} className="neo-btn px-3 py-1.5 text-sm">Cancel</button>
                     </div>
                   </div>
