@@ -11,6 +11,7 @@ export async function recalculateMaterialRequirements(projectId: string): Promis
     where: { id: projectId },
     include: {
       panelParts: true,
+      prerequisiteLines: true,
       projectSettings: { include: { sheetFormat: true } },
     },
   });
@@ -20,7 +21,7 @@ export async function recalculateMaterialRequirements(projectId: string): Promis
   const effectiveRisk = await getEffectiveRiskSettings(project.types || project.type, projectId);
   const sheetFormat = project.projectSettings?.sheetFormat;
 
-  const requiredByMaterial = computeRequiredQtyByMaterial(
+  const panelRequired = computeRequiredQtyByMaterial(
     project.panelParts.map((p) => ({
       materialCode: p.materialCode,
       lengthIn: p.lengthIn,
@@ -30,6 +31,14 @@ export async function recalculateMaterialRequirements(projectId: string): Promis
     sheetFormat ? { lengthIn: sheetFormat.lengthIn, widthIn: sheetFormat.widthIn } : null,
     effectiveRisk.wasteFactor
   );
+
+  // Merge prerequisite line quantities (needed=true) into required by materialCode
+  const requiredByMaterial: Record<string, number> = { ...panelRequired };
+  for (const line of project.prerequisiteLines) {
+    if (!line.needed || !line.materialCode?.trim()) continue;
+    const code = line.materialCode.trim();
+    requiredByMaterial[code] = (requiredByMaterial[code] ?? 0) + line.quantity;
+  }
 
   // allocatedQty = sum StockMovement where type in (allocate, consume), projectId matches
   const movements = await prisma.stockMovement.findMany({

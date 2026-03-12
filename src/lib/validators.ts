@@ -128,9 +128,31 @@ export const panelPartSchema = z.object({
   qty: z.number().int().min(1).max(999),
   materialCode: z.string().max(50).trim().optional().nullable(),
   thicknessIn: z.number().min(0).max(10).optional().nullable(),
+  cutlistId: z.string().cuid().optional().nullable(),
 });
 
 export const panelPartUpdateSchema = panelPartSchema.partial();
+
+const PREREQUISITE_CATEGORIES = ["finishing", "drawer_boxes", "hinges", "other"] as const;
+
+export const cutlistSchema = z.object({
+  projectItemId: z.string().cuid(),
+  name: z.string().min(1, "Name is required").max(100).trim(),
+});
+
+export const prerequisiteLineSchema = z.object({
+  materialCode: z.string().min(1, "Material code is required").max(50).trim(),
+  category: z.enum(PREREQUISITE_CATEGORIES),
+  quantity: z.number().min(0),
+  needed: z.boolean().optional().default(true),
+});
+
+export const prerequisiteLineUpdateSchema = z.object({
+  materialCode: z.string().min(1).max(50).trim().optional(),
+  category: z.enum(PREREQUISITE_CATEGORIES).optional(),
+  quantity: z.number().min(0).optional(),
+  needed: z.boolean().optional(),
+});
 
 export const parseCutlistSchema = z.object({
   text: z.string().optional(),

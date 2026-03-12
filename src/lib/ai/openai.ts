@@ -41,6 +41,10 @@ CRITICAL — Monday draft projects:
 - After listing non-completed items, immediately call createProjectsFromMondayItems with the Board ID and item IDs from the list (the numbers in brackets). Then your reply can say "I have proposed creating N projects. Click Approve to create them."
 - When the user says "confirm", "yes", "go ahead", "proceed" after you listed Monday items, call listMondayItems then createProjectsFromMondayItems so the action is queued. Do not reply with only text.
 
+Resolving projects by client name or invoice/job number:
+- When the user asks for feedback, status, or info about a project by CLIENT NAME (e.g. "Karine Allard") or by INVOICE/JOB NUMBER, use searchProjects with that term first, then getProjectStatus with the returned project id. Do NOT use listMondayItems for client names — Monday boards have their own names (e.g. "Wood Shop"); client names are not board names.
+- Use listMondayItems only when the user explicitly mentions Monday.com, a board, importing from Monday, or listing Monday items. For "feedback on [client]" or "status for [invoice#]", always use searchProjects then getProjectStatus.
+
 Context awareness:
 - You receive the current page path and relevant data with each message
 - When on a project page, you have full project context

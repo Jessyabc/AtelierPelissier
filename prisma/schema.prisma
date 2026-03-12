@@ -85,7 +85,8 @@ model Project {
   processTemplate   ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
 
   // Phase 2: Deliverables within the project (vanity, kitchen, panel, etc.) — each has its own process checklist
-  projectItems ProjectItem[]
+  projectItems       ProjectItem[]
+  prerequisiteLines  PrerequisiteLine[]
 }
 
 // Phase 2: One deliverable within a project (vanity, side unit, kitchen, panel, custom thing)
@@ -103,6 +104,7 @@ model ProjectItem {
 
   taskItems   ProjectItemTaskItem[]
   orderLines  OrderLine[]
+  cutlists    Cutlist[]
 }
 
 // Phase 2: Checklist steps for a project item (each item follows its own process)
@@ -215,16 +217,49 @@ model SheetFormat {
   globalDefault       GlobalSettings[]
 }
 
+// Named cutlist per room (e.g. Finishing, Framing) — multiple per ProjectItem
+model Cutlist {
+  id            String   @id @default(cuid())
+  projectItemId String
+  projectItem   ProjectItem @relation(fields: [projectItemId], references: [id], onDelete: Cascade)
+  name          String   // e.g. "Finishing", "Framing"
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  panelParts PanelPart[]
+}
+
 model PanelPart {
   id           String   @id @default(cuid())
   projectId    String
   project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  cutlistId    String?
+  cutlist      Cutlist? @relation(fields: [cutlistId], references: [id], onDelete: SetNull)
   label        String
   lengthIn     Float
   widthIn      Float
   qty          Int
   materialCode String?
   thicknessIn   Float?
+
+  @@index([cutlistId])
+}
+
+// Prerequisite line: explicit "we need X of materialCode" with need/don't need toggle (finishing, drawer boxes, hinges, etc.)
+model PrerequisiteLine {
+  id           String   @id @default(cuid())
+  projectId    String
+  project      Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  materialCode String
+  category     String   // finishing | drawer_boxes | hinges | other
+  quantity     Float
+  needed       Boolean  @default(true)
+  sortOrder    Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([projectId, category])
 }
 
 model CostLine {

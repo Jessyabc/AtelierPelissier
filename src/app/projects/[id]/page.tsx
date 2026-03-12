@@ -7,7 +7,7 @@ import toast from "react-hot-toast";
 import { VanityTab } from "@/components/VanityTab";
 import { SideUnitTab } from "@/components/SideUnitTab";
 import { KitchenTab } from "@/components/KitchenTab";
-import { CutListTab } from "@/components/CutListTab";
+import { PrerequisitesTab } from "@/components/PrerequisitesTab";
 import { CostsTab } from "@/components/CostsTab";
 import { ClientTab } from "@/components/ClientTab";
 import { SettingsTab } from "@/components/SettingsTab";
@@ -23,6 +23,7 @@ type ProjItem = {
   processTemplateId: string | null;
   processTemplate?: { id: string; name: string } | null;
   taskItems: TaskItem[];
+  cutlists?: { id: string; name: string; sortOrder: number }[];
 };
 type SubProject = {
   id: string; name: string; isDone: boolean; isDraft: boolean; updatedAt: string;
@@ -48,14 +49,15 @@ type Project = {
   vanityInputs: Record<string, unknown> | null;
   sideUnitInputs: Record<string, unknown> | null;
   projectSettings: { markup: number; taxEnabled: boolean; taxRate: number; sheetFormatId: string | null; sheetFormat?: { id: string; label: string } | null; [key: string]: unknown } | null;
-  panelParts: Array<{ id: string; label: string; lengthIn: number; widthIn: number; qty: number; materialCode: string | null; thicknessIn: number | null }>;
+  panelParts: Array<{ id: string; label: string; lengthIn: number; widthIn: number; qty: number; materialCode: string | null; thicknessIn: number | null; cutlistId?: string | null }>;
+  prerequisiteLines?: Array<{ id: string; materialCode: string; category: string; quantity: number; needed: boolean }>;
   costLines: Array<{ id: string; kind: string; category: string; amount: number }>;
   materialRequirements?: Array<{ materialCode: string; requiredQty: number; allocatedQty: number }>;
   sellingPrice?: number | null;
   targetDate?: string | null;
 };
 
-type Tab = "Overview" | "CutList" | "Costs" | "Quote" | "Service Calls" | "Client" | "Settings" | "History" | "Vanity" | "Side Unit" | "Kitchen";
+type Tab = "Overview" | "Prerequisites" | "Costs" | "Quote" | "Service Calls" | "Client" | "Settings" | "History" | "Vanity" | "Side Unit" | "Kitchen";
 
 export default function ProjectPage() {
   const params = useParams();
@@ -197,7 +199,7 @@ export default function ProjectPage() {
 
   // Smart tabs: only show relevant ones
   const types = project.types.split(",").map((t) => t.trim());
-  const baseTabs: Tab[] = ["Overview", "CutList", "Costs", "Quote", "Service Calls", "Client", "Settings", "History"];
+  const baseTabs: Tab[] = ["Overview", "Prerequisites", "Costs", "Quote", "Service Calls", "Client", "Settings", "History"];
   const extraTabs: Tab[] = [];
   if (types.includes("vanity")) extraTabs.push("Vanity");
   if (types.includes("side_unit")) extraTabs.push("Side Unit");
@@ -459,7 +461,7 @@ export default function ProjectPage() {
           {activeTab === "Vanity" && <VanityTab projectId={id} project={project} onUpdate={fetchProject} />}
           {activeTab === "Side Unit" && <SideUnitTab projectId={id} project={project} onUpdate={fetchProject} />}
           {activeTab === "Kitchen" && <KitchenTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "CutList" && <CutListTab projectId={id} project={project} onUpdate={fetchProject} />}
+          {activeTab === "Prerequisites" && <PrerequisitesTab projectId={id} project={project} onUpdate={fetchProject} />}
           {activeTab === "Costs" && <CostsTab projectId={id} project={project} onUpdate={fetchProject} />}
           {activeTab === "Quote" && <QuoteTab project={project} />}
           {activeTab === "Service Calls" && <ServiceCallsTab projectId={id} project={project} onUpdate={fetchProject} />}

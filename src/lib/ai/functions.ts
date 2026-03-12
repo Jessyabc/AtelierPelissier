@@ -146,11 +146,11 @@ export const AI_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "searchProjects",
-      description: "Search for projects by name, job number, or client name.",
+      description: "Search for projects by name, job number, or client name. Use this FIRST when the user asks for feedback, status, or info about a project by client name (e.g. 'Karine Allard') or invoice/job number — then call getProjectStatus with the returned project id. Do not use listMondayItems for client names.",
       parameters: {
         type: "object",
         properties: {
-          query: { type: "string", description: "Search term." },
+          query: { type: "string", description: "Search term (client name, job number, invoice number, or project name)." },
         },
         required: ["query"],
       },
@@ -160,11 +160,11 @@ export const AI_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "listMondayItems",
-      description: "List items on one or all configured Monday.com boards, including subitems (e.g. Wood Shop subitems under each parent item). Use when the user asks about Monday, new projects from Monday, Wood Shop subitems, or wants to import from Monday. If boardId is omitted, returns items from all saved boards. You can pass a board NAME (e.g. 'Wood Shop') to list only that board — the app resolves the name to the saved board ID. Subitems are listed under each parent with their IDs; you can use either parent or subitem IDs with createProjectsFromMondayItems.",
+      description: "List items on configured Monday.com boards only. Use ONLY when the user explicitly asks about Monday.com, a Monday board, or importing from Monday. For 'feedback on [client name]' or 'status for [invoice#]' use searchProjects then getProjectStatus instead. If boardId is omitted, returns items from all saved boards. Pass a configured board NAME (e.g. 'Wood Shop') to list only that board — client names are not board names.",
       parameters: {
         type: "object",
         properties: {
-          boardId: { type: "string", description: "Optional. Monday board ID (numeric) or board name (e.g. 'Wood Shop'). If omitted, lists items from all configured boards." },
+          boardId: { type: "string", description: "Optional. Monday board ID (numeric) or a configured board name (e.g. 'Wood Shop'). Not for client names." },
         },
       },
     },
@@ -522,7 +522,8 @@ async function handleListMondayItems(boardId?: string): Promise<string> {
       if (byName.length > 0) {
         boards = byName;
       } else {
-        boards = [{ id: input }];
+        // Input looks like a board name but no configured board matches (e.g. user passed a client name like "Karine Allard").
+        return `No Monday board is configured with the name "${input}". Configured board names are: ${allBoards.map((b) => b.name || b.id).filter(Boolean).join(", ") || "(none — only IDs)"}. If you meant a client or project, use searchProjects with the client name or invoice number, then getProjectStatus with the project id.`;
       }
     }
   } else if (allBoards.length > 0) {

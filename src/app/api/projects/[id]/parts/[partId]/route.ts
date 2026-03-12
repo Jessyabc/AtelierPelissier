@@ -32,6 +32,7 @@ export async function PATCH(
       ...(data.qty != null && { qty: data.qty }),
       ...(data.materialCode !== undefined && { materialCode: data.materialCode }),
       ...(data.thicknessIn !== undefined && { thicknessIn: data.thicknessIn }),
+      ...(data.cutlistId !== undefined && { cutlistId: data.cutlistId }),
     },
   });
   triggerMaterialInventoryOrderRecalc(projectId);

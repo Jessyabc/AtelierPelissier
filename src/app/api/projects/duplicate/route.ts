@@ -22,10 +22,11 @@ export async function POST(request: Request) {
       sideUnitInputs: true,
       kitchenInputs: true,
       panelParts: true,
+      prerequisiteLines: true,
       costLines: true,
       taskItems: { orderBy: { sortOrder: "asc" } },
       serviceCalls: { include: { items: true }, orderBy: { serviceDate: "asc" } },
-      projectItems: { include: { taskItems: true }, orderBy: { sortOrder: "asc" } },
+      projectItems: { include: { taskItems: true, cutlists: true }, orderBy: { sortOrder: "asc" } },
     },
   });
   if (!source) {
@@ -124,19 +125,6 @@ export async function POST(request: Request) {
         data: { projectId: project.id },
       });
     }
-    for (const part of source.panelParts) {
-      await prisma.panelPart.create({
-        data: {
-          projectId: project.id,
-          label: part.label,
-          lengthIn: part.lengthIn,
-          widthIn: part.widthIn,
-          qty: part.qty,
-          materialCode: part.materialCode,
-          thicknessIn: part.thicknessIn,
-        },
-      });
-    }
     for (const line of source.costLines) {
       await prisma.costLine.create({
         data: {
@@ -193,7 +181,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Copy project items (deliverables) and their task items
+    // Copy project items (deliverables), their cutlists, and task items
+    const oldCutlistIdToNew: Record<string, string> = {};
     if (!source.parentProjectId && source.projectItems?.length) {
       for (const pi of source.projectItems) {
         const newItem = await prisma.projectItem.create({
@@ -215,7 +204,47 @@ export async function POST(request: Request) {
             },
           });
         }
+        for (const cut of pi.cutlists ?? []) {
+          const newCut = await prisma.cutlist.create({
+            data: {
+              projectItemId: newItem.id,
+              name: cut.name,
+              sortOrder: cut.sortOrder,
+            },
+          });
+          oldCutlistIdToNew[cut.id] = newCut.id;
+        }
       }
+    }
+
+    // Copy panel parts with cutlistId mapping
+    for (const part of source.panelParts) {
+      await prisma.panelPart.create({
+        data: {
+          projectId: project.id,
+          cutlistId: part.cutlistId ? (oldCutlistIdToNew[part.cutlistId] ?? null) : null,
+          label: part.label,
+          lengthIn: part.lengthIn,
+          widthIn: part.widthIn,
+          qty: part.qty,
+          materialCode: part.materialCode,
+          thicknessIn: part.thicknessIn,
+        },
+      });
+    }
+
+    // Copy prerequisite lines
+    for (const line of source.prerequisiteLines) {
+      await prisma.prerequisiteLine.create({
+        data: {
+          projectId: project.id,
+          materialCode: line.materialCode,
+          category: line.category,
+          quantity: line.quantity,
+          needed: line.needed,
+          sortOrder: line.sortOrder,
+        },
+      });
     }
 
     await logAudit(project.id, "duplicated", `From: ${source.name}`);

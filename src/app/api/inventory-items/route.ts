@@ -16,9 +16,23 @@ const createSchema = z.object({
   defaultSheetFormatId: z.string().optional().nullable(),
 });
 
-export async function GET() {
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const q = searchParams.get("q")?.trim();
+  const limit = Math.min(50, parseInt(searchParams.get("limit") ?? "50", 10) || 50);
+  const where = q
+    ? {
+        OR: [
+          { materialCode: { contains: q } },
+          { description: { contains: q } },
+        ],
+      }
+    : undefined;
   const items = await prisma.inventoryItem.findMany({
+    where,
     orderBy: { materialCode: "asc" },
+    take: limit,
+    select: { id: true, materialCode: true, description: true, unit: true },
   });
   return NextResponse.json(items);
 }

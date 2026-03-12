@@ -11,6 +11,7 @@ type PanelPart = {
   qty: number;
   materialCode?: string | null;
   thicknessIn?: number | null;
+  cutlistId?: string | null;
 };
 
 type MaterialReq = {
@@ -30,14 +31,17 @@ type Project = {
 const STANDARD_SHEET = { lengthIn: 96, widthIn: 48 };
 const DEFAULT_WASTE = 1.1;
 
+/** Optional cutlistId: null = project-level only (save/delete scoped); string = that cutlist's parts */
 export function CutListTab({
   projectId,
   project,
   onUpdate,
+  cutlistId,
 }: {
   projectId: string;
   project: Project;
   onUpdate: () => void;
+  cutlistId?: string | null;
 }) {
   const [parts, setParts] = useState<PanelPart[]>(project.panelParts);
   const [file, setFile] = useState<File | null>(null);
@@ -48,8 +52,11 @@ export function CutListTab({
   const [addRow, setAddRow] = useState<PanelPart>({ label: "", lengthIn: 0, widthIn: 0, qty: 1, materialCode: "", thicknessIn: null });
 
   useEffect(() => {
-    setParts(project.panelParts);
-  }, [project.panelParts]);
+    const list = cutlistId !== undefined
+      ? project.panelParts.filter((p) => (p as PanelPart).cutlistId === cutlistId)
+      : project.panelParts;
+    setParts(list);
+  }, [project.panelParts, cutlistId]);
 
   const fmt = project.projectSettings?.sheetFormat;
   const sheet: { lengthIn: number; widthIn: number } =
@@ -148,8 +155,11 @@ export function CutListTab({
   const saveToProject = useCallback(async () => {
     setSaving(true);
     try {
-      // Delete existing parts first, then recreate to handle edits + removals
-      await fetch(`/api/projects/${projectId}/parts`, { method: "DELETE" });
+      const deleteUrl =
+        cutlistId === undefined
+          ? `/api/projects/${projectId}/parts`
+          : `/api/projects/${projectId}/parts?cutlistId=${cutlistId === null ? "null" : cutlistId}`;
+      await fetch(deleteUrl, { method: "DELETE" });
 
       for (const p of parts) {
         await fetch(`/api/projects/${projectId}/parts`, {
@@ -162,13 +172,12 @@ export function CutListTab({
             qty: p.qty,
             materialCode: p.materialCode ?? undefined,
             thicknessIn: p.thicknessIn ?? undefined,
+            ...(cutlistId !== undefined && cutlistId !== null && { cutlistId }),
           }),
         });
       }
 
-      // Trigger material requirements recalculation
       await fetch(`/api/projects/${projectId}/recalculate`, { method: "POST" });
-
       onUpdate();
       toast.success("Parts saved and material requirements updated");
     } catch {
@@ -176,7 +185,7 @@ export function CutListTab({
     } finally {
       setSaving(false);
     }
-  }, [projectId, parts, onUpdate]);
+  }, [projectId, parts, onUpdate, cutlistId]);
 
   const existingReqs = project.materialRequirements ?? [];
 

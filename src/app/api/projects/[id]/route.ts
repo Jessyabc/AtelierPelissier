@@ -21,6 +21,7 @@ export async function GET(
         sideUnitInputs: true,
         kitchenInputs: true,
         panelParts: true,
+        prerequisiteLines: { orderBy: [{ category: "asc" }, { sortOrder: "asc" }] },
         costLines: true,
         materialRequirements: true,
         deviations: { where: { resolved: false } },
@@ -33,6 +34,7 @@ export async function GET(
           include: {
             processTemplate: { select: { id: true, name: true } },
             taskItems: { orderBy: { sortOrder: "asc" } },
+            cutlists: { orderBy: { sortOrder: "asc" } },
           },
         },
         subProjects: {
