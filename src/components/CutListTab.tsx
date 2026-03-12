@@ -110,7 +110,14 @@ export function CutListTab({
         if (data.details) setParseError((e) => `${e}. Paste text below as fallback.`);
         return;
       }
-      setParts(data.parts || []);
+      const nextParts = data.parts || [];
+      if (nextParts.length === 0) {
+        setParseError(
+          "No cutlist rows were recognized in the text. The format may not match (e.g. need dimensions like 3' 4\" x 1' 2\"). You can paste the table text below or add parts manually."
+        );
+        return;
+      }
+      setParts(nextParts);
       setFile(null);
     } finally {
       setParsing(false);
@@ -129,7 +136,7 @@ export function CutListTab({
       .then((res) => res.json())
       .then((data) => {
         if (data.parts?.length) setParts(data.parts);
-        else setParseError("No parts found in pasted text.");
+        else setParseError("No cutlist rows recognized. Use dimensions like 3' 4\" x 1' 2\" or add parts manually.");
       })
       .catch(() => setParseError("Parse failed."))
       .finally(() => setParsing(false));
