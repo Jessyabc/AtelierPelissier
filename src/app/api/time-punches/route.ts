@@ -1,0 +1,76 @@
+import { NextResponse } from "next/server";
+import { prisma } from "@/lib/db";
+
+// GET: list punches, optionally filtered
+export async function GET(request: Request) {
+  const { searchParams } = new URL(request.url);
+  const projectId = searchParams.get("projectId");
+  const employeeId = searchParams.get("employeeId");
+  const date = searchParams.get("date"); // YYYY-MM-DD, returns that day's punches
+  const activeOnly = searchParams.get("active") === "true";
+
+  const where: Record<string, unknown> = {};
+  if (projectId) where.projectId = projectId;
+  if (employeeId) where.employeeId = employeeId;
+  if (activeOnly) where.endTime = null;
+  if (date) {
+    const start = new Date(date);
+    start.setHours(0, 0, 0, 0);
+    const end = new Date(date);
+    end.setHours(23, 59, 59, 999);
+    where.startTime = { gte: start, lte: end };
+  }
+
+  const punches = await prisma.timePunch.findMany({
+    where,
+    include: {
+      employee: { select: { id: true, name: true, color: true, role: true } },
+      station: { select: { id: true, name: true, slug: true } },
+      project: { select: { id: true, name: true, jobNumber: true } },
+    },
+    orderBy: { startTime: "desc" },
+  });
+  return NextResponse.json(punches);
+}
+
+// POST: clock in — creates a new punch
+export async function POST(request: Request) {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+  const { employeeId, stationId, projectId, notes } = body as Record<string, unknown>;
+  if (typeof employeeId !== "string" || !employeeId) {
+    return NextResponse.json({ error: "employeeId is required" }, { status: 400 });
+  }
+
+  // Auto clock-out any existing active punch for this employee
+  const existingActive = await prisma.timePunch.findFirst({
+    where: { employeeId, endTime: null },
+  });
+  if (existingActive) {
+    const now = new Date();
+    const duration = Math.round((now.getTime() - existingActive.startTime.getTime()) / 60000);
+    await prisma.timePunch.update({
+      where: { id: existingActive.id },
+      data: { endTime: now, durationMinutes: duration },
+    });
+  }
+
+  const punch = await prisma.timePunch.create({
+    data: {
+      employeeId,
+      stationId: typeof stationId === "string" ? stationId : null,
+      projectId: typeof projectId === "string" ? projectId : null,
+      notes: typeof notes === "string" ? notes.trim() || null : null,
+    },
+    include: {
+      employee: { select: { id: true, name: true, color: true } },
+      station: { select: { id: true, name: true, slug: true } },
+      project: { select: { id: true, name: true, jobNumber: true } },
+    },
+  });
+  return NextResponse.json(punch, { status: 201 });
+}

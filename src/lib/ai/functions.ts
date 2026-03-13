@@ -294,6 +294,41 @@ export const AI_TOOLS: ChatCompletionTool[] = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "listEmployees",
+      description: "List team members (employees). Optionally filter by role: salesperson, woodworker, or admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["salesperson", "woodworker", "admin"], description: "Optional role filter." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getActivePunches",
+      description: "Get all employees currently clocked in — who is on the shop floor right now, at which station, and on which job.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getLaborHours",
+      description: "Get labor hours logged, optionally filtered by project or employee. Returns total hours and a breakdown by employee and station.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectId: { type: "string", description: "Optional project ID or job number to filter by." },
+          employeeId: { type: "string", description: "Optional employee ID to filter by." },
+        },
+      },
+    },
+  },
 ];
 
 /**
@@ -354,6 +389,15 @@ export async function executeFunctionCall(
 
     case "receiveOrder":
       return handleReceiveOrder(args);
+
+    case "listEmployees":
+      return { result: await handleListEmployees(args.role as string | undefined) };
+
+    case "getActivePunches":
+      return { result: await handleGetActivePunches() };
+
+    case "getLaborHours":
+      return { result: await handleGetLaborHours(args.projectId as string | undefined, args.employeeId as string | undefined) };
 
     default:
       return { result: `Unknown function: ${name}` };
@@ -785,6 +829,76 @@ function handleReceiveOrder(
       lines: args.lines ?? null,
     },
   };
+}
+
+async function handleListEmployees(role?: string): Promise<string> {
+  const employees = await prisma.employee.findMany({
+    where: { active: true, ...(role ? { role } : {}) },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  });
+  if (employees.length === 0) return role ? `No active ${role}s found.` : "No employees found.";
+  return employees.map((e) => `${e.name} (${e.role})${e.email ? ` — ${e.email}` : ""}`).join("\n");
+}
+
+async function handleGetActivePunches(): Promise<string> {
+  const punches = await prisma.timePunch.findMany({
+    where: { endTime: null },
+    include: {
+      employee: { select: { name: true, role: true } },
+      station: { select: { name: true } },
+      project: { select: { name: true, jobNumber: true } },
+    },
+    orderBy: { startTime: "asc" },
+  });
+  if (punches.length === 0) return "Nobody is currently clocked in.";
+  const lines = punches.map((p) => {
+    const mins = Math.round((Date.now() - new Date(p.startTime).getTime()) / 60000);
+    const dur = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+    return `${p.employee.name} @ ${p.station?.name ?? "unknown station"} — ${p.project ? (p.project.jobNumber ?? p.project.name) : "general work"} (${dur})`;
+  });
+  return `${punches.length} people on the floor:\n${lines.join("\n")}`;
+}
+
+async function handleGetLaborHours(projectIdOrRef?: string, employeeId?: string): Promise<string> {
+  let projectId: string | undefined;
+  if (projectIdOrRef) {
+    const resolved = await resolveProjectId(projectIdOrRef);
+    projectId = resolved ?? undefined;
+    if (!projectId) return `Project not found: ${projectIdOrRef}`;
+  }
+
+  const punches = await prisma.timePunch.findMany({
+    where: {
+      endTime: { not: null },
+      ...(projectId ? { projectId } : {}),
+      ...(employeeId ? { employeeId } : {}),
+    },
+    include: {
+      employee: { select: { name: true } },
+      station: { select: { name: true } },
+      project: { select: { name: true, jobNumber: true } },
+    },
+    orderBy: { startTime: "desc" },
+  });
+
+  if (punches.length === 0) return "No labor hours logged for the specified filters.";
+
+  const totalMins = punches.reduce((s, p) => s + (p.durationMinutes ?? 0), 0);
+  const totalH = (totalMins / 60).toFixed(1);
+
+  // Group by employee
+  const byEmployee = new Map<string, number>();
+  for (const p of punches) {
+    const key = p.employee.name;
+    byEmployee.set(key, (byEmployee.get(key) ?? 0) + (p.durationMinutes ?? 0));
+  }
+
+  const lines = [`Total: ${totalH}h (${punches.length} punches)`, ""];
+  for (const [name, mins] of Array.from(byEmployee)) {
+    lines.push(`  ${name}: ${(mins / 60).toFixed(1)}h`);
+  }
+
+  return lines.join("\n");
 }
 
 function handleCreateProjectsFromMondayItems(

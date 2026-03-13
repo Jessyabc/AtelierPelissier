@@ -26,7 +26,10 @@ const FALLBACK_MENU: MenuItemConfig[] = [
   { href: "/calendar", label: "Calendar", visible: true, order: 10 },
   { href: "/settings/risk", label: "Risk settings", visible: true, order: 11 },
   { href: "/admin", label: "Admin Hub", visible: true, order: 12 },
-  { href: "#export", label: "Export data (backup)", visible: true, order: 13, exportData: true },
+  { href: "/admin/employees", label: "Team Members", visible: true, order: 13 },
+  { href: "/admin/stations", label: "Work Stations & QR", visible: true, order: 14 },
+  { href: "/admin/punches", label: "Punch Board", visible: true, order: 15 },
+  { href: "#export", label: "Export data (backup)", visible: true, order: 16, exportData: true },
 ];
 
 export function AppHeader() {
