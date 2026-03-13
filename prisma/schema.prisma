@@ -72,6 +72,7 @@ model Project {
   deviations           Deviation[]
   taskItems            ProjectTaskItem[]
   aiConversations      AiConversation[]
+  costDocuments        CostDocument[]
 
   // Financial: selling price for profit tracking
   sellingPrice          Float?
@@ -616,6 +617,36 @@ model VendorInvoiceLine {
   updatedAt            DateTime @updatedAt
 
   costLines CostLine[]
+}
+
+/// Project-level cost / document uploads (reservations, supplier invoices, estimates, Sage invoices, etc.)
+model CostDocument {
+  id           String   @id @default(cuid())
+
+  /// Owning project (optional for miscellaneous/global documents)
+  projectId    String?
+  project      Project? @relation(fields: [projectId], references: [id], onDelete: SetNull)
+
+  /// Document kind: reservation | supplier_invoice | estimate | sage_invoice | other
+  type         String
+
+  /// Original file name (for display)
+  sourceName   String
+
+  /// Relative path under public/ used to serve the file (e.g. "uploads/cost-docs/xyz.pdf")
+  storagePath  String
+
+  /// Invoice or reservation number when known (e.g. MC-XXXX from Sage)
+  invoiceNumber String?
+
+  /// Parsed content as JSON string (structure depends on type; kept for AI/parsing/debug)
+  parsedJson   String?
+
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([projectId, type])
+  @@index([invoiceNumber])
 }
 
 // --- Process visualization layer ---
