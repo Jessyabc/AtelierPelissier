@@ -21,6 +21,27 @@ type VendorInvoice = {
   lines: VendorInvoiceLine[];
 };
 
+type CostDocument = {
+  id: string;
+  type: string;
+  sourceName: string;
+  storagePath: string;
+  invoiceNumber: string | null;
+  createdAt: string;
+  projectId: string | null;
+  project?: { id: string; name: string; jobNumber: string | null } | null;
+};
+
+type ProjectOption = { id: string; name: string; jobNumber: string | null };
+
+const DOC_TYPES = [
+  { value: "reservation", label: "Reservation invoice" },
+  { value: "supplier_invoice", label: "Supplier invoice" },
+  { value: "estimate", label: "Estimate (Excel)" },
+  { value: "sage_invoice", label: "Sage invoice" },
+  { value: "other", label: "Other" },
+] as const;
+
 export default function CostingPage() {
   const [invoices, setInvoices] = useState<VendorInvoice[]>([]);
   const [suppliers, setSuppliers] = useState<{ id: string; name: string }[]>([]);
@@ -32,6 +53,14 @@ export default function CostingPage() {
     invoiceDate: new Date().toISOString().slice(0, 10),
   });
   const [creating, setCreating] = useState(false);
+
+  const [costDocs, setCostDocs] = useState<CostDocument[]>([]);
+  const [projects, setProjects] = useState<ProjectOption[]>([]);
+  const [loadingDocs, setLoadingDocs] = useState(false);
+  const [uploadDocType, setUploadDocType] = useState<string>("supplier_invoice");
+  const [uploadProjectId, setUploadProjectId] = useState<string>("misc");
+  const [uploadingDoc, setUploadingDoc] = useState(false);
+  const [uploadInputKey, setUploadInputKey] = useState(0);
 
   const fetchInvoices = useCallback(async () => {
     setLoading(true);
@@ -80,9 +109,68 @@ export default function CostingPage() {
     }
   };
 
+  const fetchCostDocs = useCallback(async () => {
+    setLoadingDocs(true);
+    try {
+      const [docsRes, projRes] = await Promise.all([
+        fetch("/api/cost-documents"),
+        fetch("/api/projects").then((r) => (r.ok ? r.json() : [])),
+      ]);
+      const docsData = await docsRes.json();
+      setCostDocs(Array.isArray(docsData) ? docsData : []);
+      setProjects(Array.isArray(projRes) ? projRes : []);
+    } catch {
+      setCostDocs([]);
+    } finally {
+      setLoadingDocs(false);
+    }
+  }, []);
+
   useEffect(() => {
     fetchInvoices();
   }, [fetchInvoices]);
+
+  useEffect(() => {
+    fetchCostDocs();
+  }, [fetchCostDocs]);
+
+  const handleDocUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || file.size === 0) return;
+      setUploadingDoc(true);
+      try {
+        const form = new FormData();
+        form.set("file", file);
+        form.set("type", uploadDocType);
+        form.set("projectId", uploadProjectId === "misc" ? "misc" : uploadProjectId);
+        const res = await fetch("/api/cost-documents", { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data?.error || "Upload failed");
+        toast.success("Document uploaded");
+        setUploadInputKey((k) => k + 1);
+        await fetchCostDocs();
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : "Upload failed");
+      } finally {
+        setUploadingDoc(false);
+        e.target.value = "";
+      }
+    },
+    [uploadDocType, uploadProjectId, fetchCostDocs]
+  );
+
+  const byProject = costDocs.reduce(
+    (acc, d) => {
+      const key = d.projectId ?? "__misc__";
+      if (!acc[key]) acc[key] = [];
+      acc[key].push(d);
+      return acc;
+    },
+    {} as Record<string, CostDocument[]>
+  );
+  const miscDocs = byProject["__misc__"] ?? [];
+  const projectKeys = Object.keys(byProject).filter((k) => k !== "__misc__");
 
   return (
     <div className="space-y-6">
@@ -108,11 +196,111 @@ export default function CostingPage() {
       </div>
 
       <p className="text-sm text-gray-600">
-        Vendor invoices and line mapping. Map lines to projects and categories for estimate vs actual comparison.
+        Upload reservations, supplier invoices, estimates, and Sage invoices. Assign to a project or keep in Miscellaneous.
+        Vendor invoices and line mapping below for estimate vs actual.
         <Link href="/dashboard" className="ml-1 text-[var(--accent-hover)] hover:underline">
           View project drilldown
         </Link>
       </p>
+
+      {/* Document upload */}
+      <section className="neo-card p-4 space-y-3">
+        <h2 className="text-sm font-semibold text-gray-800">Upload document</h2>
+        <div className="flex flex-wrap items-end gap-3">
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+            <select
+              value={uploadDocType}
+              onChange={(e) => setUploadDocType(e.target.value)}
+              className="neo-select px-3 py-2 text-sm"
+            >
+              {DOC_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-gray-600 mb-1">Assign to</label>
+            <select
+              value={uploadProjectId}
+              onChange={(e) => setUploadProjectId(e.target.value)}
+              className="neo-select px-3 py-2 text-sm min-w-[180px]"
+            >
+              <option value="misc">Miscellaneous</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.jobNumber ? `${p.jobNumber} — ` : ""}{p.name}
+                </option>
+              ))}
+            </select>
+          </div>
+          <label className="cursor-pointer neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50">
+            {uploadingDoc ? "Uploading…" : "Choose file"}
+            <input
+              key={uploadInputKey}
+              type="file"
+              accept=".pdf,.csv,.xlsx,.xls,.png,.jpg,.jpeg,.txt"
+              className="hidden"
+              onChange={handleDocUpload}
+              disabled={uploadingDoc}
+            />
+          </label>
+        </div>
+      </section>
+
+      {/* Document history: per project + miscellaneous */}
+      <section className="neo-card p-4 space-y-4">
+        <h2 className="text-sm font-semibold text-gray-800">Document history</h2>
+        {loadingDocs ? (
+          <p className="text-sm text-gray-500">Loading…</p>
+        ) : costDocs.length === 0 ? (
+          <p className="text-sm text-gray-500">No documents yet. Upload above to get started.</p>
+        ) : (
+          <div className="space-y-4">
+            {projectKeys.map((pid) => {
+              const list = byProject[pid];
+              const proj = list?.[0]?.project;
+              return (
+                <div key={pid}>
+                  <h3 className="text-xs font-medium text-gray-600 mb-2">
+                    {proj?.jobNumber ? `${proj.jobNumber} — ` : ""}{proj?.name ?? pid}
+                    <Link href={`/projects/${pid}`} className="ml-2 text-[var(--accent)] hover:underline">Open</Link>
+                  </h3>
+                  <ul className="space-y-1 text-sm">
+                    {list?.map((d) => (
+                      <li key={d.id} className="flex items-center gap-2">
+                        <span className="capitalize text-gray-700">{d.type.replace(/_/g, " ")}</span>
+                        <a href={`/${d.storagePath}`} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline truncate max-w-[200px]">
+                          {d.sourceName}
+                        </a>
+                        {d.invoiceNumber && <span className="text-gray-500">{d.invoiceNumber}</span>}
+                        <span className="text-gray-400">{new Date(d.createdAt).toLocaleDateString("en-CA")}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
+            {miscDocs.length > 0 && (
+              <div>
+                <h3 className="text-xs font-medium text-gray-600 mb-2">Miscellaneous</h3>
+                <ul className="space-y-1 text-sm">
+                  {miscDocs.map((d) => (
+                    <li key={d.id} className="flex items-center gap-2">
+                      <span className="capitalize text-gray-700">{d.type.replace(/_/g, " ")}</span>
+                      <a href={`/${d.storagePath}`} target="_blank" rel="noopener noreferrer" className="text-[var(--accent)] hover:underline truncate max-w-[200px]">
+                        {d.sourceName}
+                      </a>
+                      {d.invoiceNumber && <span className="text-gray-500">{d.invoiceNumber}</span>}
+                      <span className="text-gray-400">{new Date(d.createdAt).toLocaleDateString("en-CA")}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        )}
+      </section>
 
       {loading ? (
         <p className="py-8 text-center text-gray-500">Loading…</p>
