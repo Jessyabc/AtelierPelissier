@@ -1,12 +1,25 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { computeInventoryState } from "@/lib/observability/recalculateInventoryState";
 import { prisma } from "@/lib/db";
+import { z } from "zod";
 
 /**
  * GET: Inventory items with computed onHand, reserved, available.
- * Phase 2 dashboard endpoint.
+ * POST: Create a new inventory item.
  */
 export const dynamic = "force-dynamic";
+
+const createItemSchema = z.object({
+  materialCode: z.string().min(1).max(100).trim(),
+  description: z.string().min(1).max(500).trim(),
+  unit: z.string().max(50).trim().default("sheets"),
+  onHand: z.number().min(0).default(0),
+  minThreshold: z.number().min(0).default(0),
+  reorderPoint: z.number().min(0).default(0),
+  reorderQty: z.number().min(0).default(0),
+  costDefault: z.number().min(0).default(0),
+  category: z.enum(["sheetGoods", "hardware", "finish", "delivery", "outsourced", "labor", "misc"]).default("sheetGoods"),
+});
 
 export async function GET() {
   const [items, state] = await Promise.all([
@@ -35,4 +48,32 @@ export async function GET() {
   });
 
   return NextResponse.json(enriched);
+}
+
+export async function POST(req: NextRequest) {
+  let body: unknown;
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+  }
+
+  const parsed = createItemSchema.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json(
+      { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
+      { status: 400 }
+    );
+  }
+
+  const existing = await prisma.inventoryItem.findUnique({
+    where: { materialCode: parsed.data.materialCode },
+    select: { id: true },
+  });
+  if (existing) {
+    return NextResponse.json({ error: "Material code already exists" }, { status: 409 });
+  }
+
+  const item = await prisma.inventoryItem.create({ data: parsed.data });
+  return NextResponse.json(item, { status: 201 });
 }

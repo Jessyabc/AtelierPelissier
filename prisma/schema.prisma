@@ -88,6 +88,12 @@ model Project {
   // Phase 2: Deliverables within the project (vanity, kitchen, panel, etc.) — each has its own process checklist
   projectItems       ProjectItem[]
   prerequisiteLines  PrerequisiteLine[]
+
+  @@index([isDone, isDraft])
+  @@index([jobNumber])
+  @@index([clientFirstName, clientLastName])
+  @@index([createdAt])
+  @@index([targetDate])
 }
 
 // Phase 2: One deliverable within a project (vanity, side unit, kitchen, panel, custom thing)
@@ -423,6 +429,9 @@ model StockMovement {
   note     String?
 
   createdAt DateTime @default(now())
+
+  @@index([inventoryItemId])
+  @@index([createdAt])
 }
 
 model MaterialRequirement {
@@ -435,6 +444,7 @@ model MaterialRequirement {
   allocatedQty Float    @default(0)
 
   @@unique([projectId, materialCode])
+  @@index([materialCode])
 }
 
 model Supplier {
@@ -488,6 +498,11 @@ model Order {
   updatedAt DateTime @updatedAt
 
   lines OrderLine[]
+
+  @@index([status])
+  @@index([projectId])
+  @@index([supplierId])
+  @@index([createdAt])
 }
 
 model OrderLine {

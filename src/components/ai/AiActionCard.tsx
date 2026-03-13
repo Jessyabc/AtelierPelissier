@@ -5,6 +5,10 @@ const actionLabels: Record<string, string> = {
   addMaterial: "Add Material to Project",
   openEmail: "Open Email Draft",
   createProjectFromMonday: "Create Project from Monday.com",
+  receiveInventory: "Receive Stock into Inventory",
+  createInventoryItem: "Create New Inventory Item",
+  updateProjectStatus: "Update Project Status",
+  receiveOrder: "Receive Order",
 };
 
 export function AiActionCard({
@@ -62,6 +66,44 @@ export function AiActionCard({
               <div>Item: {String(action.itemId ?? "")}</div>
             )}
             <div className="text-[10px] opacity-80">Creates draft project(s) with name, job #, and client from the Monday item(s).</div>
+          </>
+        )}
+
+        {action.action === "receiveInventory" && (
+          <>
+            <div>Material: <strong>{String(action.materialCode)}</strong></div>
+            <div>Qty to receive: <strong>{String(action.quantity)}</strong></div>
+            {action.note && <div>Note: {String(action.note)}</div>}
+            {action.orderId && <div>Against order: {String(action.orderId)}</div>}
+            <div className="text-[10px] opacity-80">Updates onHand stock and creates a StockMovement record.</div>
+          </>
+        )}
+
+        {action.action === "createInventoryItem" && (
+          <>
+            <div>Code: <strong>{String(action.materialCode)}</strong></div>
+            <div>Description: {String(action.description)}</div>
+            <div>Unit: {String(action.unit ?? "sheets")} — Category: {String(action.category ?? "sheetGoods")}</div>
+            {(action.onHand as number) > 0 && <div>Initial stock: {String(action.onHand)}</div>}
+          </>
+        )}
+
+        {action.action === "updateProjectStatus" && (
+          <>
+            <div>Project: {String(action.projectId)}</div>
+            <div>New status: <strong>{String(action.status)}</strong></div>
+          </>
+        )}
+
+        {action.action === "receiveOrder" && (
+          <>
+            <div>Order ID: {String(action.orderId)}</div>
+            {Array.isArray(action.lines) ? (
+              <div>Receiving {(action.lines as unknown[]).length} specific line(s) (partial receipt).</div>
+            ) : (
+              <div>Receiving all lines at their ordered quantities.</div>
+            )}
+            <div className="text-[10px] opacity-80">Updates inventory onHand and advances order status.</div>
           </>
         )}
       </div>
