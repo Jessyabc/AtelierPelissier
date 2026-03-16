@@ -187,6 +187,97 @@ export const AI_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "searchInventory",
+      description: "Search inventory items by name, description, or partial material code. Use this to resolve a product name (e.g. 'white melamine', 'birch', 'drawer slides') to its material code before calling receiveInventory or other functions that require a materialCode.",
+      parameters: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Partial name, description, or material code to search for." },
+        },
+        required: ["query"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "receiveInventory",
+      description: "Propose adding stock to an existing inventory item (e.g. when a delivery arrives). QUEUED — requires user approval. If you don't know the exact materialCode, call searchInventory first to find it.",
+      parameters: {
+        type: "object",
+        properties: {
+          materialCode: { type: "string", description: "Exact material code of the inventory item." },
+          quantity: { type: "number", description: "Quantity received (positive number)." },
+          note: { type: "string", description: "Optional note (e.g. supplier name, invoice number, date)." },
+          orderId: { type: "string", description: "Optional order ID if receiving against a specific order." },
+        },
+        required: ["materialCode", "quantity"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "createInventoryItem",
+      description: "Propose creating a new inventory item (product) that doesn't exist yet. QUEUED — requires user approval. Use this when the user wants to add a new product that isn't in the system.",
+      parameters: {
+        type: "object",
+        properties: {
+          materialCode: { type: "string", description: "Unique material code (e.g. MEL-WHT-3/4-4x8). Concise, uppercase." },
+          description: { type: "string", description: "Human-readable description (e.g. 'White Melamine 3/4\" 4x8')." },
+          unit: { type: "string", description: "Unit of measure (sheets, pieces, feet, boxes). Default: sheets." },
+          onHand: { type: "number", description: "Initial quantity on hand. Default: 0." },
+          category: { type: "string", enum: ["sheetGoods", "hardware", "finish", "delivery", "outsourced", "labor", "misc"], description: "Product category." },
+          minThreshold: { type: "number", description: "Minimum stock alert threshold. Default: 0." },
+        },
+        required: ["materialCode", "description"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "updateProjectStatus",
+      description: "Propose changing a project's status: activate a draft, mark as done, or reopen. QUEUED — requires user approval.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectId: { type: "string", description: "Project ID or job number." },
+          status: { type: "string", enum: ["active", "done", "draft"], description: "New status: 'active' (start production), 'done' (completed/delivered), 'draft' (reopen as draft)." },
+        },
+        required: ["projectId", "status"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "receiveOrder",
+      description: "Propose marking an order as received and updating inventory quantities. QUEUED — requires user approval. Use when a delivery arrives against an existing order. Call getProjectStatus or getInventoryStatus first to find the orderId if needed.",
+      parameters: {
+        type: "object",
+        properties: {
+          orderId: { type: "string", description: "The order ID to receive." },
+          lines: {
+            type: "array",
+            description: "Optional: specific lines to receive. If omitted, all lines are received at their ordered quantity.",
+            items: {
+              type: "object",
+              properties: {
+                orderLineId: { type: "string" },
+                receivedQty: { type: "number" },
+              },
+              required: ["orderLineId", "receivedQty"],
+            },
+          },
+        },
+        required: ["orderId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "createProjectsFromMondayItems",
       description: "Propose creating draft projects for MULTIPLE Monday.com items or subitems in one step. REQUIRED when the user asks to create projects from Monday or confirms after you listed items. Call listMondayItems first to get item IDs (parent and subitem IDs in brackets e.g. [123], [456]), then call this with boardId and itemIds array. Subitem IDs (e.g. Wood Shop subitems) are supported. If you do not call this function, no Approve button appears and no projects are created. QUEUED — user approves once and all are created.",
       parameters: {
@@ -200,6 +291,41 @@ export const AI_TOOLS: ChatCompletionTool[] = [
           },
         },
         required: ["boardId", "itemIds"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listEmployees",
+      description: "List team members (employees). Optionally filter by role: salesperson, woodworker, or admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["salesperson", "woodworker", "admin"], description: "Optional role filter." },
+        },
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getActivePunches",
+      description: "Get all employees currently clocked in — who is on the shop floor right now, at which station, and on which job.",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getLaborHours",
+      description: "Get labor hours logged, optionally filtered by project or employee. Returns total hours and a breakdown by employee and station.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectId: { type: "string", description: "Optional project ID or job number to filter by." },
+          employeeId: { type: "string", description: "Optional employee ID to filter by." },
+        },
       },
     },
   },
@@ -248,6 +374,30 @@ export async function executeFunctionCall(
 
     case "createProjectsFromMondayItems":
       return handleCreateProjectsFromMondayItems(args);
+
+    case "searchInventory":
+      return { result: await handleSearchInventory(args.query as string) };
+
+    case "receiveInventory":
+      return handleReceiveInventory(args);
+
+    case "createInventoryItem":
+      return handleCreateInventoryItem(args);
+
+    case "updateProjectStatus":
+      return handleUpdateProjectStatus(args);
+
+    case "receiveOrder":
+      return handleReceiveOrder(args);
+
+    case "listEmployees":
+      return { result: await handleListEmployees(args.role as string | undefined) };
+
+    case "getActivePunches":
+      return { result: await handleGetActivePunches() };
+
+    case "getLaborHours":
+      return { result: await handleGetLaborHours(args.projectId as string | undefined, args.employeeId as string | undefined) };
 
     default:
       return { result: `Unknown function: ${name}` };
@@ -584,6 +734,171 @@ function handleCreateProjectFromMondayItem(
       itemId,
     },
   };
+}
+
+async function handleSearchInventory(query: string): Promise<string> {
+  const items = await prisma.inventoryItem.findMany({
+    where: {
+      OR: [
+        { materialCode: { contains: query } },
+        { description: { contains: query } },
+      ],
+    },
+    take: 15,
+    orderBy: { materialCode: "asc" },
+  });
+
+  if (items.length === 0) return `No inventory items found matching "${query}"`;
+
+  const state = await computeInventoryState(items.map((i) => i.materialCode));
+  const stateMap = new Map(state.map((s) => [s.materialCode, s]));
+
+  return items
+    .map((i) => {
+      const s = stateMap.get(i.materialCode);
+      return `${i.materialCode} — ${i.description} (${i.unit}): onHand=${s?.onHand ?? i.onHand}, available=${s?.availableQty ?? i.onHand}`;
+    })
+    .join("\n");
+}
+
+function handleReceiveInventory(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
+  const materialCode = args.materialCode as string;
+  const quantity = args.quantity as number;
+  return {
+    result: `Proposed receiving ${quantity} × ${materialCode} into inventory. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "receiveInventory",
+      materialCode,
+      quantity,
+      note: args.note ?? null,
+      orderId: args.orderId ?? null,
+    },
+  };
+}
+
+function handleCreateInventoryItem(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
+  return {
+    result: `Proposed creating new inventory item: ${args.materialCode} — ${args.description}. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "createInventoryItem",
+      materialCode: args.materialCode,
+      description: args.description,
+      unit: args.unit ?? "sheets",
+      onHand: args.onHand ?? 0,
+      category: args.category ?? "sheetGoods",
+      minThreshold: args.minThreshold ?? 0,
+    },
+  };
+}
+
+function handleUpdateProjectStatus(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
+  const status = args.status as string;
+  const label = status === "active" ? "activate" : status === "done" ? "mark as done" : "reopen as draft";
+  return {
+    result: `Proposed to ${label} project ${args.projectId}. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "updateProjectStatus",
+      projectId: args.projectId,
+      status,
+    },
+  };
+}
+
+function handleReceiveOrder(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
+  const lines = args.lines as { orderLineId: string; receivedQty: number }[] | undefined;
+  const summary = lines
+    ? `${lines.length} line(s) (partial)`
+    : "all lines at ordered quantities";
+  return {
+    result: `Proposed receiving order ${args.orderId} — ${summary}. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "receiveOrder",
+      orderId: args.orderId,
+      lines: args.lines ?? null,
+    },
+  };
+}
+
+async function handleListEmployees(role?: string): Promise<string> {
+  const employees = await prisma.employee.findMany({
+    where: { active: true, ...(role ? { role } : {}) },
+    orderBy: [{ role: "asc" }, { name: "asc" }],
+  });
+  if (employees.length === 0) return role ? `No active ${role}s found.` : "No employees found.";
+  return employees.map((e) => `${e.name} (${e.role})${e.email ? ` — ${e.email}` : ""}`).join("\n");
+}
+
+async function handleGetActivePunches(): Promise<string> {
+  const punches = await prisma.timePunch.findMany({
+    where: { endTime: null },
+    include: {
+      employee: { select: { name: true, role: true } },
+      station: { select: { name: true } },
+      project: { select: { name: true, jobNumber: true } },
+    },
+    orderBy: { startTime: "asc" },
+  });
+  if (punches.length === 0) return "Nobody is currently clocked in.";
+  const lines = punches.map((p) => {
+    const mins = Math.round((Date.now() - new Date(p.startTime).getTime()) / 60000);
+    const dur = mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+    return `${p.employee.name} @ ${p.station?.name ?? "unknown station"} — ${p.project ? (p.project.jobNumber ?? p.project.name) : "general work"} (${dur})`;
+  });
+  return `${punches.length} people on the floor:\n${lines.join("\n")}`;
+}
+
+async function handleGetLaborHours(projectIdOrRef?: string, employeeId?: string): Promise<string> {
+  let projectId: string | undefined;
+  if (projectIdOrRef) {
+    const resolved = await resolveProjectId(projectIdOrRef);
+    projectId = resolved ?? undefined;
+    if (!projectId) return `Project not found: ${projectIdOrRef}`;
+  }
+
+  const punches = await prisma.timePunch.findMany({
+    where: {
+      endTime: { not: null },
+      ...(projectId ? { projectId } : {}),
+      ...(employeeId ? { employeeId } : {}),
+    },
+    include: {
+      employee: { select: { name: true } },
+      station: { select: { name: true } },
+      project: { select: { name: true, jobNumber: true } },
+    },
+    orderBy: { startTime: "desc" },
+  });
+
+  if (punches.length === 0) return "No labor hours logged for the specified filters.";
+
+  const totalMins = punches.reduce((s, p) => s + (p.durationMinutes ?? 0), 0);
+  const totalH = (totalMins / 60).toFixed(1);
+
+  // Group by employee
+  const byEmployee = new Map<string, number>();
+  for (const p of punches) {
+    const key = p.employee.name;
+    byEmployee.set(key, (byEmployee.get(key) ?? 0) + (p.durationMinutes ?? 0));
+  }
+
+  const lines = [`Total: ${totalH}h (${punches.length} punches)`, ""];
+  for (const [name, mins] of Array.from(byEmployee)) {
+    lines.push(`  ${name}: ${(mins / 60).toFixed(1)}h`);
+  }
+
+  return lines.join("\n");
 }
 
 function handleCreateProjectsFromMondayItems(

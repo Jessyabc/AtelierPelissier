@@ -33,18 +33,30 @@ export async function buildContextMessage(scope: AiContextScope): Promise<string
     }
   }
 
-  // Always include: inventory alerts
+  // Always include: full inventory catalog (compact) so AI can resolve product names to codes
   const invState = await computeInventoryState();
-  const items = await prisma.inventoryItem.findMany();
+  const items = await prisma.inventoryItem.findMany({ orderBy: { materialCode: "asc" } });
   const itemMap = new Map(items.map((i) => [i.materialCode, i]));
 
+  if (items.length > 0) {
+    parts.push("\n--- Inventory Catalog (materialCode → description | onHand) ---");
+    const stateMap = new Map(invState.map((s) => [s.materialCode, s]));
+    for (const item of items) {
+      const s = stateMap.get(item.materialCode);
+      const onHand = s?.onHand ?? item.onHand ?? 0;
+      const available = s?.availableQty ?? onHand;
+      parts.push(`${item.materialCode}: ${item.description} (${item.unit}) onHand=${onHand}, available=${available}`);
+    }
+  }
+
+  // Inventory alerts (items below threshold)
   const alerts = invState.filter((s) => {
     const item = itemMap.get(s.materialCode);
     return item && (s.availableQty < (item.minThreshold ?? 0) || s.availableQty < (item.reorderPoint ?? 0));
   });
 
   if (alerts.length > 0) {
-    parts.push("\n--- Inventory Alerts ---");
+    parts.push("\n--- Inventory Alerts (below threshold) ---");
     for (const a of alerts) {
       const item = itemMap.get(a.materialCode);
       parts.push(`- ${a.materialCode} (${item?.description ?? ""}): onHand=${a.onHand}, available=${a.availableQty}, incoming=${a.incomingQty}, minThreshold=${item?.minThreshold ?? 0}`);

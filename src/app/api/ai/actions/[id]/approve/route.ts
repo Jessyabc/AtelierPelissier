@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAppConfig } from "@/lib/config";
 import { getMondayItemAsProject } from "@/lib/monday";
-import { triggerInventoryRecalcForMaterial } from "@/lib/observability/recalculateProjectState";
+import {
+  triggerInventoryRecalcForMaterial,
+  triggerOrderInventoryRecalc,
+} from "@/lib/observability/recalculateProjectState";
 
 /**
  * POST /api/ai/actions/[id]/approve
@@ -105,12 +108,28 @@ export async function POST(
 
       case "addMaterial": {
         const { projectId, materialCode, quantity } = payload;
+
+        // Validate materialCode exists
+        const invCheck = await prisma.inventoryItem.findUnique({
+          where: { materialCode: materialCode as string },
+          select: { id: true },
+        });
+        if (!invCheck) {
+          return NextResponse.json(
+            { error: `Material code not found: ${materialCode}. Create it in inventory first or use createInventoryItem.` },
+            { status: 404 }
+          );
+        }
+
         // Resolve project ID
         let resolvedProjectId = projectId;
         const directCheck = await prisma.project.findUnique({ where: { id: projectId as string }, select: { id: true } });
         if (!directCheck) {
           const byJob = await prisma.project.findFirst({ where: { jobNumber: projectId as string }, select: { id: true } });
-          resolvedProjectId = byJob?.id ?? projectId;
+          if (!byJob) {
+            return NextResponse.json({ error: `Project not found: ${projectId}` }, { status: 404 });
+          }
+          resolvedProjectId = byJob.id;
         }
 
         await prisma.materialRequirement.upsert({
@@ -194,6 +213,171 @@ export async function POST(
           total: entries.length,
           errors: errors.length ? errors : undefined,
         };
+        break;
+      }
+
+      case "receiveInventory": {
+        const { materialCode, quantity, note, orderId } = payload as {
+          materialCode: string;
+          quantity: number;
+          note?: string;
+          orderId?: string;
+        };
+
+        const invItem = await prisma.inventoryItem.findUnique({ where: { materialCode } });
+        if (!invItem) {
+          return NextResponse.json({ error: `Inventory item not found: ${materialCode}` }, { status: 404 });
+        }
+
+        await prisma.$transaction([
+          prisma.stockMovement.create({
+            data: {
+              inventoryItemId: invItem.id,
+              type: "receive",
+              quantity,
+              note: note ?? null,
+              orderLineId: orderId ?? null,
+            },
+          }),
+          prisma.inventoryItem.update({
+            where: { id: invItem.id },
+            data: { onHand: { increment: quantity }, stockQty: { increment: quantity } },
+          }),
+        ]);
+
+        triggerInventoryRecalcForMaterial(materialCode).catch(() => {});
+        result = { status: "inventory_received", materialCode, quantity, newOnHand: invItem.onHand + quantity };
+        break;
+      }
+
+      case "createInventoryItem": {
+        const { materialCode, description, unit, onHand, category, minThreshold } = payload as {
+          materialCode: string;
+          description: string;
+          unit?: string;
+          onHand?: number;
+          category?: string;
+          minThreshold?: number;
+        };
+
+        const existing = await prisma.inventoryItem.findUnique({ where: { materialCode } });
+        if (existing) {
+          return NextResponse.json({ error: `Material code already exists: ${materialCode}` }, { status: 409 });
+        }
+
+        const newItem = await prisma.inventoryItem.create({
+          data: {
+            materialCode,
+            description,
+            unit: unit ?? "sheets",
+            onHand: onHand ?? 0,
+            stockQty: onHand ?? 0,
+            category: category ?? "sheetGoods",
+            minThreshold: minThreshold ?? 0,
+          },
+        });
+
+        result = { status: "item_created", id: newItem.id, materialCode };
+        break;
+      }
+
+      case "updateProjectStatus": {
+        const { projectId: statusProjectId, status } = payload as {
+          projectId: string;
+          status: "active" | "done" | "draft";
+        };
+
+        // Resolve project ID
+        let resolvedId = statusProjectId;
+        const directCheck = await prisma.project.findUnique({ where: { id: statusProjectId }, select: { id: true } });
+        if (!directCheck) {
+          const byJob = await prisma.project.findFirst({ where: { jobNumber: statusProjectId }, select: { id: true } });
+          if (!byJob) {
+            return NextResponse.json({ error: `Project not found: ${statusProjectId}` }, { status: 404 });
+          }
+          resolvedId = byJob.id;
+        }
+
+        const statusData =
+          status === "active"
+            ? { isDraft: false, isDone: false }
+            : status === "done"
+              ? { isDraft: false, isDone: true }
+              : { isDraft: true, isDone: false };
+
+        await prisma.project.update({ where: { id: resolvedId }, data: statusData });
+        result = { status: "project_updated", projectId: resolvedId, newStatus: status };
+        break;
+      }
+
+      case "receiveOrder": {
+        const { orderId, lines: receiveLines } = payload as {
+          orderId: string;
+          lines?: { orderLineId: string; receivedQty: number }[];
+        };
+
+        const order = await prisma.order.findUnique({
+          where: { id: orderId },
+          include: { lines: { include: { inventoryItem: true } } },
+        });
+        if (!order) {
+          return NextResponse.json({ error: `Order not found: ${orderId}` }, { status: 404 });
+        }
+        if (order.status === "cancelled") {
+          return NextResponse.json({ error: "Cannot receive a cancelled order" }, { status: 400 });
+        }
+
+        const lineUpdates = new Map<string, number>();
+        if (receiveLines && receiveLines.length > 0) {
+          for (const l of receiveLines) lineUpdates.set(l.orderLineId, l.receivedQty);
+        } else {
+          for (const l of order.lines) lineUpdates.set(l.id, l.quantity);
+        }
+
+        const materialCodesToRecalc: string[] = [];
+
+        await prisma.$transaction(async (tx) => {
+          for (const line of order.lines) {
+            const qty = lineUpdates.get(line.id);
+            if (!qty || qty <= 0) continue;
+
+            await tx.orderLine.update({
+              where: { id: line.id },
+              data: { receivedQty: { increment: qty } },
+            });
+
+            if (line.inventoryItemId) {
+              await tx.inventoryItem.update({
+                where: { id: line.inventoryItemId },
+                data: { onHand: { increment: qty }, stockQty: { increment: qty } },
+              });
+              await tx.stockMovement.create({
+                data: {
+                  inventoryItemId: line.inventoryItemId,
+                  type: "receive",
+                  quantity: qty,
+                  note: `Received via order ${orderId} (AI-approved)`,
+                  orderLineId: line.id,
+                },
+              });
+              materialCodesToRecalc.push(line.materialCode);
+            }
+          }
+
+          const updatedLines = await tx.orderLine.findMany({ where: { orderId } });
+          const allReceived = updatedLines.every((l) => l.receivedQty >= l.quantity);
+          const anyReceived = updatedLines.some((l) => l.receivedQty > 0);
+          await tx.order.update({
+            where: { id: orderId },
+            data: { status: allReceived ? "received" : anyReceived ? "partial" : order.status },
+          });
+        });
+
+        triggerOrderInventoryRecalc(order.projectId);
+        for (const code of materialCodesToRecalc) {
+          triggerInventoryRecalcForMaterial(code).catch(() => {});
+        }
+        result = { status: "order_received", orderId };
         break;
       }
 

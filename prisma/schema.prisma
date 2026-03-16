@@ -85,9 +85,20 @@ model Project {
   processTemplateId String?
   processTemplate   ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
 
+  // Salesperson responsible for this project
+  salespersonId String?
+  salesperson   Employee? @relation("SalesPerson", fields: [salespersonId], references: [id], onDelete: SetNull)
+
   // Phase 2: Deliverables within the project (vanity, kitchen, panel, etc.) — each has its own process checklist
   projectItems       ProjectItem[]
   prerequisiteLines  PrerequisiteLine[]
+  timePunches        TimePunch[]
+
+  @@index([isDone, isDraft])
+  @@index([jobNumber])
+  @@index([clientFirstName, clientLastName])
+  @@index([createdAt])
+  @@index([targetDate])
 }
 
 // Phase 2: One deliverable within a project (vanity, side unit, kitchen, panel, custom thing)
@@ -423,6 +434,9 @@ model StockMovement {
   note     String?
 
   createdAt DateTime @default(now())
+
+  @@index([inventoryItemId])
+  @@index([createdAt])
 }
 
 model MaterialRequirement {
@@ -435,6 +449,7 @@ model MaterialRequirement {
   allocatedQty Float    @default(0)
 
   @@unique([projectId, materialCode])
+  @@index([materialCode])
 }
 
 model Supplier {
@@ -488,6 +503,11 @@ model Order {
   updatedAt DateTime @updatedAt
 
   lines OrderLine[]
+
+  @@index([status])
+  @@index([projectId])
+  @@index([supplierId])
+  @@index([createdAt])
 }
 
 model OrderLine {
@@ -726,6 +746,53 @@ model AppErrorLog {
   aiDiagnosticPrompt  String?  // Generated on demand
   resolved            Boolean  @default(false)
   createdAt           DateTime @default(now())
+}
+
+// --- Team: Employees & Time Tracking ---
+
+model Employee {
+  id        String   @id @default(cuid())
+  name      String
+  email     String?  @unique
+  role      String   // salesperson | woodworker | admin
+  color     String   @default("#6366f1") // Display color for UI
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  timePunches   TimePunch[]
+  projects      Project[]   @relation("SalesPerson")
+}
+
+model WorkStation {
+  id        String   @id @default(cuid())
+  name      String   // e.g. "Scie table", "Plaqueuse de chants"
+  slug      String   @unique // URL-safe: "scie-table", "plaqueuse-chants"
+  location  String?  // Optional room/area description
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  timePunches TimePunch[]
+}
+
+model TimePunch {
+  id              String      @id @default(cuid())
+  employeeId      String
+  employee        Employee    @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  stationId       String?
+  station         WorkStation? @relation(fields: [stationId], references: [id], onDelete: SetNull)
+  projectId       String?
+  project         Project?    @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  startTime       DateTime    @default(now())
+  endTime         DateTime?   // null = currently active punch
+  durationMinutes Int?        // computed on clock-out
+  notes           String?
+  createdAt       DateTime    @default(now())
+
+  @@index([employeeId, startTime])
+  @@index([projectId])
+  @@index([stationId])
 }
 
 // --- AI Assistant ---
