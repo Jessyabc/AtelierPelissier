@@ -1,16 +1,24 @@
 import OpenAI from "openai";
 import { getAppConfig } from "@/lib/config";
 
+/**
+ * Cache client per API key so key rotation in .env works after the next request
+ * without requiring a full server restart (long-lived Next.js dev / Node processes
+ * would otherwise keep the first key forever).
+ */
 let _client: OpenAI | null = null;
+let _clientKey: string | null = null;
 
 export function getOpenAIClient(): OpenAI {
-  if (!_client) {
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OPENAI_API_KEY is not set. Add it to .env.local");
-    }
-    _client = new OpenAI({ apiKey });
+  const apiKey = process.env.OPENAI_API_KEY?.trim();
+  if (!apiKey) {
+    throw new Error("OPENAI_API_KEY is not set. Add it to .env.local");
   }
+  if (_client && _clientKey === apiKey) {
+    return _client;
+  }
+  _clientKey = apiKey;
+  _client = new OpenAI({ apiKey });
   return _client;
 }
 

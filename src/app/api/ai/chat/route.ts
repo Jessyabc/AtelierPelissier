@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { AuthenticationError, RateLimitError } from "openai";
 import { prisma } from "@/lib/db";
 import { getOpenAIClient, getSystemPrompt } from "@/lib/ai/openai";
 import { buildContextMessage } from "@/lib/ai/context";
@@ -135,7 +136,22 @@ export async function POST(req: NextRequest) {
         for (const toolCall of assistantMsg.tool_calls) {
           const tc = toolCall as unknown as Record<string, Record<string, string>>;
           const fnName = tc.function?.name ?? "";
-          const fnArgs = JSON.parse(tc.function?.arguments ?? "{}");
+          const rawArgs = tc.function?.arguments ?? "{}";
+          let fnArgs: Record<string, unknown>;
+          try {
+            fnArgs = JSON.parse(rawArgs) as Record<string, unknown>;
+          } catch {
+            const callIdBad = (toolCall as unknown as { id: string }).id;
+            currentMessages.push({
+              role: "tool" as unknown as "user",
+              tool_call_id: callIdBad,
+              content: JSON.stringify({
+                error: "invalid_json_arguments",
+                message: "Could not parse tool arguments as JSON; retry with valid JSON only.",
+              }),
+            } as unknown as typeof currentMessages[0]);
+            continue;
+          }
 
           const fnResult = await executeFunctionCall(fnName, fnArgs);
 
@@ -171,6 +187,11 @@ export async function POST(req: NextRequest) {
       break;
     }
 
+    if (!finalReply.trim()) {
+      finalReply =
+        "I couldn’t produce a reply (tools may still have run). Please rephrase your question or try again in a moment.";
+    }
+
     // Save assistant reply and capture id for action approval
     const assistantMsg = await prisma.aiMessage.create({
       data: {
@@ -196,6 +217,28 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     console.error("POST /api/ai/chat error:", err);
+
+    if (err instanceof AuthenticationError) {
+      return NextResponse.json(
+        {
+          error: "OpenAI rejected this API key.",
+          details:
+            "Update OPENAI_API_KEY in .env.local and restart `npm run dev` (or redeploy). The key may be invalid or revoked.",
+        },
+        { status: 401 }
+      );
+    }
+
+    if (err instanceof RateLimitError) {
+      return NextResponse.json(
+        {
+          error: "OpenAI rate limit reached.",
+          details: "Wait a short time and try again, or check usage on your OpenAI account.",
+        },
+        { status: 429 }
+      );
+    }
+
     const errorMessage = err instanceof Error ? err.message : "Unknown error";
 
     if (errorMessage.includes("OPENAI_API_KEY")) {

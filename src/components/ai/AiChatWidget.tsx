@@ -85,7 +85,26 @@ function AiChatWidgetInner({ pathname }: { pathname: string }) {
         }),
       });
 
-      const data = await res.json();
+      const raw = await res.text();
+      let data: {
+        error?: string;
+        details?: string;
+        reply?: string;
+        conversationId?: string;
+        messageId?: string;
+        action?: Message["action"];
+      };
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {};
+      } catch {
+        setError(
+          res.ok
+            ? "The server returned an invalid response. Try again or check the dev console."
+            : `Server error (${res.status}): ${raw.slice(0, 280)}`
+        );
+        setLoading(false);
+        return;
+      }
 
       if (!res.ok) {
         const msg = data.error ?? "Chat failed";
@@ -99,7 +118,7 @@ function AiChatWidgetInner({ pathname }: { pathname: string }) {
       const assistantMsg: Message = {
         id: data.messageId,
         role: "assistant",
-        content: data.reply,
+        content: data.reply?.trim() ? data.reply : "No reply returned. Try asking again.",
         action: data.action ?? null,
         actionStatus: data.action ? "pending" : null,
       };

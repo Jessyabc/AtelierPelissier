@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 
 type Employee = { id: string; name: string; color: string; role: string; active: boolean };
 type Project = { id: string; name: string; jobNumber: string | null };
-type Station = { id: string; name: string; slug: string; location: string | null };
+type Station = { id: string; name: string; slug: string; location: string | null; active: boolean };
 type ActivePunch = {
   id: string;
   employeeId: string;
@@ -41,6 +41,7 @@ export default function PunchPage() {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
   const [tick, setTick] = useState(0);
+  const [dataReady, setDataReady] = useState(false);
 
   // Tick elapsed timer
   useEffect(() => {
@@ -49,11 +50,17 @@ export default function PunchPage() {
   }, []);
 
   const load = useCallback(async () => {
+    setDataReady(false);
     const [stationsRes, empRes, projRes] = await Promise.all([
       fetch("/api/work-stations"),
       fetch("/api/employees"),
       fetch("/api/projects"),
     ]);
+    if (!stationsRes.ok || !empRes.ok || !projRes.ok) {
+      setMessage({ text: "Could not load station or team data. Check your connection.", type: "error" });
+      setDataReady(true);
+      return;
+    }
     const stations: Station[] = await stationsRes.json();
     const emps: Employee[] = await empRes.json();
     const projects: (Project & { isDraft: boolean; isDone: boolean })[] = await projRes.json();
@@ -62,14 +69,16 @@ export default function PunchPage() {
     setStation(found);
     setEmployees(emps.filter((e) => e.active));
     setActiveJobs(projects.filter((p) => !p.isDraft && !p.isDone));
+    setDataReady(true);
   }, [stationSlug]);
 
   useEffect(() => { load(); }, [load]);
 
   async function checkActivePunch(employeeId: string) {
     const res = await fetch(`/api/time-punches/active?employeeId=${employeeId}`);
-    const punches: ActivePunch[] = await res.json();
-    return punches[0] ?? null;
+    if (!res.ok) return null;
+    const punches: ActivePunch[] = await res.json().catch(() => []);
+    return Array.isArray(punches) ? punches[0] ?? null : null;
   }
 
   async function handleSelectEmployee(emp: Employee) {
@@ -88,7 +97,7 @@ export default function PunchPage() {
     if (!selectedEmployee || !station) return;
     setLoading(true);
     try {
-      await fetch("/api/time-punches", {
+      const res = await fetch("/api/time-punches", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -97,6 +106,11 @@ export default function PunchPage() {
           projectId: project?.id ?? null,
         }),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage({ text: (data as { error?: string }).error ?? "Could not clock in", type: "error" });
+        return;
+      }
       setMessage({ text: `Clocked in — ${selectedEmployee.name} @ ${station.name}${project ? ` · ${project.jobNumber ?? project.name}` : ""}`, type: "success" });
       reset();
     } catch {
@@ -110,16 +124,21 @@ export default function PunchPage() {
     if (!activePunch) return;
     setLoading(true);
     try {
-      await fetch(`/api/time-punches/${activePunch.id}`, {
+      const res = await fetch(`/api/time-punches/${activePunch.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({}),
       });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setMessage({ text: (data as { error?: string }).error ?? "Could not stop session", type: "error" });
+        return;
+      }
       const dur = Math.round((Date.now() - new Date(activePunch.startTime).getTime()) / 60000);
       const h = Math.floor(dur / 60);
       const m = dur % 60;
       const durStr = h > 0 ? `${h}h ${m}m` : `${m}m`;
-      setMessage({ text: `Clocked out — ${activePunch.employee.name} · ${durStr} logged`, type: "success" });
+      setMessage({ text: `Stopped — ${activePunch.employee.name} · ${durStr} logged`, type: "success" });
       reset();
     } catch {
       setMessage({ text: "Error — please try again", type: "error" });
@@ -147,6 +166,11 @@ export default function PunchPage() {
         <p className="text-xs text-white/40 uppercase tracking-widest mb-1">Atelier Pelissier</p>
         <h1 className="text-xl font-bold">{station?.name ?? stationSlug}</h1>
         {station?.location && <p className="text-sm text-white/50 mt-0.5">{station.location}</p>}
+        {station && !station.active && (
+          <p className="mt-2 text-xs text-amber-300/90 rounded-lg bg-amber-500/15 border border-amber-500/30 px-3 py-2">
+            This station is disabled in Admin. Punching still works; re-enable under Work Stations &amp; QR if this QR should stay in use.
+          </p>
+        )}
       </div>
 
       {/* Message toast */}
@@ -158,10 +182,26 @@ export default function PunchPage() {
 
       <div className="flex-1 px-4 py-5">
 
+        {/* Unknown slug — QR typo or deleted station */}
+        {dataReady && !station && (
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-5 text-center text-white/60 text-sm">
+            <p className="text-white font-medium mb-2">Station not found</p>
+            <p className="text-xs">
+              This link does not match any work station slug (<code className="text-white/80">{stationSlug}</code>). Check{" "}
+              <span className="text-white/80">Admin → Work Stations &amp; QR</span> and re-print the QR if the station was renamed.
+            </p>
+          </div>
+        )}
+
         {/* STEP 1: Select employee */}
-        {step === "select-employee" && (
+        {station && step === "select-employee" && (
           <div>
             <p className="text-sm text-white/50 mb-4">Who are you?</p>
+            {orderedEmployees.length === 0 && (
+              <p className="text-sm text-white/40 rounded-xl border border-white/10 bg-white/5 p-4">
+                No active team members. Add people under <span className="text-white/70">Admin → Team Members</span> and mark them active.
+              </p>
+            )}
             <div className="grid grid-cols-2 gap-3">
               {orderedEmployees.map((emp) => (
                 <button
@@ -178,7 +218,7 @@ export default function PunchPage() {
         )}
 
         {/* STEP 2: Clock-out confirmation (already punched in) */}
-        {step === "confirm-clockout" && activePunch && selectedEmployee && (
+        {station && step === "confirm-clockout" && activePunch && selectedEmployee && (
           <div className="flex flex-col gap-4">
             <div className="rounded-2xl bg-white/5 border border-white/10 p-5">
               <p className="text-xs text-white/40 uppercase tracking-widest mb-2">Currently clocked in</p>
@@ -198,19 +238,27 @@ export default function PunchPage() {
             </div>
 
             <button
+              type="button"
               onClick={handleClockOut}
               disabled={loading}
-              className="w-full rounded-2xl py-5 bg-red-500 hover:bg-red-400 active:scale-95 transition-all font-bold text-xl disabled:opacity-50"
+              className="w-full rounded-2xl py-5 bg-red-500 hover:bg-red-400 active:scale-95 transition-all font-bold text-xl disabled:opacity-50 shadow-lg shadow-red-900/40"
             >
-              {loading ? "..." : "⏹ Clock Out"}
+              {loading ? "…" : "⏹ Stop — end session here"}
             </button>
+            <p className="text-center text-[11px] text-white/35 px-1">
+              Stops time at this station so you can scan another QR or finish your day. Same as &quot;Stop&quot; on the admin Punch Board.
+            </p>
 
             <button
+              type="button"
               onClick={() => { setStep("select-project"); setActivePunch(null); }}
               className="w-full rounded-2xl py-3 bg-white/10 hover:bg-white/20 active:scale-95 transition-all text-sm text-white/60"
             >
               Switch job instead
             </button>
+            <p className="text-center text-[10px] text-white/30 -mt-2 px-2">
+              Your current session closes automatically when you pick the next job (one active punch per person).
+            </p>
 
             <button
               onClick={reset}
@@ -222,7 +270,7 @@ export default function PunchPage() {
         )}
 
         {/* STEP 3: Select project to clock into */}
-        {step === "select-project" && selectedEmployee && (
+        {station && step === "select-project" && selectedEmployee && (
           <div>
             <div className="flex items-center gap-3 mb-5">
               <div className="w-3 h-3 rounded-full" style={{ backgroundColor: selectedEmployee.color }} />

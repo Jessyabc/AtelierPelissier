@@ -130,8 +130,8 @@ export async function buildContextMessage(scope: AiContextScope): Promise<string
         where: { active: true },
         select: { id: true, name: true, role: true },
       }),
-      prisma.punch.findMany({
-        where: { punchOut: null },
+      prisma.timePunch.findMany({
+        where: { endTime: null },
         include: {
           employee: { select: { name: true } },
           station: { select: { name: true } },
@@ -153,8 +153,11 @@ export async function buildContextMessage(scope: AiContextScope): Promise<string
     if (activePunches.length > 0) {
       parts.push(`Currently clocked in (${activePunches.length}):`);
       for (const p of activePunches) {
-        const since = p.punchIn ? `since ${p.punchIn.toISOString().replace("T", " ").slice(0, 16)}` : "";
-        parts.push(`  - ${p.employee.name} @ ${p.station.name} ${since}`);
+        const since = p.startTime
+          ? `since ${p.startTime.toISOString().replace("T", " ").slice(0, 16)}`
+          : "";
+        const stationLabel = p.station?.name ?? "no station";
+        parts.push(`  - ${p.employee.name} @ ${stationLabel} ${since}`);
       }
     } else {
       parts.push("No one currently clocked in.");

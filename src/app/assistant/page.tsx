@@ -111,7 +111,29 @@ export default function AssistantPage() {
           ...(contextProjectId ? { projectId: contextProjectId } : {}),
         }),
       });
-      const data = await res.json();
+      const raw = await res.text();
+      let data: {
+        error?: string;
+        details?: string;
+        reply?: string;
+        conversationId?: string;
+        messageId?: string;
+        action?: { action: string; [key: string]: unknown } | null;
+      };
+      try {
+        data = raw ? (JSON.parse(raw) as typeof data) : {};
+      } catch {
+        setMessages((prev) => [
+          ...prev,
+          {
+            role: "assistant",
+            content: res.ok
+              ? "The server returned an invalid response. Try again."
+              : `Server error (${res.status}): ${raw.slice(0, 280)}`,
+          },
+        ]);
+        return;
+      }
       if (!res.ok) {
         const errMsg = data.error ?? "Something went wrong.";
         setMessages((prev) => [...prev, { role: "assistant", content: data.details ? `${errMsg}: ${data.details}` : errMsg }]);
@@ -121,7 +143,7 @@ export default function AssistantPage() {
       setMessages((prev) => [...prev, {
         id: data.messageId,
         role: "assistant",
-        content: data.reply,
+        content: data.reply?.trim() ? data.reply : "No reply returned. Try asking again.",
         action: data.action ?? null,
         actionStatus: data.action ? "pending" : null,
       }]);
@@ -130,7 +152,7 @@ export default function AssistantPage() {
     } finally {
       setLoading(false);
     }
-  }, [input, loading, activeConvoId]);
+  }, [input, loading, activeConvoId, contextProjectId]);
 
   async function handleActionApprove(idx: number, approved: boolean) {
     const msg = messages[idx];

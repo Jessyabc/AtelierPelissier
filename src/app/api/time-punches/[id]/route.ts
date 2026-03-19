@@ -13,6 +13,9 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 
   const punch = await prisma.timePunch.findUnique({ where: { id: params.id } });
   if (!punch) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (punch.endTime) {
+    return NextResponse.json({ error: "This session is already stopped" }, { status: 400 });
+  }
 
   const resolvedEnd = endTime ? new Date(endTime as string) : new Date();
   const duration = Math.round((resolvedEnd.getTime() - punch.startTime.getTime()) / 60000);
