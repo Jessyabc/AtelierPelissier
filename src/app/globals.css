@@ -256,4 +256,22 @@ body {
     display: block !important;
     background: white !important;
   }
+  body.printing-quote * {
+    visibility: hidden !important;
+  }
+  body.printing-quote #quote-print,
+  body.printing-quote #quote-print * {
+    visibility: visible !important;
+  }
+  body.printing-quote #quote-print {
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    display: block !important;
+    background: white !important;
+    padding: 2rem !important;
+    box-shadow: none !important;
+    border: none !important;
+  }
 }

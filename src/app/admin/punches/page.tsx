@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import toast from "react-hot-toast";
 
 type Punch = {
   id: string;
@@ -59,18 +60,24 @@ export default function PunchesPage() {
   useEffect(() => { load(); }, [tick, load]);
 
   async function clockOut(punchId: string) {
-    await fetch(`/api/time-punches/${punchId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({}),
-    });
-    load();
+    try {
+      await fetch(`/api/time-punches/${punchId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({}) });
+      toast.success("Clocked out");
+      load();
+    } catch {
+      toast.error("Failed to clock out");
+    }
   }
 
   async function deleteP(punchId: string) {
     if (!confirm("Delete this punch?")) return;
-    await fetch(`/api/time-punches/${punchId}`, { method: "DELETE" });
-    load();
+    try {
+      await fetch(`/api/time-punches/${punchId}`, { method: "DELETE" });
+      toast.success("Punch deleted");
+      load();
+    } catch {
+      toast.error("Failed to delete punch");
+    }
   }
 
   const completedPunches = punches.filter((p) => p.endTime !== null);

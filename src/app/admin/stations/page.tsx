@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import QRCode from "qrcode";
+import toast from "react-hot-toast";
 
 type Station = { id: string; name: string; slug: string; location: string | null; active: boolean; sortOrder: number };
 
@@ -55,33 +56,31 @@ export default function StationsPage() {
   async function handleSave() {
     if (!form.name.trim()) return;
     setSaving(true);
-    if (editingId) {
-      await fetch(`/api/work-stations/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-    } else {
-      await fetch("/api/work-stations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+    try {
+      const res = editingId
+        ? await fetch(`/api/work-stations/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
+        : await fetch("/api/work-stations", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(editingId ? "Station updated" : "Station added");
+      setShowForm(false);
+      setEditingId(null);
+      setForm(EMPTY_FORM);
+      load();
+    } catch {
+      toast.error("Failed to save station");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowForm(false);
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-    load();
   }
 
   async function toggleActive(s: Station) {
-    await fetch(`/api/work-stations/${s.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !s.active }),
-    });
-    load();
+    try {
+      await fetch(`/api/work-stations/${s.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !s.active }) });
+      toast.success(s.active ? `${s.name} disabled` : `${s.name} enabled`);
+      load();
+    } catch {
+      toast.error("Failed to update station");
+    }
   }
 
   function printAllQR() {
