@@ -33,21 +33,12 @@ export async function buildContextMessage(scope: AiContextScope): Promise<string
     }
   }
 
-  // Always include: full inventory catalog (compact) so AI can resolve product names to codes
+  // Inventory: summary count + alerts only (full catalog available via getInventoryStatus tool)
   const invState = await computeInventoryState();
   const items = await prisma.inventoryItem.findMany({ orderBy: { materialCode: "asc" } });
   const itemMap = new Map(items.map((i) => [i.materialCode, i]));
 
-  if (items.length > 0) {
-    parts.push("\n--- Inventory Catalog (materialCode → description | onHand) ---");
-    const stateMap = new Map(invState.map((s) => [s.materialCode, s]));
-    for (const item of items) {
-      const s = stateMap.get(item.materialCode);
-      const onHand = s?.onHand ?? item.onHand ?? 0;
-      const available = s?.availableQty ?? onHand;
-      parts.push(`${item.materialCode}: ${item.description} (${item.unit}) onHand=${onHand}, available=${available}`);
-    }
-  }
+  parts.push(`\n[Inventory: ${items.length} SKUs tracked. Use getInventoryStatus() for full details or to look up a specific material.]`);
 
   // Inventory alerts (items below threshold)
   const alerts = invState.filter((s) => {
@@ -120,20 +111,33 @@ export async function buildContextMessage(scope: AiContextScope): Promise<string
     }
   }
 
-  // Quick project summary when not on a project page
+  // Quick project summary + team status when not on a project page
   if (!scope.projectId) {
-    const activeProjects = await prisma.project.findMany({
-      where: { isDone: false, isDraft: false },
-      select: {
-        id: true,
-        name: true,
-        jobNumber: true,
-        type: true,
-        targetDate: true,
-        _count: { select: { deviations: { where: { resolved: false } } } },
-      },
-      take: 15,
-    });
+    const [activeProjects, employees, activePunches] = await Promise.all([
+      prisma.project.findMany({
+        where: { isDone: false, isDraft: false },
+        select: {
+          id: true,
+          name: true,
+          jobNumber: true,
+          type: true,
+          targetDate: true,
+          _count: { select: { deviations: { where: { resolved: false } } } },
+        },
+        take: 15,
+      }),
+      prisma.employee.findMany({
+        where: { active: true },
+        select: { id: true, name: true, role: true },
+      }),
+      prisma.punch.findMany({
+        where: { punchOut: null },
+        include: {
+          employee: { select: { name: true } },
+          station: { select: { name: true } },
+        },
+      }),
+    ]);
 
     if (activeProjects.length > 0) {
       parts.push("\n--- Active Projects Summary ---");
@@ -141,6 +145,19 @@ export async function buildContextMessage(scope: AiContextScope): Promise<string
         const issues = p._count.deviations;
         parts.push(`- ${p.jobNumber ?? p.name} (${p.type})${p.targetDate ? ` target: ${p.targetDate.toISOString().split("T")[0]}` : ""}${issues > 0 ? ` — ${issues} issue${issues !== 1 ? "s" : ""}` : ""}`);
       }
+    }
+
+    // Team snapshot
+    parts.push(`\n--- Team Snapshot ---`);
+    parts.push(`Total active employees: ${employees.length}`);
+    if (activePunches.length > 0) {
+      parts.push(`Currently clocked in (${activePunches.length}):`);
+      for (const p of activePunches) {
+        const since = p.punchIn ? `since ${p.punchIn.toISOString().replace("T", " ").slice(0, 16)}` : "";
+        parts.push(`  - ${p.employee.name} @ ${p.station.name} ${since}`);
+      }
+    } else {
+      parts.push("No one currently clocked in.");
     }
   }
 

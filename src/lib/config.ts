@@ -82,7 +82,10 @@ export const DEFAULT_MENU_ITEMS: MenuItem[] = [
   { href: "/calendar", label: "Calendar", visible: true, order: 10 },
   { href: "/settings/risk", label: "Risk settings", visible: true, order: 11 },
   { href: "/admin", label: "Admin Hub", visible: true, order: 12 },
-  { href: "#export", label: "Export data (backup)", visible: true, order: 13, exportData: true },
+  { href: "/admin/employees", label: "Team Members", visible: true, order: 13 },
+  { href: "/admin/stations", label: "Work Stations & QR", visible: true, order: 14 },
+  { href: "/admin/punches", label: "Punch Board", visible: true, order: 15 },
+  { href: "#export", label: "Export data (backup)", visible: true, order: 16, exportData: true },
 ];
 
 export const BUILT_IN_ROOM_TYPES: RoomType[] = [
@@ -206,7 +209,12 @@ export async function getAppConfig(): Promise<AppConfigData> {
     companyPhone: row.companyPhone,
     companyAddress: row.companyAddress,
     logoUrl: row.logoUrl,
-    menuConfig: parseJson<MenuItem[]>(row.menuConfig, DEFAULT_MENU_ITEMS),
+    menuConfig: (() => {
+      const saved = parseJson<MenuItem[]>(row.menuConfig, DEFAULT_MENU_ITEMS);
+      const savedHrefs = new Set(saved.map((m) => m.href));
+      const missing = DEFAULT_MENU_ITEMS.filter((m) => !savedHrefs.has(m.href));
+      return missing.length > 0 ? [...saved, ...missing] : saved;
+    })(),
     customRoomTypes: parseJson<RoomType[]>(row.customRoomTypes, []),
     processDefaults: parseJson<Record<string, string>>(row.processDefaults, {}),
     materialAliases: parseJson<Record<string, string>>(row.materialAliases, DEFAULT_MATERIAL_ALIASES),

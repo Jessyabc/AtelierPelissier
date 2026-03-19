@@ -42,8 +42,15 @@ export default function AssistantPage() {
   const [showActions, setShowActions] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
+  const [contextProjectId, setContextProjectId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
+
+  // Pick up the last project the user visited from the floating chat widget
+  useEffect(() => {
+    const saved = localStorage.getItem("ap_last_project_id");
+    if (saved) setContextProjectId(saved);
+  }, []);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
@@ -101,6 +108,7 @@ export default function AssistantPage() {
           message: msgText,
           conversationId: activeConvoId,
           pathname: "/assistant",
+          ...(contextProjectId ? { projectId: contextProjectId } : {}),
         }),
       });
       const data = await res.json();
@@ -178,7 +186,21 @@ export default function AssistantPage() {
     <div className="max-w-4xl mx-auto flex flex-col" style={{ height: "calc(100vh - 100px)" }}>
       {/* Top bar: session list + new chat */}
       <div className="flex items-center justify-between py-2 flex-shrink-0">
-        <h1 className="text-xl font-semibold text-[var(--foreground)]">AI Assistant</h1>
+        <div className="flex items-center gap-2">
+          <h1 className="text-xl font-semibold text-[var(--foreground)]">AI Assistant</h1>
+          {contextProjectId && (
+            <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium">
+              Project context active
+              <button
+                onClick={() => { setContextProjectId(null); localStorage.removeItem("ap_last_project_id"); }}
+                className="ml-0.5 hover:text-indigo-900"
+                title="Clear project context"
+              >
+                ×
+              </button>
+            </span>
+          )}
+        </div>
         <div className="flex items-center gap-2">
           {hasChat && (
             <button onClick={startNewChat} className="neo-btn px-3 py-1.5 text-xs">

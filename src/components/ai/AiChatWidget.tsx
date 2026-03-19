@@ -39,6 +39,13 @@ function AiChatWidgetInner({ pathname }: { pathname: string }) {
   const projectIdMatch = pathname.match(/\/projects\/([^/]+)/);
   const projectId = projectIdMatch?.[1] ?? undefined;
 
+  // Persist last visited project so the /assistant page can pick it up
+  useEffect(() => {
+    if (projectId) {
+      localStorage.setItem("ap_last_project_id", projectId);
+    }
+  }, [projectId]);
+
   // Reset conversation when navigating to a different project
   const lastProjectRef = useRef(projectId);
   useEffect(() => {
