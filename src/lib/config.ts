@@ -58,6 +58,7 @@ export type AppConfigData = {
   companyPhone: string | null;
   companyAddress: string | null;
   logoUrl: string | null;
+  defaultEmployeeRate: number | null;
   menuConfig: MenuItem[];
   customRoomTypes: RoomType[];
   processDefaults: Record<string, string>;
@@ -193,6 +194,7 @@ export async function getAppConfig(): Promise<AppConfigData> {
       companyPhone: null,
       companyAddress: null,
       logoUrl: null,
+      defaultEmployeeRate: null,
       menuConfig: DEFAULT_MENU_ITEMS,
       customRoomTypes: [],
       processDefaults: {},
@@ -209,6 +211,7 @@ export async function getAppConfig(): Promise<AppConfigData> {
     companyPhone: row.companyPhone,
     companyAddress: row.companyAddress,
     logoUrl: row.logoUrl,
+    defaultEmployeeRate: (row as Record<string, unknown>).defaultEmployeeRate as number | null ?? null,
     menuConfig: (() => {
       const saved = parseJson<MenuItem[]>(row.menuConfig, DEFAULT_MENU_ITEMS);
       const savedHrefs = new Set(saved.map((m) => m.href));

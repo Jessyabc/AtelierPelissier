@@ -15,16 +15,17 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { name, email, role, color } = body as Record<string, string>;
-  if (!name?.trim() || !role?.trim()) {
+  const { name, email, role, color, hourlyRate } = body as Record<string, unknown>;
+  if (!(name as string)?.trim() || !(role as string)?.trim()) {
     return NextResponse.json({ error: "name and role are required" }, { status: 400 });
   }
   const employee = await prisma.employee.create({
     data: {
-      name: name.trim(),
-      email: email?.trim() || null,
-      role: role.trim(),
-      color: color?.trim() || "#6366f1",
+      name: (name as string).trim(),
+      email: typeof email === "string" ? email.trim() || null : null,
+      role: (role as string).trim(),
+      color: typeof color === "string" ? color.trim() : "#6366f1",
+      hourlyRate: typeof hourlyRate === "number" ? hourlyRate : null,
     },
   });
   return NextResponse.json(employee, { status: 201 });

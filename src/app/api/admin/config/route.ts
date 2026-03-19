@@ -20,6 +20,7 @@ export async function PATCH(req: NextRequest) {
   if (body.companyPhone !== undefined) data.companyPhone = body.companyPhone;
   if (body.companyAddress !== undefined) data.companyAddress = body.companyAddress;
   if (body.logoUrl !== undefined) data.logoUrl = body.logoUrl;
+  if (body.defaultEmployeeRate !== undefined) data.defaultEmployeeRate = body.defaultEmployeeRate;
 
   if (body.menuConfig !== undefined)
     data.menuConfig = JSON.stringify(body.menuConfig);
