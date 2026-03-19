@@ -5,6 +5,8 @@ import { prisma } from "@/lib/db";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
+const DOC_TYPES = ["reservation", "supplier_invoice", "estimate", "sage_invoice", "other"] as const;
+
 // GET /api/projects/[id]/cost-documents
 export async function GET(_req: NextRequest, { params }: RouteParams) {
   const { id: projectId } = await params;
@@ -32,7 +34,8 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;
-  const type = (formData.get("type") as string | null)?.trim() || "other";
+  const typeRaw = (formData.get("type") as string | null)?.trim() || "other";
+  const type = DOC_TYPES.includes(typeRaw as (typeof DOC_TYPES)[number]) ? typeRaw : "other";
 
   if (!file || file.size === 0) {
     return NextResponse.json(
@@ -70,4 +73,3 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
 
   return NextResponse.json(doc, { status: 201 });
 }
-
