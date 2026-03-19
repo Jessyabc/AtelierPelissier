@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 
 type RoomType = { value: string; label: string; icon: string; desc: string };
 
@@ -179,7 +180,9 @@ export default function NewProjectPage() {
 
       router.push(`/projects/${data.id}`);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed");
+      const msg = err instanceof Error ? err.message : "Failed";
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }

@@ -49,6 +49,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "drafts" | "saved">("all");
+  const [search, setSearch] = useState("");
 
   useEffect(() => {
     async function load() {
@@ -84,12 +85,10 @@ export default function DashboardPage() {
   }
 
   const projects = data?.projects ?? [];
-  const filtered =
-    filter === "drafts"
-      ? projects.filter((p) => p.isDraft)
-      : filter === "saved"
-        ? projects.filter((p) => !p.isDraft)
-        : projects;
+  const q = search.trim().toLowerCase();
+  const filtered = projects
+    .filter((p) => filter === "drafts" ? p.isDraft : filter === "saved" ? !p.isDraft : true)
+    .filter((p) => !q || p.name.toLowerCase().includes(q));
 
   return (
     <div className="space-y-8">
@@ -151,6 +150,13 @@ export default function DashboardPage() {
               </button>
             ))}
           </div>
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search projects…"
+            className="ml-auto rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+          />
         </div>
         <div className="space-y-3">
           {filtered.length === 0 ? (

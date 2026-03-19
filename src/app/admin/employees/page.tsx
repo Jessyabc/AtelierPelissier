@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
+import toast from "react-hot-toast";
 
 type Employee = { id: string; name: string; email: string | null; role: string; color: string; active: boolean };
 
@@ -50,33 +51,31 @@ export default function EmployeesPage() {
   async function handleSave() {
     if (!form.name.trim()) return;
     setSaving(true);
-    if (editingId) {
-      await fetch(`/api/employees/${editingId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-    } else {
-      await fetch("/api/employees", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
+    try {
+      const res = editingId
+        ? await fetch(`/api/employees/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
+        : await fetch("/api/employees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+      if (!res.ok) throw new Error("Failed");
+      toast.success(editingId ? "Employee updated" : "Employee added");
+      setShowForm(false);
+      setEditingId(null);
+      setForm(EMPTY_FORM);
+      load();
+    } catch {
+      toast.error("Failed to save employee");
+    } finally {
+      setSaving(false);
     }
-    setSaving(false);
-    setShowForm(false);
-    setEditingId(null);
-    setForm(EMPTY_FORM);
-    load();
   }
 
   async function toggleActive(emp: Employee) {
-    await fetch(`/api/employees/${emp.id}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ active: !emp.active }),
-    });
-    load();
+    try {
+      await fetch(`/api/employees/${emp.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ active: !emp.active }) });
+      toast.success(emp.active ? `${emp.name} deactivated` : `${emp.name} activated`);
+      load();
+    } catch {
+      toast.error("Failed to update employee");
+    }
   }
 
   const salespeople = employees.filter((e) => e.role === "salesperson");
