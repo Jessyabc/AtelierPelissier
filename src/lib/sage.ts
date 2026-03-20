@@ -11,16 +11,16 @@ const SAGE_TOKEN_NA = "https://oauth.na.sageone.com/token";
 const SAGE_TOKEN_GLOBAL = "https://oauth.accounting.sage.com/token";
 const SAGE_SCOPES = "full_access offline_access";
 
-function useNaEndpoints(): boolean {
+function shouldUseNaEndpoints(): boolean {
   return process.env.SAGE_USE_GLOBAL_AUTH !== "true";
 }
 
 function getAuthBaseUrl(): string {
-  return useNaEndpoints() ? SAGE_AUTH_NA : SAGE_AUTH_GLOBAL;
+  return shouldUseNaEndpoints() ? SAGE_AUTH_NA : SAGE_AUTH_GLOBAL;
 }
 
 function getTokenUrl(): string {
-  return useNaEndpoints() ? SAGE_TOKEN_NA : SAGE_TOKEN_GLOBAL;
+  return shouldUseNaEndpoints() ? SAGE_TOKEN_NA : SAGE_TOKEN_GLOBAL;
 }
 
 export function getSageAuthorizeUrl(params: {

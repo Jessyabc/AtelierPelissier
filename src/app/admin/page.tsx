@@ -675,6 +675,19 @@ function EmailTemplatesTab({ config, saving, onSave }: {
 // ════════════════════════════════════════════════════════════════════════
 
 type MondayBoardRef = { id: string; name?: string };
+type IonosHealthResponse = {
+  ok: boolean;
+  message?: string;
+  error?: string;
+  details?: string;
+  status?: number;
+  endpoint?: string;
+  zoneCount?: number | null;
+  configured?: {
+    publicKey?: boolean | string;
+    secretKey?: boolean | string;
+  };
+};
 
 function IntegrationsTab({ config, saving, onSave }: {
   config: AppConfigData;
@@ -697,6 +710,26 @@ function IntegrationsTab({ config, saving, onSave }: {
   const [sageClientId, setSageClientId] = useState((config.integrations.sageClientId as string) ?? "");
   const [sageClientSecret, setSageClientSecret] = useState((config.integrations.sageClientSecret as string) ?? "");
   const [showSageSecret, setShowSageSecret] = useState(false);
+  const [ionosStatus, setIonosStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [ionosHealth, setIonosHealth] = useState<IonosHealthResponse | null>(null);
+
+  async function testIonosConnection() {
+    setIonosStatus("loading");
+    setIonosHealth(null);
+    try {
+      const res = await fetch("/api/integrations/ionos/health", { cache: "no-store" });
+      const data = (await res.json().catch(() => ({}))) as IonosHealthResponse;
+      setIonosHealth(data);
+      setIonosStatus(res.ok && data.ok ? "ok" : "error");
+    } catch {
+      setIonosHealth({
+        ok: false,
+        error: "IONOS test request failed.",
+        details: "Check your local server and internet connection.",
+      });
+      setIonosStatus("error");
+    }
+  }
 
   function addSavedBoard(id: string, name?: string) {
     const trimmed = id.trim();
@@ -917,6 +950,80 @@ function IntegrationsTab({ config, saving, onSave }: {
             </button>
           )}
         </div>
+      </div>
+
+      {/* IONOS DNS */}
+      <div className="neo-panel-inset p-5 rounded-lg space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--foreground)]">IONOS DNS</h3>
+            <p className="text-xs text-[var(--foreground-muted)]">
+              Validate your IONOS public/secret key pair from environment variables and verify DNS API access.
+            </p>
+          </div>
+          <span
+            className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+              ionosStatus === "ok"
+                ? "bg-green-100 text-green-700"
+                : ionosStatus === "error"
+                  ? "bg-red-100 text-red-700"
+                  : "bg-gray-100 text-gray-500"
+            }`}
+          >
+            {ionosStatus === "ok" ? "Connected" : ionosStatus === "error" ? "Issue detected" : "Not tested"}
+          </span>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={testIonosConnection}
+            disabled={ionosStatus === "loading"}
+            className="neo-btn px-4 py-2 text-xs font-medium disabled:opacity-50"
+          >
+            {ionosStatus === "loading" ? "Testing…" : "Test IONOS DNS"}
+          </button>
+          <p className="text-[10px] text-[var(--foreground-muted)]">
+            Reads server-side env vars: <code className="font-mono">IONOS_PUBLIC_API_KEY</code> and <code className="font-mono">IONOS_SECRET_API_KEY</code>.
+          </p>
+        </div>
+
+        {ionosHealth && (
+          <div
+            className={`rounded-lg border p-3 text-xs ${
+              ionosHealth.ok
+                ? "bg-green-50 border-green-200 text-green-800"
+                : "bg-red-50 border-red-200 text-red-800"
+            }`}
+          >
+            <p className="font-medium">
+              {ionosHealth.ok ? ionosHealth.message ?? "IONOS connection is healthy." : ionosHealth.error ?? "IONOS check failed."}
+            </p>
+            {(ionosHealth.details || ionosHealth.status) && (
+              <p className="mt-1 opacity-90">
+                {ionosHealth.status ? `HTTP ${ionosHealth.status}` : ""}{ionosHealth.details ? ` — ${ionosHealth.details}` : ""}
+              </p>
+            )}
+            <div className="mt-2 grid gap-1 text-[11px]">
+              {ionosHealth.endpoint && (
+                <p>
+                  <span className="font-medium">Endpoint:</span> <code className="font-mono">{ionosHealth.endpoint}</code>
+                </p>
+              )}
+              {typeof ionosHealth.zoneCount === "number" && (
+                <p>
+                  <span className="font-medium">Zones found:</span> {ionosHealth.zoneCount}
+                </p>
+              )}
+              {ionosHealth.configured && (
+                <p>
+                  <span className="font-medium">Configured keys:</span>{" "}
+                  public={String(ionosHealth.configured.publicKey ?? false)}, secret={String(ionosHealth.configured.secretKey ?? false)}
+                </p>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Excel Import (placeholder) */}
