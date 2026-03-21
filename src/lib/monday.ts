@@ -193,7 +193,7 @@ export async function getMondayItemAsProject(
       | { boards?: { items_page?: { cursor?: string; items: MondayItem[] } }[] }
       | { next_items_page?: { cursor?: string; items: MondayItem[] } };
 
-    const pageData = cursor == null
+    const pageData: { cursor?: string; items: MondayItem[] } | undefined = cursor == null
       ? (data as { boards?: { items_page?: { cursor?: string; items: MondayItem[] } }[] }).boards?.[0]?.items_page
       : (data as { next_items_page?: { cursor?: string; items: MondayItem[] } }).next_items_page;
 

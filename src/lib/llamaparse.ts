@@ -28,7 +28,7 @@ export async function parsePdfWithLlamaParse(
 
   // 1. Upload file (multipart)
   const form = new FormData();
-  const blob = new Blob([pdfBuffer], { type: "application/pdf" });
+  const blob = new Blob([new Uint8Array(pdfBuffer)], { type: "application/pdf" });
   form.set("file", blob, fileName);
   form.set(
     "configuration",
