@@ -723,6 +723,9 @@ model AppConfig {
   companyAddress   String?
   logoUrl          String?
 
+  // Defaults
+  defaultEmployeeRate Float? // Default $/hr for employees without their own hourlyRate
+
   // JSON blobs for flexible admin-managed config
   menuConfig       String?  // JSON: [{ href, label, visible, order }]
   customRoomTypes  String?  // JSON: [{ value, label, icon, desc }]
@@ -751,14 +754,15 @@ model AppErrorLog {
 // --- Team: Employees & Time Tracking ---
 
 model Employee {
-  id        String   @id @default(cuid())
-  name      String
-  email     String?  @unique
-  role      String   // salesperson | woodworker | admin
-  color     String   @default("#6366f1") // Display color for UI
-  active    Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id         String   @id @default(cuid())
+  name       String
+  email      String?  @unique
+  role       String   // salesperson | woodworker | admin
+  color      String   @default("#6366f1") // Display color for UI
+  hourlyRate Float?   // $/hr cost to the shop; null = use AppConfig.defaultEmployeeRate
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   timePunches   TimePunch[]
   projects      Project[]   @relation("SalesPerson")

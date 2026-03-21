@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import toast from "react-hot-toast";
 
-type Employee = { id: string; name: string; email: string | null; role: string; color: string; active: boolean };
+type Employee = { id: string; name: string; email: string | null; role: string; color: string; hourlyRate: number | null; active: boolean };
 
 const ROLE_LABELS: Record<string, string> = {
   salesperson: "Sales",
@@ -17,7 +17,7 @@ const COLORS = [
   "#0ea5e9", "#64748b",
 ];
 
-const EMPTY_FORM = { name: "", email: "", role: "woodworker", color: "#6366f1" };
+const EMPTY_FORM = { name: "", email: "", role: "woodworker", color: "#6366f1", hourlyRate: "" };
 
 export default function EmployeesPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -37,7 +37,7 @@ export default function EmployeesPage() {
   useEffect(() => { load(); }, [load]);
 
   function startEdit(emp: Employee) {
-    setForm({ name: emp.name, email: emp.email ?? "", role: emp.role, color: emp.color });
+    setForm({ name: emp.name, email: emp.email ?? "", role: emp.role, color: emp.color, hourlyRate: emp.hourlyRate != null ? String(emp.hourlyRate) : "" });
     setEditingId(emp.id);
     setShowForm(true);
   }
@@ -52,9 +52,10 @@ export default function EmployeesPage() {
     if (!form.name.trim()) return;
     setSaving(true);
     try {
+      const payload = { ...form, hourlyRate: form.hourlyRate ? parseFloat(form.hourlyRate) : null };
       const res = editingId
-        ? await fetch(`/api/employees/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) })
-        : await fetch("/api/employees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(form) });
+        ? await fetch(`/api/employees/${editingId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) })
+        : await fetch("/api/employees", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       if (!res.ok) throw new Error("Failed");
       toast.success(editingId ? "Employee updated" : "Employee added");
       setShowForm(false);
@@ -133,6 +134,19 @@ export default function EmployeesPage() {
                 <option value="admin">Admin</option>
               </select>
             </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1">Hourly rate ($/hr)</label>
+              <input
+                value={form.hourlyRate}
+                onChange={(e) => setForm({ ...form, hourlyRate: e.target.value })}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="e.g. 28.50"
+                type="number"
+                step="0.50"
+                min="0"
+              />
+              <p className="text-[10px] text-gray-400 mt-0.5">Leave blank to use the company default</p>
+            </div>
           </div>
           <div className="mb-4">
             <label className="block text-xs text-gray-500 mb-2">Display color</label>
@@ -181,7 +195,9 @@ export default function EmployeesPage() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-medium text-gray-900 truncate">{emp.name}</p>
-                        {emp.email && <p className="text-xs text-gray-400 truncate">{emp.email}</p>}
+                        <p className="text-xs text-gray-400 truncate">
+                          {emp.email ? `${emp.email} · ` : ""}{emp.hourlyRate != null ? `$${emp.hourlyRate}/hr` : "default rate"}
+                        </p>
                       </div>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${emp.active ? "bg-green-50 text-green-700" : "bg-gray-100 text-gray-400"}`}>
                         {emp.active ? "Active" : "Inactive"}

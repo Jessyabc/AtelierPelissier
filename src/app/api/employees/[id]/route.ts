@@ -8,7 +8,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const { name, email, role, color, active } = body as Record<string, unknown>;
+  const { name, email, role, color, active, hourlyRate } = body as Record<string, unknown>;
   const employee = await prisma.employee.update({
     where: { id: params.id },
     data: {
@@ -17,6 +17,7 @@ export async function PATCH(request: Request, { params }: { params: { id: string
       ...(typeof role === "string" && { role: role.trim() }),
       ...(typeof color === "string" && { color: color.trim() }),
       ...(typeof active === "boolean" && { active }),
+      ...(hourlyRate !== undefined && { hourlyRate: typeof hourlyRate === "number" ? hourlyRate : null }),
     },
   });
   return NextResponse.json(employee);

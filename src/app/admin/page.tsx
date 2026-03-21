@@ -47,6 +47,7 @@ const EMPTY_CONFIG: AppConfigData = {
   companyPhone: null,
   companyAddress: null,
   logoUrl: null,
+  defaultEmployeeRate: null,
   menuConfig: [],
   customRoomTypes: [],
   processDefaults: {},
@@ -179,6 +180,7 @@ function CompanyTab({ config, saving, onSave }: {
   const [phone, setPhone] = useState(config.companyPhone ?? "");
   const [address, setAddress] = useState(config.companyAddress ?? "");
   const [logo, setLogo] = useState(config.logoUrl ?? "");
+  const [defaultRate, setDefaultRate] = useState(config.defaultEmployeeRate != null ? String(config.defaultEmployeeRate) : "");
 
   return (
     <div className="space-y-6">
@@ -206,6 +208,11 @@ function CompanyTab({ config, saving, onSave }: {
           <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Logo URL</label>
           <input value={logo} onChange={(e) => setLogo(e.target.value)} className="neo-input w-full px-4 py-2.5 text-sm" placeholder="/logo.svg or https://..." />
         </div>
+        <div>
+          <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Default employee rate ($/hr)</label>
+          <input value={defaultRate} onChange={(e) => setDefaultRate(e.target.value)} type="number" step="0.50" min="0" className="neo-input w-full px-4 py-2.5 text-sm" placeholder="e.g. 25.00" />
+          <p className="text-xs text-[var(--foreground-muted)] mt-1">Used for labor cost calculations when an employee doesn&apos;t have their own rate set.</p>
+        </div>
         <div className="sm:col-span-2">
           <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Address</label>
           <textarea value={address} onChange={(e) => setAddress(e.target.value)} rows={2} className="neo-input w-full px-4 py-2.5 text-sm" placeholder="Company address for print headers" />
@@ -232,6 +239,7 @@ function CompanyTab({ config, saving, onSave }: {
             companyPhone: phone || null,
             companyAddress: address || null,
             logoUrl: logo || null,
+            defaultEmployeeRate: defaultRate ? parseFloat(defaultRate) : null,
           })}
           disabled={saving}
           className="neo-btn-primary px-6 py-2.5 text-sm font-medium disabled:opacity-50"
