@@ -1,10 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { getAppConfig, DEFAULT_MENU_ITEMS, DEFAULT_MATERIAL_ALIASES, DEFAULT_EMAIL_TEMPLATES } from "@/lib/config";
+import {
+  getAppConfig,
+  getDefaultAppConfig,
+  DEFAULT_MENU_ITEMS,
+  DEFAULT_MATERIAL_ALIASES,
+  DEFAULT_EMAIL_TEMPLATES,
+} from "@/lib/config";
+
+/** Ensure this handler is never statically prerendered at build time (Prisma / DATABASE_URL). */
+export const dynamic = "force-dynamic";
+export const runtime = "nodejs";
 
 export async function GET() {
-  const config = await getAppConfig();
-  return NextResponse.json(config);
+  try {
+    const config = await getAppConfig();
+    return NextResponse.json(config);
+  } catch (e) {
+    console.error("GET /api/admin/config failed", e);
+    return NextResponse.json(getDefaultAppConfig());
+  }
 }
 
 export async function PATCH(req: NextRequest) {

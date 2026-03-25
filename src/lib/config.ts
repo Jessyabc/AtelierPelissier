@@ -176,6 +176,25 @@ function parseJson<T>(raw: string | null, fallback: T): T {
 
 // ── Main accessor ──────────────────────────────────────────────────────
 
+/** Used when DB is empty/unavailable or when the API route must return JSON without throwing. */
+export function getDefaultAppConfig(): AppConfigData {
+  return {
+    id: "",
+    companyName: "Atelier Pelissier",
+    companyEmail: null,
+    companyPhone: null,
+    companyAddress: null,
+    logoUrl: null,
+    defaultEmployeeRate: null,
+    menuConfig: DEFAULT_MENU_ITEMS,
+    customRoomTypes: [],
+    processDefaults: {},
+    materialAliases: DEFAULT_MATERIAL_ALIASES,
+    emailTemplates: DEFAULT_EMAIL_TEMPLATES,
+    integrations: {},
+  };
+}
+
 export async function getAppConfig(): Promise<AppConfigData> {
   type ConfigRow = Awaited<ReturnType<typeof prisma.appConfig.findMany>>[number];
   let row: ConfigRow | null = null;
@@ -187,21 +206,7 @@ export async function getAppConfig(): Promise<AppConfigData> {
   }
 
   if (!row) {
-    return {
-      id: "",
-      companyName: "Atelier Pelissier",
-      companyEmail: null,
-      companyPhone: null,
-      companyAddress: null,
-      logoUrl: null,
-      defaultEmployeeRate: null,
-      menuConfig: DEFAULT_MENU_ITEMS,
-      customRoomTypes: [],
-      processDefaults: {},
-      materialAliases: DEFAULT_MATERIAL_ALIASES,
-      emailTemplates: DEFAULT_EMAIL_TEMPLATES,
-      integrations: {},
-    };
+    return getDefaultAppConfig();
   }
 
   return {
