@@ -6,6 +6,9 @@ import {
   triggerInventoryRecalcForMaterial,
   triggerOrderInventoryRecalc,
 } from "@/lib/observability/recalculateProjectState";
+import { getSessionWithUser } from "@/lib/auth/session";
+import { canApproveAiActions, canSchedule } from "@/lib/auth/roles";
+import { buildServiceCallNotificationDrafts } from "@/lib/notifications/serviceCallDrafts";
 
 /**
  * POST /api/ai/actions/[id]/approve
@@ -13,11 +16,20 @@ import {
  *
  * Body: { approved: boolean }
  */
+function roleMayExecuteAction(role: string, action: string): boolean {
+  if (action === "scheduleServiceCall") return canSchedule(role);
+  if (action === "openEmail") return true;
+  return canApproveAiActions(role);
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const auth = await getSessionWithUser();
+    if (!auth.ok) return auth.response;
+
     const messageId = params.id;
     const body = await req.json();
     const approved = body.approved !== false;
@@ -42,21 +54,119 @@ export async function POST(
       return NextResponse.json({ status: "rejected" });
     }
 
-    // Mark executing immediately so duplicate requests (e.g. double-click) get 400
-    await prisma.aiMessage.update({
-      where: { id: messageId },
-      data: { actionStatus: "executing" },
-    });
-
-    // Execute the action
     const payload = message.functionCall ? JSON.parse(message.functionCall) : null;
     if (!payload) {
       return NextResponse.json({ error: "No action payload" }, { status: 400 });
     }
 
+    const actionName = payload.action as string;
+    if (!roleMayExecuteAction(auth.dbUser.role, actionName)) {
+      return NextResponse.json({ error: "Forbidden for your role" }, { status: 403 });
+    }
+
+    // Mark executing after auth + role checks (duplicate clicks while running still need the early pending check)
+    await prisma.aiMessage.update({
+      where: { id: messageId },
+      data: { actionStatus: "executing" },
+    });
+
     let result: Record<string, unknown> = {};
 
     switch (payload.action) {
+      case "scheduleServiceCall": {
+        const {
+          projectId: pid,
+          serviceDate,
+          serviceTime,
+          reasonForService,
+          notes,
+          technicianName,
+        } = payload as {
+          projectId: string;
+          serviceDate: string;
+          serviceTime?: string;
+          reasonForService?: string;
+          notes?: string;
+          technicianName?: string;
+        };
+
+        const project = await prisma.project.findUnique({
+          where: { id: pid },
+        });
+        if (!project) {
+          return NextResponse.json({ error: "Project not found" }, { status: 404 });
+        }
+
+        const [y, m, d] = serviceDate.split("-").map(Number);
+        if (!y || !m || !d) {
+          return NextResponse.json({ error: "Invalid serviceDate" }, { status: 400 });
+        }
+        const dayStart = new Date(y, m - 1, d);
+        const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+
+        let timeOfArrival: Date | null = null;
+        if (serviceTime && /^\d{1,2}:\d{2}$/.test(serviceTime.trim())) {
+          const [hh, mm] = serviceTime.split(":").map(Number);
+          timeOfArrival = new Date(y, m - 1, d, hh, mm, 0, 0);
+        }
+
+        const clientName =
+          [project.clientFirstName, project.clientLastName].filter(Boolean).join(" ").trim() || null;
+
+        const serviceCall = await prisma.serviceCall.create({
+          data: {
+            projectId: project.id,
+            jobNumber: project.jobNumber,
+            clientName,
+            address: project.clientAddress,
+            clientPhone: project.clientPhone,
+            clientEmail: project.clientEmail,
+            serviceDate: dayStart,
+            timeOfArrival,
+            reasonForService: reasonForService ?? null,
+            notes: notes ?? null,
+            technicianName: technicianName ?? null,
+          },
+        });
+
+        const maxSort = await prisma.dayPlanItem.aggregate({
+          where: { planDate: { gte: dayStart, lte: dayEnd } },
+          _max: { sortOrder: true },
+        });
+
+        await prisma.dayPlanItem.create({
+          data: {
+            planDate: dayStart,
+            sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+            type: "service_call",
+            serviceCallId: serviceCall.id,
+          },
+        });
+
+        const appCfg = await getAppConfig();
+        const notifyRaw = process.env.SERVICE_CALL_NOTIFY_EMAILS ?? "";
+        const notifyEmails = notifyRaw
+          .split(/[,;]/)
+          .map((s) => s.trim())
+          .filter(Boolean);
+
+        const drafts = buildServiceCallNotificationDrafts({
+          companyName: appCfg.companyName || "WoodOps",
+          project,
+          serviceCall,
+          dateLabel: serviceDate,
+          timeLabel: serviceTime?.trim() ?? "",
+          notifyEmails,
+        });
+
+        result = {
+          status: "service_call_scheduled",
+          serviceCallId: serviceCall.id,
+          notificationDrafts: drafts,
+        };
+        break;
+      }
+
       case "createOrder": {
         // Resolve items to inventory IDs
         const items = payload.items as { materialCode: string; quantity: number }[];

@@ -5,6 +5,7 @@ import { AppHeader } from "@/components/AppHeader";
 import { AiChatWidget } from "@/components/ai/AiChatWidget";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { ErrorLogger } from "@/components/ErrorLogger";
+import { OnboardingGate } from "@/components/auth/OnboardingGate";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -22,10 +23,12 @@ export default function RootLayout({
     <html lang="en">
       <body className="antialiased min-h-screen">
         <ErrorBoundary>
-          <AppHeader />
-          <main className="p-4 sm:p-6">
-            <Providers>{children}</Providers>
-          </main>
+          <OnboardingGate>
+            <AppHeader />
+            <main className="p-4 sm:p-6">
+              <Providers>{children}</Providers>
+            </main>
+          </OnboardingGate>
           <Suspense fallback={null}>
             <AiChatWidget />
           </Suspense>

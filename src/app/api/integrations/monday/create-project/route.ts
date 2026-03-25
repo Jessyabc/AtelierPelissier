@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAppConfig } from "@/lib/config";
 import { getMondayItemAsProject } from "@/lib/monday";
+import { requireRole } from "@/lib/auth/session";
 
 /**
  * POST /api/integrations/monday/create-project
@@ -10,6 +11,9 @@ import { getMondayItemAsProject } from "@/lib/monday";
  */
 export async function POST(req: NextRequest) {
   try {
+    const session = await requireRole(["admin", "planner"]);
+    if (!session.ok) return session.response;
+
     const body = await req.json();
     const boardId = body.boardId as string | undefined;
     const itemId = body.itemId as string | undefined;

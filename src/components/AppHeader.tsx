@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
+import { getBrowserSupabaseClient } from "@/lib/supabase/client";
 
 type MenuItemConfig = {
   href: string;
@@ -34,6 +35,7 @@ const FALLBACK_MENU: MenuItemConfig[] = [
 
 export function AppHeader() {
   const pathname = usePathname();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [menuItems, setMenuItems] = useState<MenuItemConfig[]>(FALLBACK_MENU);
   const [companyName, setCompanyName] = useState("Atelier Pelissier");
@@ -67,6 +69,21 @@ export function AppHeader() {
   }, []);
 
   const visibleItems = menuItems.filter((m) => m.visible);
+
+  if (pathname === "/login" || pathname?.startsWith("/auth")) {
+    return null;
+  }
+
+  async function handleSignOut() {
+    try {
+      const supabase = getBrowserSupabaseClient();
+      await supabase.auth.signOut();
+    } catch {
+      // Supabase may be unset in local dev
+    }
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <header className="app-header border-b border-black/20 px-4 py-3 sm:px-6 sm:py-4">
@@ -138,7 +155,16 @@ export function AppHeader() {
             </nav>
           )}
         </div>
-        <span className="hidden text-sm text-white/70 sm:inline">Operations · Internal use</span>
+        <div className="ml-auto flex items-center gap-3">
+          <span className="hidden text-sm text-white/70 sm:inline">Operations · Internal use</span>
+          <button
+            type="button"
+            onClick={() => void handleSignOut()}
+            className="rounded border border-white/20 px-2 py-1 text-xs text-white/80 hover:bg-white/10"
+          >
+            Sign out
+          </button>
+        </div>
       </div>
     </header>
   );

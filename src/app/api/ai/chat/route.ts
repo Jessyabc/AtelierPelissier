@@ -5,6 +5,7 @@ import { getOpenAIClient, getSystemPrompt } from "@/lib/ai/openai";
 import { buildContextMessage } from "@/lib/ai/context";
 import { AI_TOOLS, executeFunctionCall } from "@/lib/ai/functions";
 import { buildIntentHint } from "@/lib/ai/noteIntelligence";
+import { getSessionWithUser } from "@/lib/auth/session";
 
 /**
  * POST /api/ai/chat
@@ -21,6 +22,9 @@ import { buildIntentHint } from "@/lib/ai/noteIntelligence";
  */
 export async function POST(req: NextRequest) {
   try {
+    const auth = await getSessionWithUser();
+    if (!auth.ok) return auth.response;
+
     const body = await req.json();
     const { message, conversationId, pathname, projectId } = body;
 

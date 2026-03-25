@@ -1,7 +1,12 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionWithUser } from "@/lib/auth/session";
+import { requireRole } from "@/lib/auth/session";
 
 export async function GET() {
+  const session = await getSessionWithUser();
+  if (!session.ok) return session.response;
+
   const employees = await prisma.employee.findMany({
     orderBy: [{ role: "asc" }, { name: "asc" }],
   });
@@ -9,6 +14,9 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const session = await requireRole(["admin"]);
+  if (!session.ok) return session.response;
+
   let body: unknown;
   try {
     body = await request.json();

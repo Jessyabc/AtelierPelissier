@@ -21,6 +21,7 @@ export function AiChatWidget() {
 
   // Don't render on the dedicated AI Assistant page
   if (pathname === "/assistant") return null;
+  if (pathname === "/login" || pathname?.startsWith("/auth")) return null;
 
   return <AiChatWidgetInner pathname={pathname} />;
 }

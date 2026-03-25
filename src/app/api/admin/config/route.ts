@@ -6,15 +6,28 @@ import {
   DEFAULT_MENU_ITEMS,
   DEFAULT_MATERIAL_ALIASES,
   DEFAULT_EMAIL_TEMPLATES,
+  type AppConfigData,
 } from "@/lib/config";
+import { getSessionWithUser, requireRole } from "@/lib/auth/session";
+import { isAdminRole } from "@/lib/auth/roles";
 
 /** Ensure this handler is never statically prerendered at build time (Prisma / DATABASE_URL). */
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+function sanitizeConfig(config: AppConfigData): AppConfigData {
+  return { ...config, integrations: {} };
+}
+
 export async function GET() {
+  const session = await getSessionWithUser();
+  if (!session.ok) return session.response;
+
   try {
     const config = await getAppConfig();
+    if (!isAdminRole(session.dbUser.role)) {
+      return NextResponse.json(sanitizeConfig(config));
+    }
     return NextResponse.json(config);
   } catch (e) {
     console.error("GET /api/admin/config failed", e);
@@ -23,6 +36,9 @@ export async function GET() {
 }
 
 export async function PATCH(req: NextRequest) {
+  const session = await requireRole(["admin"]);
+  if (!session.ok) return session.response;
+
   const body = await req.json();
 
   const rows = await prisma.appConfig.findMany({ take: 1 });

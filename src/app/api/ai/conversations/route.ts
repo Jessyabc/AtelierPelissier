@@ -1,11 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getSessionWithUser } from "@/lib/auth/session";
 
 /**
  * GET /api/ai/conversations?projectId=XXX&scope=project
  * List AI conversations, optionally filtered by project or scope.
  */
 export async function GET(req: NextRequest) {
+  const auth = await getSessionWithUser();
+  if (!auth.ok) return auth.response;
+
   const projectId = req.nextUrl.searchParams.get("projectId");
   const scope = req.nextUrl.searchParams.get("scope");
 

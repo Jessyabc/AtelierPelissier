@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link";
 import type {
   AppConfigData,
   MenuItem,
@@ -125,6 +126,11 @@ function AdminPageContent() {
         <h1 className="text-2xl font-bold text-[var(--foreground)]">Admin Hub</h1>
         <p className="text-sm text-[var(--foreground-muted)]">
           Customize your app — branding, navigation, room types, AI behavior, email templates, and more.
+        </p>
+        <p className="mt-2 text-sm">
+          <Link href="/admin/invites" className="font-medium text-amber-700 hover:underline">
+            Team invites
+          </Link>
         </p>
       </div>
 

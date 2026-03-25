@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 const APP_ARCHITECTURE = `
 # Atelier Pelissier — Architecture Summary
@@ -29,6 +30,9 @@ export async function POST(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const session = await requireRole(["admin"]);
+  if (!session.ok) return session.response;
+
   const { id } = await params;
 
   const errorLog = await prisma.appErrorLog.findUnique({ where: { id } });

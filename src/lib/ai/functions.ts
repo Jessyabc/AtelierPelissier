@@ -297,12 +297,32 @@ export const AI_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
-      name: "listEmployees",
-      description: "List team members (employees). Optionally filter by role: salesperson, woodworker, or admin.",
+      name: "proposeScheduleServiceCall",
+      description:
+        "Propose scheduling a field service visit for a project: creates a ServiceCall and adds it to the day plan / calendar. QUEUED — user must approve. Use searchProjects first if the project is unclear. Requires serviceDate as YYYY-MM-DD.",
       parameters: {
         type: "object",
         properties: {
-          role: { type: "string", enum: ["salesperson", "woodworker", "admin"], description: "Optional role filter." },
+          projectId: { type: "string", description: "Project ID, job number (e.g. MC-6199), or distinctive project name fragment." },
+          serviceDate: { type: "string", description: "Date of the visit in YYYY-MM-DD (local shop date)." },
+          serviceTime: { type: "string", description: "Optional time HH:MM (24h) for arrival." },
+          reasonForService: { type: "string", description: "Short reason (install, warranty, measure, etc.)." },
+          notes: { type: "string", description: "Internal notes for the crew." },
+          technicianName: { type: "string", description: "Who is going (optional)." },
+        },
+        required: ["projectId", "serviceDate"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "listEmployees",
+      description: "List team members (employees). Optionally filter by role: salesperson, woodworker, planner, or admin.",
+      parameters: {
+        type: "object",
+        properties: {
+          role: { type: "string", enum: ["salesperson", "woodworker", "admin", "planner"], description: "Optional role filter." },
         },
       },
     },
@@ -390,6 +410,9 @@ export async function executeFunctionCall(
     case "receiveOrder":
       return handleReceiveOrder(args);
 
+    case "proposeScheduleServiceCall":
+      return handleProposeScheduleServiceCall(args);
+
     case "listEmployees":
       return { result: await handleListEmployees(args.role as string | undefined) };
 
@@ -404,7 +427,7 @@ export async function executeFunctionCall(
   }
 }
 
-async function resolveProjectId(input: string): Promise<string | null> {
+export async function resolveProjectId(input: string): Promise<string | null> {
   // Try direct ID first
   const direct = await prisma.project.findUnique({ where: { id: input }, select: { id: true } });
   if (direct) return direct.id;
@@ -559,6 +582,41 @@ function handleAddMaterialToProject(
       projectId: args.projectId,
       materialCode: args.materialCode,
       quantity: args.quantity,
+    },
+  };
+}
+
+async function handleProposeScheduleServiceCall(
+  args: Record<string, unknown>
+): Promise<{ result: string; isAction: true; actionPayload: Record<string, unknown> } | { result: string }> {
+  const projectRef = args.projectId as string;
+  const serviceDate = String(args.serviceDate ?? "").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+    return { result: "serviceDate must be YYYY-MM-DD." };
+  }
+  const resolved = await resolveProjectId(projectRef);
+  if (!resolved) {
+    return { result: `Project not found: ${projectRef}. Call searchProjects first.` };
+  }
+
+  const time = args.serviceTime ? String(args.serviceTime).trim() : "";
+  if (time && !/^\d{1,2}:\d{2}$/.test(time)) {
+    return { result: "serviceTime must be HH:MM (24h) or omit." };
+  }
+
+  const summaryBits = [`Project ${resolved}`, `date ${serviceDate}`];
+  if (time) summaryBits.push(`time ${time}`);
+  return {
+    result: `Proposed service call: ${summaryBits.join(", ")}. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "scheduleServiceCall",
+      projectId: resolved,
+      serviceDate,
+      serviceTime: time || undefined,
+      reasonForService: args.reasonForService ?? undefined,
+      notes: args.notes ?? undefined,
+      technicianName: args.technicianName ?? undefined,
     },
   };
 }
