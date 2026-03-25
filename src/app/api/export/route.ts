@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET: Export all data as JSON backup.
  * Save the response to a file on your computer for safekeeping.

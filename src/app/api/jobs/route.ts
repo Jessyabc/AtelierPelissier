@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET: List all jobs (projects) with their service calls.
  * Ordered by job number, then by most recent service call date.

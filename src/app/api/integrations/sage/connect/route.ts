@@ -5,6 +5,8 @@ import { getSageAuthorizeUrl } from "@/lib/sage";
 const STATE_COOKIE = "sage_oauth_state";
 const STATE_MAX_AGE = 600; // 10 minutes
 
+export const dynamic = "force-dynamic";
+
 /**
  * GET /api/integrations/sage/connect
  * Redirects the user to Sage Business Cloud to sign in and authorize the app.
