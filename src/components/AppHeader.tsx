@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
+import { isMenuItemAllowedForRole } from "@/lib/auth/roles";
 
 type MenuItemConfig = {
   href: string;
@@ -40,20 +41,25 @@ export function AppHeader() {
   const [menuItems, setMenuItems] = useState<MenuItemConfig[]>(FALLBACK_MENU);
   const [companyName, setCompanyName] = useState("Atelier Pelissier");
   const [logoUrl, setLogoUrl] = useState("/logo.svg");
+  const [userRole, setUserRole] = useState<string>("admin");
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    fetch("/api/admin/config")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((cfg) => {
-        if (!cfg) return;
-        if (cfg.companyName) setCompanyName(cfg.companyName);
-        if (cfg.logoUrl) setLogoUrl(cfg.logoUrl);
-        if (Array.isArray(cfg.menuConfig) && cfg.menuConfig.length > 0) {
-          setMenuItems(
-            [...cfg.menuConfig].sort((a: MenuItemConfig, b: MenuItemConfig) => a.order - b.order)
-          );
+    Promise.all([
+      fetch("/api/admin/config").then((r) => (r.ok ? r.json() : null)),
+      fetch("/api/auth/me").then((r) => (r.ok ? r.json() : null)),
+    ])
+      .then(([cfg, me]) => {
+        if (cfg) {
+          if (cfg.companyName) setCompanyName(cfg.companyName);
+          if (cfg.logoUrl) setLogoUrl(cfg.logoUrl);
+          if (Array.isArray(cfg.menuConfig) && cfg.menuConfig.length > 0) {
+            setMenuItems(
+              [...cfg.menuConfig].sort((a: MenuItemConfig, b: MenuItemConfig) => a.order - b.order)
+            );
+          }
         }
+        if (me?.user?.role) setUserRole(me.user.role);
       })
       .catch(() => {});
   }, []);
@@ -68,7 +74,9 @@ export function AppHeader() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const visibleItems = menuItems.filter((m) => m.visible);
+  const visibleItems = menuItems
+    .filter((m) => m.visible)
+    .filter((m) => isMenuItemAllowedForRole(m.href, userRole));
 
   if (pathname === "/login" || pathname?.startsWith("/auth")) {
     return null;

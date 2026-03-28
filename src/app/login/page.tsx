@@ -3,6 +3,7 @@
 import { Suspense, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
+import { getDefaultLandingPage } from "@/lib/auth/roles";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
@@ -32,7 +33,14 @@ function LoginForm() {
           body: JSON.stringify({ token: invite }),
         });
       }
-      router.push(next);
+      // Role-specific landing: if user came from a direct link, honor it; otherwise land by role
+      if (next && next !== "/") {
+        router.push(next);
+      } else {
+        const me = await fetch("/api/auth/me").then((r) => r.ok ? r.json() : null).catch(() => null);
+        const role = (me?.user?.role as string) ?? "admin";
+        router.push(getDefaultLandingPage(role));
+      }
       router.refresh();
     } finally {
       setLoading(false);

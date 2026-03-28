@@ -15,6 +15,8 @@ function isPublicApi(pathname: string, request: NextRequest): boolean {
   if (pathname === "/api/integrations/sage/callback") return true;
   // Client error logger posts before session is ready
   if (pathname === "/api/admin/errors" && request.method === "POST") return true;
+  // Health check for uptime monitors (no auth required)
+  if (pathname === "/api/health") return true;
   return false;
 }
 

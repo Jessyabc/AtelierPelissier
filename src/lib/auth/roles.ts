@@ -20,3 +20,63 @@ export function canManageIntegrations(role: string): boolean {
 export function canApproveAiActions(role: string): boolean {
   return role === "admin" || role === "planner";
 }
+
+// ── Role → page access map ────────────────────────────────────────────
+// Used by middleware (page gating) and AppHeader (menu filtering).
+
+const ALL_PAGES = [
+  "/", "/home", "/projects/new", "/assistant", "/dashboard",
+  "/inventory", "/distributors", "/costing", "/processes",
+  "/service-calls", "/calendar", "/settings/risk", "/purchasing",
+  "/admin", "/admin/employees", "/admin/stations", "/admin/punches",
+  "/admin/invites", "/onboarding", "/structure",
+] as const;
+
+const ROLE_PAGE_ACCESS: Record<AppRole, readonly string[]> = {
+  admin: ALL_PAGES,
+  planner: [
+    "/", "/home", "/projects/new", "/assistant", "/dashboard",
+    "/inventory", "/distributors", "/costing", "/processes",
+    "/service-calls", "/calendar", "/onboarding",
+  ],
+  salesperson: [
+    "/", "/projects/new", "/assistant", "/service-calls",
+    "/calendar", "/distributors", "/costing", "/onboarding",
+  ],
+  woodworker: [
+    "/", "/assistant", "/calendar", "/onboarding",
+  ],
+};
+
+/** Menu items (by href) each role is allowed to see. */
+export function isPageAllowedForRole(pathname: string, role: string): boolean {
+  const allowed = ROLE_PAGE_ACCESS[role as AppRole];
+  if (!allowed) return false;
+  // Exact match first
+  if (allowed.includes(pathname)) return true;
+  // Dynamic sub-paths: /projects/[id], /processes/[id], /punch/[station] — always allowed if parent is
+  if (pathname.startsWith("/projects/") && allowed.includes("/")) return true;
+  if (pathname.startsWith("/processes/") && allowed.includes("/processes")) return true;
+  if (pathname.startsWith("/punch/")) return true;
+  if (pathname.startsWith("/admin/") && allowed.some((p) => p.startsWith("/admin"))) return true;
+  return false;
+}
+
+/** Menu href filter: returns true if the menu item should be shown to this role. */
+export function isMenuItemAllowedForRole(href: string, role: string): boolean {
+  if (href === "#export") return role === "admin";
+  const allowed = ROLE_PAGE_ACCESS[role as AppRole];
+  if (!allowed) return false;
+  return allowed.includes(href);
+}
+
+/** Default landing page after login (no ?next= param). */
+export function getDefaultLandingPage(role: string): string {
+  switch (role) {
+    case "woodworker": return "/";
+    case "planner": return "/home";
+    case "admin": return "/";
+    case "salesperson": return "/";
+    default: return "/";
+  }
+}
