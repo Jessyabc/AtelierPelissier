@@ -350,13 +350,23 @@ export const AI_TOOLS: ChatCompletionTool[] = [
     function: {
       name: "getServiceCallDetails",
       description:
-        "Get full details for a service call, including the checklist/reasons/items entered in the Service Call tab. Use this when the user asks 'what do we need to do for this service call?' or 'what are the items?'.",
+        "Get full details for a service call: work items (checklist lines from the Service Call tab), types, technician, address, etc. Pass serviceCallId from getDaySchedule/getScheduleRange JSON (field serviceCallId). If the user only names a job (e.g. MC-6595), pass projectRef instead (job number or project name). Optional serviceDate (YYYY-MM-DD) narrows when a project has multiple visits.",
       parameters: {
         type: "object",
         properties: {
-          serviceCallId: { type: "string", description: "ServiceCall id (preferred). If you only have a job number, use searchProjects + getProjectStatus or ask for the service call id." },
+          serviceCallId: {
+            type: "string",
+            description: "Exact ServiceCall id (cuid) from schedule tool output. Do not pass a job number here unless you already tried projectRef.",
+          },
+          projectRef: {
+            type: "string",
+            description: "Project id, job number (e.g. MC-6595), or distinctive project name when you do not have serviceCallId.",
+          },
+          serviceDate: {
+            type: "string",
+            description: "Optional YYYY-MM-DD to select the visit on that day.",
+          },
         },
-        required: ["serviceCallId"],
       },
     },
   },
@@ -466,7 +476,13 @@ export async function executeFunctionCall(
       return { result: await handleGetScheduleRange(args.startDate as string, args.endDate as string) };
 
     case "getServiceCallDetails":
-      return { result: await handleGetServiceCallDetails(args.serviceCallId as string) };
+      return {
+        result: await handleGetServiceCallDetails({
+          serviceCallId: args.serviceCallId as string | undefined,
+          projectRef: args.projectRef as string | undefined,
+          serviceDate: args.serviceDate as string | undefined,
+        }),
+      };
 
     case "listEmployees":
       return { result: await handleListEmployees(args.role as string | undefined) };
@@ -643,19 +659,22 @@ export async function resolveProjectId(input: string): Promise<string | null> {
   return byName?.id ?? null;
 }
 
-async function handleGetServiceCallDetails(serviceCallId: string): Promise<string> {
-  if (!serviceCallId?.trim()) return JSON.stringify({ error: "serviceCallId required" });
-
-  const sc = await prisma.serviceCall.findUnique({
-    where: { id: serviceCallId },
-    include: {
-      project: { select: { id: true, name: true, jobNumber: true } },
-      items: { include: { files: true } },
-    },
-  });
-
-  if (!sc) return JSON.stringify({ error: "Service call not found", serviceCallId });
-
+function formatServiceCallPayload(sc: {
+  id: string;
+  serviceCallNumber: string | null;
+  jobNumber: string | null;
+  clientName: string | null;
+  address: string | null;
+  serviceDate: Date | null;
+  timeOfArrival: Date | null;
+  technicianName: string | null;
+  serviceCallType: string | null;
+  reasonForService: string | null;
+  notes: string | null;
+  checklistJson: string | null;
+  project: { id: string; name: string; jobNumber: string | null };
+  items: { id: string; description: string; quantity: string | null; providedBy: string | null; files: { id: string; fileName: string; storagePath: string }[] }[];
+}) {
   let serviceCallType: unknown = sc.serviceCallType;
   try {
     if (typeof sc.serviceCallType === "string" && sc.serviceCallType.trim().startsWith("[")) {
@@ -665,7 +684,6 @@ async function handleGetServiceCallDetails(serviceCallId: string): Promise<strin
     // keep raw string
   }
 
-  // The UI stores the “what we need to do” list as ServiceCallItem rows (description/qty/providedBy).
   const workItems = sc.items.map((it) => ({
     id: it.id,
     description: it.description,
@@ -674,22 +692,122 @@ async function handleGetServiceCallDetails(serviceCallId: string): Promise<strin
     files: it.files.map((f) => ({ id: f.id, fileName: f.fileName, storagePath: f.storagePath })),
   }));
 
+  return {
+    id: sc.id,
+    project: sc.project,
+    serviceCallNumber: sc.serviceCallNumber,
+    jobNumber: sc.jobNumber,
+    clientName: sc.clientName,
+    address: sc.address,
+    serviceDate: sc.serviceDate?.toISOString() ?? null,
+    timeOfArrival: sc.timeOfArrival?.toISOString() ?? null,
+    technicianName: sc.technicianName,
+    serviceCallType,
+    reasonForService: sc.reasonForService,
+    notes: sc.notes,
+    checklistJson: sc.checklistJson,
+    workItems,
+  };
+}
+
+const serviceCallInclude = {
+  project: { select: { id: true, name: true, jobNumber: true } as const },
+  items: { include: { files: true as const } },
+} as const;
+
+async function handleGetServiceCallDetails(params: {
+  serviceCallId?: string;
+  projectRef?: string;
+  serviceDate?: string;
+}): Promise<string> {
+  const idTrim = params.serviceCallId?.trim();
+  const refTrim = params.projectRef?.trim();
+  const dateTrim = params.serviceDate?.trim();
+
+  if (!idTrim && !refTrim) {
+    return JSON.stringify({
+      error: "Provide serviceCallId (from schedule JSON) or projectRef (job number / project id / name).",
+    });
+  }
+
+  const includeClause = serviceCallInclude;
+
+  if (idTrim) {
+    const byId = await prisma.serviceCall.findUnique({
+      where: { id: idTrim },
+      include: includeClause,
+    });
+    if (byId) return JSON.stringify(formatServiceCallPayload(byId), null, 2);
+
+    // Model often mistakenly passes MC-6595 as serviceCallId — resolve as project and load calls.
+    const mistakenProjectId = await resolveProjectId(idTrim);
+    if (mistakenProjectId) {
+      const dateBounds = dateTrim ? parseYmdToLocalDayBounds(dateTrim) : null;
+      const calls = await prisma.serviceCall.findMany({
+        where: {
+          projectId: mistakenProjectId,
+          ...(dateBounds ? { serviceDate: { gte: dateBounds.dayStart, lte: dateBounds.dayEnd } } : {}),
+        },
+        include: includeClause,
+        orderBy: [{ serviceDate: "desc" }, { id: "desc" }],
+      });
+      if (calls.length === 0) {
+        return JSON.stringify({
+          error: "No service calls found for this project/job",
+          triedAs: "projectRef derived from serviceCallId argument",
+          projectId: mistakenProjectId,
+          serviceDateFilter: dateTrim ?? null,
+        });
+      }
+      if (calls.length === 1) return JSON.stringify(formatServiceCallPayload(calls[0]), null, 2);
+      return JSON.stringify(
+        {
+          multiple: true,
+          count: calls.length,
+          message: "Multiple service calls for this project; pass serviceCallId for one, or narrow with serviceDate.",
+          serviceCalls: calls.map((c) => formatServiceCallPayload(c)),
+        },
+        null,
+        2
+      );
+    }
+
+    return JSON.stringify({ error: "Service call not found for id", serviceCallId: idTrim });
+  }
+
+  const projectId = await resolveProjectId(refTrim!);
+  if (!projectId) {
+    return JSON.stringify({ error: "Project not found", projectRef: refTrim });
+  }
+
+  const dateBounds = dateTrim ? parseYmdToLocalDayBounds(dateTrim) : null;
+  const calls = await prisma.serviceCall.findMany({
+    where: {
+      projectId,
+      ...(dateBounds ? { serviceDate: { gte: dateBounds.dayStart, lte: dateBounds.dayEnd } } : {}),
+    },
+    include: includeClause,
+    orderBy: [{ serviceDate: "desc" }, { id: "desc" }],
+  });
+
+  if (calls.length === 0) {
+    return JSON.stringify({
+      error: "No service calls found for this project",
+      projectId,
+      projectRef: refTrim,
+      serviceDateFilter: dateTrim ?? null,
+      hint: "Create the visit in the project Service Call tab or schedule it — then work items will appear here.",
+    });
+  }
+
+  if (calls.length === 1) return JSON.stringify(formatServiceCallPayload(calls[0]), null, 2);
+
   return JSON.stringify(
     {
-      id: sc.id,
-      project: sc.project,
-      serviceCallNumber: sc.serviceCallNumber,
-      jobNumber: sc.jobNumber,
-      clientName: sc.clientName,
-      address: sc.address,
-      serviceDate: sc.serviceDate?.toISOString() ?? null,
-      timeOfArrival: sc.timeOfArrival?.toISOString() ?? null,
-      technicianName: sc.technicianName,
-      serviceCallType,
-      reasonForService: sc.reasonForService,
-      notes: sc.notes,
-      checklistJson: sc.checklistJson,
-      workItems,
+      multiple: true,
+      count: calls.length,
+      message: "Multiple service calls; use serviceCallId from this list or pass serviceDate to narrow.",
+      serviceCalls: calls.map((c) => formatServiceCallPayload(c)),
     },
     null,
     2
