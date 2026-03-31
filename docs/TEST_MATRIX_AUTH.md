@@ -27,12 +27,13 @@ Run these after deploying with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPAB
 | 14 | Approve `createOrder` as `salesperson` | 403 (planner/admin only) |
 | 15 | Ask assistant “What is tomorrow’s schedule?” | Assistant calls `getDaySchedule` and answers from real events (no guessing) |
 | 16 | Ask assistant “What’s on my schedule this week?” | Assistant calls `getScheduleRange` and summarizes by day |
+| 17 | Ask assistant “What do we need to do for the Rachel Sapin service call?” | Assistant calls `getServiceCallDetails` and summarizes `workItems` (the list you entered) |
 
 ## Calendar / day plan
 
 | # | Case | Expected |
 |---|------|----------|
-| 17 | Day already has `DayPlanItem` rows; new service call scheduled | New item appended with `sortOrder` max+1 |
+| 18 | Day already has `DayPlanItem` rows; new service call scheduled | New item appended with `sortOrder` max+1 |
 
 ## Env
 
