@@ -348,6 +348,21 @@ export const AI_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "getServiceCallDetails",
+      description:
+        "Get full details for a service call, including the checklist/reasons/items entered in the Service Call tab. Use this when the user asks 'what do we need to do for this service call?' or 'what are the items?'.",
+      parameters: {
+        type: "object",
+        properties: {
+          serviceCallId: { type: "string", description: "ServiceCall id (preferred). If you only have a job number, use searchProjects + getProjectStatus or ask for the service call id." },
+        },
+        required: ["serviceCallId"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "listEmployees",
       description: "List team members (employees). Optionally filter by role: salesperson, woodworker, planner, or admin.",
       parameters: {
@@ -450,6 +465,9 @@ export async function executeFunctionCall(
     case "getScheduleRange":
       return { result: await handleGetScheduleRange(args.startDate as string, args.endDate as string) };
 
+    case "getServiceCallDetails":
+      return { result: await handleGetServiceCallDetails(args.serviceCallId as string) };
+
     case "listEmployees":
       return { result: await handleListEmployees(args.role as string | undefined) };
 
@@ -480,6 +498,7 @@ type ScheduleEvent = {
   jobNumber?: string | null;
   clientName?: string | null;
   projectId?: string | null;
+  serviceCallId?: string | null;
   notes?: string | null;
 };
 
@@ -517,6 +536,7 @@ async function handleGetDaySchedule(dateParam: string): Promise<string> {
       jobNumber: sc.jobNumber ?? sc.project?.jobNumber ?? null,
       clientName,
       projectId: sc.projectId ?? null,
+      serviceCallId: sc.id,
     });
   }
 
@@ -575,6 +595,7 @@ async function handleGetScheduleRange(startDate: string, endDate: string): Promi
       jobNumber: sc.jobNumber ?? sc.project?.jobNumber ?? null,
       clientName,
       projectId: sc.projectId ?? null,
+      serviceCallId: sc.id,
     });
   }
 
@@ -601,16 +622,78 @@ export async function resolveProjectId(input: string): Promise<string | null> {
   const direct = await prisma.project.findUnique({ where: { id: input }, select: { id: true } });
   if (direct) return direct.id;
 
+  const trimmed = input.trim();
+
   // Try job number
-  const byJob = await prisma.project.findFirst({ where: { jobNumber: input }, select: { id: true } });
+  const byJob = await prisma.project.findFirst({ where: { jobNumber: trimmed }, select: { id: true } });
   if (byJob) return byJob.id;
+
+  // If user passed a composite ref (e.g. "MC-6769 & MC-6199"), try extracting plausible job tokens.
+  const jobTokens = Array.from(trimmed.matchAll(/[A-Z]{1,4}-\d{3,8}/g)).map((m) => m[0]);
+  for (const token of jobTokens) {
+    const byToken = await prisma.project.findFirst({ where: { jobNumber: token }, select: { id: true } });
+    if (byToken) return byToken.id;
+  }
 
   // Fuzzy name search
   const byName = await prisma.project.findFirst({
-    where: { name: { contains: input } },
+    where: { name: { contains: trimmed } },
     select: { id: true },
   });
   return byName?.id ?? null;
+}
+
+async function handleGetServiceCallDetails(serviceCallId: string): Promise<string> {
+  if (!serviceCallId?.trim()) return JSON.stringify({ error: "serviceCallId required" });
+
+  const sc = await prisma.serviceCall.findUnique({
+    where: { id: serviceCallId },
+    include: {
+      project: { select: { id: true, name: true, jobNumber: true } },
+      items: { include: { files: true } },
+    },
+  });
+
+  if (!sc) return JSON.stringify({ error: "Service call not found", serviceCallId });
+
+  let serviceCallType: unknown = sc.serviceCallType;
+  try {
+    if (typeof sc.serviceCallType === "string" && sc.serviceCallType.trim().startsWith("[")) {
+      serviceCallType = JSON.parse(sc.serviceCallType);
+    }
+  } catch {
+    // keep raw string
+  }
+
+  // The UI stores the “what we need to do” list as ServiceCallItem rows (description/qty/providedBy).
+  const workItems = sc.items.map((it) => ({
+    id: it.id,
+    description: it.description,
+    quantity: it.quantity,
+    providedBy: it.providedBy,
+    files: it.files.map((f) => ({ id: f.id, fileName: f.fileName, storagePath: f.storagePath })),
+  }));
+
+  return JSON.stringify(
+    {
+      id: sc.id,
+      project: sc.project,
+      serviceCallNumber: sc.serviceCallNumber,
+      jobNumber: sc.jobNumber,
+      clientName: sc.clientName,
+      address: sc.address,
+      serviceDate: sc.serviceDate?.toISOString() ?? null,
+      timeOfArrival: sc.timeOfArrival?.toISOString() ?? null,
+      technicianName: sc.technicianName,
+      serviceCallType,
+      reasonForService: sc.reasonForService,
+      notes: sc.notes,
+      checklistJson: sc.checklistJson,
+      workItems,
+    },
+    null,
+    2
+  );
 }
 
 async function handleGetProjectStatus(projectIdOrRef: string): Promise<string> {
