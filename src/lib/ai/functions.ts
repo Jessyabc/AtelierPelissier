@@ -317,6 +317,52 @@ export const AI_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "proposeCreateDraftProjectAndServiceCall",
+      description:
+        "Propose creating a NEW draft project (if none exists) and a linked service call draft from a messy message (SMS/email). Use when the user asks to add a service call but no project exists yet. Date/address are optional; if no date, it won't appear on the calendar/day plan until scheduled later. QUEUED — user must approve.",
+      parameters: {
+        type: "object",
+        properties: {
+          projectName: {
+            type: "string",
+            description: "Short name for the draft project (e.g. 'Roman — Service call', 'Jessy — missing handles').",
+          },
+          clientName: { type: "string", description: "Client full name (best-effort)." },
+          clientEmail: { type: "string", description: "Optional client email." },
+          clientPhone: { type: "string", description: "Optional client phone." },
+          clientAddress: { type: "string", description: "Optional full address." },
+          serviceDate: { type: "string", description: "Optional YYYY-MM-DD. If omitted, service call remains unscheduled." },
+          serviceTime: { type: "string", description: "Optional HH:MM (24h) time for arrival." },
+          technicianName: { type: "string", description: "Optional technician name." },
+          serviceCallType: {
+            type: "array",
+            items: { type: "string" },
+            description: "Optional service call types (e.g. warranty, repair, adjustment, inspection, installation, measurements, other).",
+          },
+          reasonForService: { type: "string", description: "Optional short reason." },
+          notes: { type: "string", description: "Optional internal notes (pickup at shop, bring hardware, etc.)." },
+          workItems: {
+            type: "array",
+            description: "List of work items / issues to fix (what needs to be done).",
+            items: {
+              type: "object",
+              properties: {
+                description: { type: "string" },
+                quantity: { type: "string" },
+                providedBy: { type: "string", description: "Optional: company | client" },
+              },
+              required: ["description"],
+            },
+          },
+          rawMessage: { type: "string", description: "Original raw text for traceability (optional but recommended)." },
+        },
+        required: ["clientName"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "getDaySchedule",
       description:
         "Get the shop's schedule for a specific date (service calls + manual calendar events), ordered for route planning. Use this to answer questions like 'what's tomorrow?' or 'what's on Friday?'.",
@@ -468,6 +514,9 @@ export async function executeFunctionCall(
 
     case "proposeScheduleServiceCall":
       return handleProposeScheduleServiceCall(args);
+
+    case "proposeCreateDraftProjectAndServiceCall":
+      return handleProposeCreateDraftProjectAndServiceCall(args);
 
     case "getDaySchedule":
       return { result: await handleGetDaySchedule(args.date as string) };
@@ -987,6 +1036,78 @@ async function handleProposeScheduleServiceCall(
       reasonForService: args.reasonForService ?? undefined,
       notes: args.notes ?? undefined,
       technicianName: args.technicianName ?? undefined,
+    },
+  };
+}
+
+function normalizeServiceType(raw: unknown): string[] {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw.map((s) => String(s).trim()).filter(Boolean);
+  if (typeof raw === "string") {
+    const s = raw.trim();
+    if (s.startsWith("[")) {
+      try {
+        const parsed = JSON.parse(s) as unknown;
+        if (Array.isArray(parsed)) return parsed.map((x) => String(x).trim()).filter(Boolean);
+      } catch {
+        // fallthrough
+      }
+    }
+    return s.split(/[,;/]+/).map((x) => x.trim()).filter(Boolean);
+  }
+  return [String(raw).trim()].filter(Boolean);
+}
+
+function handleProposeCreateDraftProjectAndServiceCall(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } | { result: string } {
+  const clientName = String(args.clientName ?? "").trim();
+  if (!clientName) return { result: "clientName is required." };
+
+  const serviceDate = String(args.serviceDate ?? "").trim();
+  if (serviceDate && !/^\d{4}-\d{2}-\d{2}$/.test(serviceDate)) {
+    return { result: "serviceDate must be YYYY-MM-DD if provided." };
+  }
+  const serviceTime = String(args.serviceTime ?? "").trim();
+  if (serviceTime && !/^\d{1,2}:\d{2}$/.test(serviceTime)) {
+    return { result: "serviceTime must be HH:MM (24h) if provided." };
+  }
+
+  const projectName = String(args.projectName ?? "").trim() || `${clientName} — Service call`;
+  const workItemsRaw = (args.workItems as unknown) ?? [];
+  const workItems = Array.isArray(workItemsRaw)
+    ? workItemsRaw
+        .map((it) => it as Record<string, unknown>)
+        .map((it) => ({
+          description: String(it.description ?? "").trim(),
+          quantity: it.quantity != null ? String(it.quantity).trim() : null,
+          providedBy: it.providedBy != null ? String(it.providedBy).trim() : null,
+        }))
+        .filter((it) => it.description)
+    : [];
+
+  return {
+    result:
+      `Proposed: create a new draft project (“${projectName}”) and a service call draft for ${clientName}` +
+      (serviceDate ? ` on ${serviceDate}` : " (unscheduled)") +
+      (workItems.length ? ` with ${workItems.length} work item(s)` : "") +
+      ". Awaiting user approval.",
+    isAction: true,
+    actionPayload: {
+      action: "createDraftProjectAndServiceCall",
+      projectName,
+      clientName,
+      clientEmail: args.clientEmail ?? null,
+      clientPhone: args.clientPhone ?? null,
+      clientAddress: args.clientAddress ?? null,
+      serviceDate: serviceDate || null,
+      serviceTime: serviceTime || null,
+      technicianName: args.technicianName ?? null,
+      serviceCallType: normalizeServiceType(args.serviceCallType),
+      reasonForService: args.reasonForService ?? null,
+      notes: args.notes ?? null,
+      workItems,
+      rawMessage: args.rawMessage ?? null,
     },
   };
 }

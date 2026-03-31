@@ -28,12 +28,13 @@ Run these after deploying with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPAB
 | 15 | Ask assistant “What is tomorrow’s schedule?” | Assistant calls `getDaySchedule` and answers from real events (no guessing) |
 | 16 | Ask assistant “What’s on my schedule this week?” | Assistant calls `getScheduleRange` and summarizes by day |
 | 17 | Ask assistant “What do we need to do for the Rachel Sapin service call?” | Assistant calls `getServiceCallDetails` and summarizes `workItems` (the list you entered) |
+| 18 | Ask assistant: “Add a service call for Jessy’s project… (but no project exists)” | Assistant proposes `proposeCreateDraftProjectAndServiceCall`; on approve it creates draft project + unscheduled service call + workItems |
 
 ## Calendar / day plan
 
 | # | Case | Expected |
 |---|------|----------|
-| 18 | Day already has `DayPlanItem` rows; new service call scheduled | New item appended with `sortOrder` max+1 |
+| 19 | Day already has `DayPlanItem` rows; new service call scheduled | New item appended with `sortOrder` max+1 |
 
 ## Env
 

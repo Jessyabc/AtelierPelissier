@@ -18,6 +18,7 @@ import { buildServiceCallNotificationDrafts } from "@/lib/notifications/serviceC
  */
 function roleMayExecuteAction(role: string, action: string): boolean {
   if (action === "scheduleServiceCall") return canSchedule(role);
+  if (action === "createDraftProjectAndServiceCall") return canSchedule(role);
   if (action === "openEmail") return true;
   return canApproveAiActions(role);
 }
@@ -163,6 +164,119 @@ export async function POST(
           status: "service_call_scheduled",
           serviceCallId: serviceCall.id,
           notificationDrafts: drafts,
+        };
+        break;
+      }
+
+      case "createDraftProjectAndServiceCall": {
+        const p = payload as {
+          projectName: string;
+          clientName: string;
+          clientEmail?: string | null;
+          clientPhone?: string | null;
+          clientAddress?: string | null;
+          serviceDate?: string | null; // YYYY-MM-DD
+          serviceTime?: string | null; // HH:MM
+          technicianName?: string | null;
+          serviceCallType?: string[] | null;
+          reasonForService?: string | null;
+          notes?: string | null;
+          workItems?: Array<{ description: string; quantity?: string | null; providedBy?: string | null }> | null;
+          rawMessage?: string | null;
+        };
+
+        const name = (p.projectName || `${p.clientName} — Service call`).trim();
+        const [firstName, ...rest] = (p.clientName || "").trim().split(/\s+/).filter(Boolean);
+        const lastName = rest.join(" ");
+
+        const project = await prisma.project.create({
+          data: {
+            name,
+            type: "service_call",
+            types: "service_call",
+            isDraft: true,
+            jobNumber: null,
+            clientFirstName: firstName || null,
+            clientLastName: lastName || null,
+            clientEmail: p.clientEmail ?? null,
+            clientPhone: p.clientPhone ?? null,
+            clientAddress: p.clientAddress ?? null,
+            projectSettings: {
+              create: { markup: 2.5, taxEnabled: false, taxRate: 0.14975 },
+            },
+          },
+          select: { id: true, name: true, jobNumber: true, clientFirstName: true, clientLastName: true, clientEmail: true, clientPhone: true, clientAddress: true },
+        });
+
+        let serviceDate: Date | null = null;
+        let dayStart: Date | null = null;
+        let dayEnd: Date | null = null;
+        if (p.serviceDate && /^\d{4}-\d{2}-\d{2}$/.test(p.serviceDate)) {
+          const [y, m, d] = p.serviceDate.split("-").map(Number);
+          if (y && m && d) {
+            dayStart = new Date(y, m - 1, d);
+            dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+            serviceDate = dayStart;
+          }
+        }
+
+        let timeOfArrival: Date | null = null;
+        if (serviceDate && p.serviceTime && /^\d{1,2}:\d{2}$/.test(p.serviceTime.trim())) {
+          const [hh, mm] = p.serviceTime.split(":").map(Number);
+          timeOfArrival = new Date(serviceDate.getFullYear(), serviceDate.getMonth(), serviceDate.getDate(), hh, mm, 0, 0);
+        }
+
+        const serviceCall = await prisma.serviceCall.create({
+          data: {
+            projectId: project.id,
+            jobNumber: project.jobNumber,
+            clientName: p.clientName ?? null,
+            address: p.clientAddress ?? null,
+            clientPhone: p.clientPhone ?? null,
+            clientEmail: p.clientEmail ?? null,
+            serviceDate,
+            timeOfArrival,
+            reasonForService: p.reasonForService ?? null,
+            notes: [p.notes, p.rawMessage ? `Raw: ${p.rawMessage}` : null].filter(Boolean).join("\n\n") || null,
+            technicianName: p.technicianName ?? null,
+            serviceCallType: p.serviceCallType?.length ? JSON.stringify(p.serviceCallType) : null,
+          },
+        });
+
+        const items = p.workItems ?? [];
+        for (const item of items) {
+          if (item?.description?.trim()) {
+            await prisma.serviceCallItem.create({
+              data: {
+                serviceCallId: serviceCall.id,
+                description: item.description.trim(),
+                quantity: item.quantity ?? null,
+                providedBy: item.providedBy ?? null,
+              },
+            });
+          }
+        }
+
+        if (dayStart && dayEnd) {
+          const maxSort = await prisma.dayPlanItem.aggregate({
+            where: { planDate: { gte: dayStart, lte: dayEnd } },
+            _max: { sortOrder: true },
+          });
+          await prisma.dayPlanItem.create({
+            data: {
+              planDate: dayStart,
+              sortOrder: (maxSort._max.sortOrder ?? -1) + 1,
+              type: "service_call",
+              serviceCallId: serviceCall.id,
+            },
+          });
+        }
+
+        result = {
+          status: "draft_project_and_service_call_created",
+          projectId: project.id,
+          serviceCallId: serviceCall.id,
+          scheduled: Boolean(serviceDate),
         };
         break;
       }
