@@ -115,8 +115,10 @@ export async function POST(req: NextRequest) {
     while (maxIterations > 0) {
       maxIterations--;
 
+      const model = (process.env.OPENAI_MODEL ?? "gpt-4o").trim();
+
       const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model,
         messages: currentMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
         tools: AI_TOOLS,
         tool_choice: "auto",

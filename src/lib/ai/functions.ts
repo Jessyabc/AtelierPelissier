@@ -317,6 +317,37 @@ export const AI_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "getDaySchedule",
+      description:
+        "Get the shop's schedule for a specific date (service calls + manual calendar events), ordered for route planning. Use this to answer questions like 'what's tomorrow?' or 'what's on Friday?'.",
+      parameters: {
+        type: "object",
+        properties: {
+          date: { type: "string", description: "Date in YYYY-MM-DD (local shop date)." },
+        },
+        required: ["date"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getScheduleRange",
+      description:
+        "Get schedule events for a date range (inclusive), grouped by day. Use this for 'this week', 'next 7 days', or planning over multiple days.",
+      parameters: {
+        type: "object",
+        properties: {
+          startDate: { type: "string", description: "Start date YYYY-MM-DD (inclusive)." },
+          endDate: { type: "string", description: "End date YYYY-MM-DD (inclusive)." },
+        },
+        required: ["startDate", "endDate"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "listEmployees",
       description: "List team members (employees). Optionally filter by role: salesperson, woodworker, planner, or admin.",
       parameters: {
@@ -413,6 +444,12 @@ export async function executeFunctionCall(
     case "proposeScheduleServiceCall":
       return handleProposeScheduleServiceCall(args);
 
+    case "getDaySchedule":
+      return { result: await handleGetDaySchedule(args.date as string) };
+
+    case "getScheduleRange":
+      return { result: await handleGetScheduleRange(args.startDate as string, args.endDate as string) };
+
     case "listEmployees":
       return { result: await handleListEmployees(args.role as string | undefined) };
 
@@ -425,6 +462,138 @@ export async function executeFunctionCall(
     default:
       return { result: `Unknown function: ${name}` };
   }
+}
+
+function parseYmdToLocalDayBounds(dateParam: string): { dayStart: Date; dayEnd: Date } | null {
+  const [y, m, d] = dateParam.split("-").map(Number);
+  if (!y || !m || !d) return null;
+  const dayStart = new Date(y, m - 1, d);
+  const dayEnd = new Date(y, m - 1, d, 23, 59, 59, 999);
+  return { dayStart, dayEnd };
+}
+
+type ScheduleEvent = {
+  type: "service_call" | "manual";
+  time: string;
+  title: string;
+  address?: string | null;
+  jobNumber?: string | null;
+  clientName?: string | null;
+  projectId?: string | null;
+  notes?: string | null;
+};
+
+async function handleGetDaySchedule(dateParam: string): Promise<string> {
+  if (!dateParam) return JSON.stringify({ error: "date required (YYYY-MM-DD)" });
+  const bounds = parseYmdToLocalDayBounds(dateParam);
+  if (!bounds) return JSON.stringify({ error: "invalid date format; expected YYYY-MM-DD" });
+
+  const { dayStart, dayEnd } = bounds;
+
+  const [serviceCalls, manualEvents] = await Promise.all([
+    prisma.serviceCall.findMany({
+      where: { serviceDate: { gte: dayStart, lte: dayEnd } },
+      include: { project: { select: { id: true, jobNumber: true, clientFirstName: true, clientLastName: true } } },
+      orderBy: { timeOfArrival: "asc" },
+    }),
+    prisma.calendarEvent.findMany({
+      where: { eventDate: { gte: dayStart, lte: dayEnd } },
+      orderBy: [{ scheduledTime: "asc" }, { sortOrder: "asc" }],
+    }),
+  ]);
+
+  const events: ScheduleEvent[] = [];
+
+  for (const sc of serviceCalls) {
+    const time = sc.timeOfArrival ? new Date(sc.timeOfArrival).toTimeString().slice(0, 5) : "";
+    const clientName =
+      sc.clientName ??
+      ([sc.project?.clientFirstName, sc.project?.clientLastName].filter(Boolean).join(" ") || null);
+    events.push({
+      type: "service_call",
+      time,
+      title: sc.serviceCallNumber ?? sc.jobNumber ?? sc.clientName ?? "Service call",
+      address: sc.address,
+      jobNumber: sc.jobNumber ?? sc.project?.jobNumber ?? null,
+      clientName,
+      projectId: sc.projectId ?? null,
+    });
+  }
+
+  for (const ev of manualEvents) {
+    events.push({
+      type: "manual",
+      time: ev.scheduledTime ?? "",
+      title: ev.title,
+      address: ev.address,
+      notes: ev.notes,
+    });
+  }
+
+  events.sort((a, b) => (a.time || "23:59").localeCompare(b.time || "23:59"));
+
+  return JSON.stringify({ date: dateParam, events }, null, 2);
+}
+
+async function handleGetScheduleRange(startDate: string, endDate: string): Promise<string> {
+  if (!startDate || !endDate) return JSON.stringify({ error: "startDate and endDate required (YYYY-MM-DD)" });
+
+  const startBounds = parseYmdToLocalDayBounds(startDate);
+  const endBounds = parseYmdToLocalDayBounds(endDate);
+  if (!startBounds || !endBounds) return JSON.stringify({ error: "invalid date format; expected YYYY-MM-DD" });
+
+  const rangeStart = startBounds.dayStart;
+  const rangeEnd = endBounds.dayEnd;
+
+  const [serviceCalls, manualEvents] = await Promise.all([
+    prisma.serviceCall.findMany({
+      where: { serviceDate: { gte: rangeStart, lte: rangeEnd } },
+      include: { project: { select: { id: true, jobNumber: true, clientFirstName: true, clientLastName: true } } },
+      orderBy: [{ serviceDate: "asc" }, { timeOfArrival: "asc" }],
+    }),
+    prisma.calendarEvent.findMany({
+      where: { eventDate: { gte: rangeStart, lte: rangeEnd } },
+      orderBy: [{ eventDate: "asc" }, { scheduledTime: "asc" }, { sortOrder: "asc" }],
+    }),
+  ]);
+
+  const grouped: Record<string, ScheduleEvent[]> = {};
+  const ensure = (date: string) => (grouped[date] ??= []);
+
+  for (const sc of serviceCalls) {
+    if (!sc.serviceDate) continue;
+    const date = sc.serviceDate.toISOString().slice(0, 10);
+    const time = sc.timeOfArrival ? new Date(sc.timeOfArrival).toTimeString().slice(0, 5) : "";
+    const clientName =
+      sc.clientName ??
+      ([sc.project?.clientFirstName, sc.project?.clientLastName].filter(Boolean).join(" ") || null);
+    ensure(date).push({
+      type: "service_call",
+      time,
+      title: sc.serviceCallNumber ?? sc.jobNumber ?? sc.clientName ?? "Service call",
+      address: sc.address,
+      jobNumber: sc.jobNumber ?? sc.project?.jobNumber ?? null,
+      clientName,
+      projectId: sc.projectId ?? null,
+    });
+  }
+
+  for (const ev of manualEvents) {
+    const date = ev.eventDate.toISOString().slice(0, 10);
+    ensure(date).push({
+      type: "manual",
+      time: ev.scheduledTime ?? "",
+      title: ev.title,
+      address: ev.address,
+      notes: ev.notes,
+    });
+  }
+
+  for (const day of Object.keys(grouped)) {
+    grouped[day].sort((a, b) => (a.time || "23:59").localeCompare(b.time || "23:59"));
+  }
+
+  return JSON.stringify({ startDate, endDate, days: grouped }, null, 2);
 }
 
 export async function resolveProjectId(input: string): Promise<string | null> {

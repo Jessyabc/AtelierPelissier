@@ -25,12 +25,14 @@ Run these after deploying with `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPAB
 | 12 | Approve `scheduleServiceCall` as `woodworker` | 403 |
 | 13 | Approve `scheduleServiceCall` as `planner` | `ServiceCall` + `DayPlanItem` created; `notificationDrafts` in response |
 | 14 | Approve `createOrder` as `salesperson` | 403 (planner/admin only) |
+| 15 | Ask assistant “What is tomorrow’s schedule?” | Assistant calls `getDaySchedule` and answers from real events (no guessing) |
+| 16 | Ask assistant “What’s on my schedule this week?” | Assistant calls `getScheduleRange` and summarizes by day |
 
 ## Calendar / day plan
 
 | # | Case | Expected |
 |---|------|----------|
-| 15 | Day already has `DayPlanItem` rows; new service call scheduled | New item appended with `sortOrder` max+1 |
+| 17 | Day already has `DayPlanItem` rows; new service call scheduled | New item appended with `sortOrder` max+1 |
 
 ## Env
 
