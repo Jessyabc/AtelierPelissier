@@ -39,6 +39,17 @@ export type MondayItemForProject = {
   notes: string | null;
 };
 
+export type MondayFileAsset = {
+  columnId: string;
+  columnTitle: string | null;
+  assetId: string;
+  name: string;
+  publicUrl: string | null;
+  url: string | null;
+  fileExtension: string | null;
+  fileSize: number | null;
+};
+
 /**
  * Run a GraphQL query against Monday.com. Caller must pass apiKey (from config).
  */
@@ -63,6 +74,60 @@ export async function mondayGraphql(apiKey: string, query: string, variables?: R
     throw new Error(json.errors.map((e) => e.message).join("; "));
   }
   return json.data;
+}
+
+/**
+ * Fetch file assets attached to an item across any "file" columns.
+ * Uses Asset.public_url (temporary) when available.
+ */
+export async function fetchMondayItemFileAssets(apiKey: string, itemId: string): Promise<MondayFileAsset[]> {
+  const data = await mondayGraphql(
+    apiKey,
+    `query ($itemIds: [ID!]) {
+      items(ids: $itemIds) {
+        id
+        column_values {
+          ... on FileValue {
+            id
+            column { title }
+            files {
+              ... on FileAssetValue {
+                asset_id
+                name
+                asset {
+                  public_url
+                  url
+                  file_extension
+                  file_size
+                }
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { itemIds: [itemId] }
+  ) as any;
+
+  const item = data?.items?.[0];
+  const cols = item?.column_values ?? [];
+  const out: MondayFileAsset[] = [];
+  for (const cv of cols) {
+    const files = cv?.files ?? [];
+    for (const f of files) {
+      out.push({
+        columnId: String(cv?.id ?? ""),
+        columnTitle: (cv?.column?.title as string | null) ?? null,
+        assetId: String(f?.asset_id ?? ""),
+        name: String(f?.name ?? ""),
+        publicUrl: (f?.asset?.public_url as string | null) ?? null,
+        url: (f?.asset?.url as string | null) ?? null,
+        fileExtension: (f?.asset?.file_extension as string | null) ?? null,
+        fileSize: (typeof f?.asset?.file_size === "number" ? f.asset.file_size : null) as number | null,
+      });
+    }
+  }
+  return out.filter((a) => a.assetId && a.name);
 }
 
 /**

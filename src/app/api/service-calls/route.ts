@@ -89,13 +89,25 @@ export async function POST(request: Request) {
     });
 
     if (!project) {
+      const allowAutoCreate = process.env.SERVICE_CALLS_ALLOW_CREATE_PROJECT_IF_MISSING !== "false";
+      if (!allowAutoCreate) {
+        return NextResponse.json(
+          {
+            error: "Project not found for this job number",
+            details:
+              "Service calls must be attached to an existing project. Create/import the project first (or use the AI flow to create a draft project + service call).",
+          },
+          { status: 400 }
+        );
+      }
+
       const projectName = `Service call — ${clientLabel} — ${dateStr}`;
       project = await prisma.project.create({
         data: {
           name: projectName,
           type: "vanity",
           types: "vanity",
-          isDraft: false, // Standalone service call — no draft, saved from creation
+          isDraft: false, // legacy behavior: standalone service call creates an active placeholder project
           jobNumber,
           clientFirstName: data.clientName ? data.clientName.trim().split(/\s+/)[0] ?? null : null,
           clientLastName:

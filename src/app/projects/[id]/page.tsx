@@ -19,6 +19,7 @@ import { ProjectBoardCard } from "@/components/ProjectBoardCard";
 import { ReadinessChecklistCard } from "@/components/ReadinessChecklistCard";
 import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 import { computeReadinessCheck } from "@/lib/readiness";
+import { DraftIntakePanel } from "@/components/DraftIntakePanel";
 
 type TaskItem = { id: string; label: string; isDone: boolean; sortOrder: number };
 type ProjItem = {
@@ -312,6 +313,13 @@ export default function ProjectPage() {
       {/* === OVERVIEW TAB === */}
       {activeTab === "Overview" && (
         <div className="space-y-5">
+          {project.isDraft && (
+            <DraftIntakePanel
+              project={project}
+              processTemplates={processTemplates}
+              onApplied={fetchProject}
+            />
+          )}
           {project.isDraft && <ReadinessChecklistCard project={project} />}
           {/* Summary strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">

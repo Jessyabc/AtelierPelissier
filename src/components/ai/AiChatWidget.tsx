@@ -242,7 +242,7 @@ function AiChatWidgetInner({ pathname }: { pathname: string }) {
       <button
         onClick={() => setOpen(!open)}
         className="fixed bottom-6 right-6 z-50 w-14 h-14 rounded-full neo-btn-primary flex items-center justify-center text-white text-xl shadow-lg transition-transform hover:scale-105"
-        aria-label="AI Assistant"
+        aria-label="Afaqi"
       >
         {open ? (
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6 6 18M6 6l12 12"/></svg>
@@ -257,7 +257,7 @@ function AiChatWidgetInner({ pathname }: { pathname: string }) {
           {/* Header */}
           <div className="px-4 py-3 border-b border-[var(--shadow-dark)]/20 flex items-center justify-between flex-shrink-0 bg-[var(--bg-raised)]">
             <div>
-              <div className="font-semibold text-sm text-[var(--foreground)]">AI Assistant</div>
+              <div className="font-semibold text-sm text-[var(--foreground)]">Afaqi</div>
               <div className="text-[10px] text-[var(--foreground-muted)]">
                 {projectId ? "Project-scoped" : "Global"} context
               </div>
