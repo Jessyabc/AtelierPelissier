@@ -8,6 +8,9 @@
 
 const MONDAY_API_URL = "https://api.monday.com/v2";
 
+/** Pin API version to avoid silent schema drift; override in Vercel if Monday deprecates a version. */
+const MONDAY_API_VERSION = process.env.MONDAY_API_VERSION?.trim() || "2025-10";
+
 export type MondayBoard = { id: string; name: string };
 export type MondayColumnValue = {
   id: string;
@@ -45,6 +48,7 @@ export async function mondayGraphql(apiKey: string, query: string, variables?: R
     headers: {
       "Content-Type": "application/json",
       Authorization: apiKey,
+      "API-Version": MONDAY_API_VERSION,
     },
     body: JSON.stringify({ query, variables }),
   });
