@@ -392,9 +392,18 @@ export async function POST(
         }
         const key = apiKey.trim();
 
-        // Batch: payload.items = [ { boardId, itemId }, ... ]; single: payload.boardId + payload.itemId
-        const entries: { boardId: string; itemId: string }[] = payload.items
-          ? (payload.items as { boardId: string; itemId: string }[])
+        // Batch: payload.items = [ { boardId, itemId, overrides? }, ... ]; single: payload.boardId + payload.itemId
+        const entries: {
+          boardId: string;
+          itemId: string;
+          overrides?: {
+            jobNumber?: string | null;
+            clientName?: string | null;
+            address?: string | null;
+            notes?: string | null;
+          };
+        }[] = payload.items
+          ? (payload.items as any[])
           : payload.boardId && payload.itemId
             ? [{ boardId: payload.boardId as string, itemId: payload.itemId as string }]
             : [];
@@ -406,22 +415,37 @@ export async function POST(
         const created: { id: string; name: string }[] = [];
         const errors: string[] = [];
 
-        for (const { boardId, itemId } of entries) {
+        // Scale guardrails: keep the approval endpoint reliable for big Monday batches.
+        // If user selects 50+ items, we process in chunks and may return a partial result on timeout.
+        const startedAt = Date.now();
+        const MAX_MS = 25_000; // keep under common serverless timeouts
+        const CHUNK_SIZE = 25;
+        const MAX_ITEMS = 250;
+        const list = entries.slice(0, MAX_ITEMS);
+        const skipped = entries.length > MAX_ITEMS ? entries.length - MAX_ITEMS : 0;
+
+        for (let i = 0; i < list.length; i++) {
+          const { boardId, itemId, overrides } = list[i] as (typeof entries)[number];
           try {
             const mapped = await getMondayItemAsProject(key, boardId, itemId);
             const name = mapped.name?.trim() || "New project";
-            const jobNumber = mapped.jobNumber?.trim() || null;
+            const jobRaw = overrides?.jobNumber ?? mapped.jobNumber;
+            const jobNumber = typeof jobRaw === "string" && jobRaw.trim() ? jobRaw.trim() : null;
+            const clientRaw = overrides?.clientName ?? mapped.clientName;
+            const clientName = typeof clientRaw === "string" && clientRaw.trim() ? clientRaw.trim() : null;
+            const notes = overrides?.notes ?? mapped.notes ?? null;
             const project = await prisma.project.create({
               data: {
                 name,
                 type: "custom",
                 types: "custom",
                 jobNumber,
-                notes: mapped.notes ?? null,
+                notes,
                 isDraft: true,
                 isDone: false,
-                clientFirstName: mapped.clientName ? mapped.clientName.split(/\s+/)[0] ?? null : null,
-                clientLastName: mapped.clientName ? mapped.clientName.split(/\s+/).slice(1).join(" ") || null : null,
+                clientFirstName: clientName ? clientName.split(/\s+/)[0] ?? null : null,
+                clientLastName: clientName ? clientName.split(/\s+/).slice(1).join(" ") || null : null,
+                clientAddress: typeof overrides?.address === "string" && overrides.address.trim() ? overrides.address.trim() : null,
               },
             });
             created.push({ id: project.id, name: project.name });
@@ -429,6 +453,23 @@ export async function POST(
             const msg = e instanceof Error ? e.message : String(e);
             errors.push(`${itemId}: ${msg}`);
           }
+
+          // Soft “heartbeat” checkpoints every CHUNK_SIZE items
+          if ((i + 1) % CHUNK_SIZE === 0) {
+            if (Date.now() - startedAt > MAX_MS) {
+              const remaining = list.length - (i + 1);
+              errors.push(
+                `batch_timeout: Stopped after ${(i + 1)} item(s) to avoid timeout. ${remaining} item(s) remain; run again to continue.`
+              );
+              break;
+            }
+          }
+        }
+
+        if (skipped > 0) {
+          errors.push(
+            `batch_limit: ${skipped} item(s) were not attempted (max ${MAX_ITEMS} per approval). Run again with the remaining items.`
+          );
         }
 
         result = {
@@ -436,7 +477,7 @@ export async function POST(
           projectId: created[0]?.id ?? null,
           projectIds: created.map((p) => p.id),
           count: created.length,
-          total: entries.length,
+          total: list.length,
           errors: errors.length ? errors : undefined,
         };
         break;

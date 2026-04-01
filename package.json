@@ -15,6 +15,7 @@
     "db:push": "dotenv-cli -e .env.local -- prisma db push",
     "db:migrate:dev": "dotenv-cli -e .env.local -- prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
+    "cron:monday:sync": "node -e \"console.error('Call POST /api/cron/monday-sync with x-cron-secret; this is not a local CLI.'); process.exit(1)\"",
     "db:studio": "dotenv-cli -e .env.local -- prisma studio",
     "db:seed": "dotenv-cli -e .env.local -- npx tsx prisma/seed.ts"
   },

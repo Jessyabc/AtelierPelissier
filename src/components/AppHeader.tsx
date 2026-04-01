@@ -18,7 +18,7 @@ const FALLBACK_MENU: MenuItemConfig[] = [
   { href: "/home", label: "Operations Cockpit", visible: true, order: 0 },
   { href: "/", label: "Projects", visible: true, order: 1 },
   { href: "/projects/new", label: "New project", visible: true, order: 2 },
-  { href: "/assistant", label: "AI Assistant", visible: true, order: 3 },
+  { href: "/assistant", label: "Afaqi", visible: true, order: 3 },
   { href: "/dashboard", label: "Executive Dashboard", visible: true, order: 4 },
   { href: "/inventory", label: "Inventory", visible: true, order: 5 },
   { href: "/distributors", label: "Suppliers & Purchasing", visible: true, order: 6 },

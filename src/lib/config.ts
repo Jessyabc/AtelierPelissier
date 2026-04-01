@@ -39,6 +39,11 @@ export type Integrations = {
   mondayBoardId?: string;
   /** Multiple boards: id + optional label. AI can list items from any of these. */
   mondayBoards?: MondayBoardRef[];
+  /**
+   * Internal: items already observed by the Monday cron sync, to propose only new drafts.
+   * Stores Monday item/subitem IDs as strings. Bounded by cron logic.
+   */
+  mondaySeenItemIds?: string[];
   sageEnabled?: boolean;
   /** Sage Business Cloud Accounting OAuth — from app registration. */
   sageClientId?: string;

@@ -244,7 +244,7 @@ export default function AssistantPage() {
       {/* Top bar: session list + new chat */}
       <div className="flex items-center justify-between py-2 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <h1 className="text-xl font-semibold text-[var(--foreground)]">AI Assistant</h1>
+        <h1 className="text-xl font-semibold text-[var(--foreground)]">Afaqi</h1>
           {contextProjectId && (
             <span className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 text-xs font-medium">
               Project context active

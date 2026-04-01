@@ -42,10 +42,13 @@ export async function POST(
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
-  const data = body as { type?: string; label?: string; processTemplateId?: string };
+  const data = body as { type?: string; label?: string; processTemplateId?: string; extraTaskLabels?: string[] };
   const type = (data?.type as string)?.trim() || "custom";
   const label = (data?.label as string)?.trim() || "New item";
   const processTemplateId = (data?.processTemplateId as string)?.trim() || null;
+  const extraTaskLabels = Array.isArray(data?.extraTaskLabels)
+    ? data.extraTaskLabels.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean).slice(0, 30)
+    : [];
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -81,6 +84,27 @@ export async function POST(
           data: { projectItemId: item.id, label: labels[i], sortOrder: i },
         });
       }
+    }
+  }
+
+  // Append extra tasks (e.g. AI-suggested) after template tasks.
+  if (extraTaskLabels.length > 0) {
+    const existing = await prisma.projectItemTaskItem.findMany({
+      where: { projectItemId: item.id },
+      select: { label: true, sortOrder: true },
+      orderBy: { sortOrder: "asc" },
+    });
+    const existingNorm = new Set(existing.map((t) => t.label.trim().toLowerCase()));
+    const baseOrder = (existing[existing.length - 1]?.sortOrder ?? -1) + 1;
+    let offset = 0;
+    for (const t of extraTaskLabels) {
+      const norm = t.toLowerCase();
+      if (existingNorm.has(norm)) continue;
+      await prisma.projectItemTaskItem.create({
+        data: { projectItemId: item.id, label: t, sortOrder: baseOrder + offset },
+      });
+      existingNorm.add(norm);
+      offset++;
     }
   }
 
