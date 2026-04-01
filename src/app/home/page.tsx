@@ -35,6 +35,7 @@ export type ProjectHealth = {
   margin: number;
   estimateCost: number;
   actualCost: number;
+  blockedReason: string | null;
 };
 
 export type ShortageItem = {

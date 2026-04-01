@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { DashboardSnapshot } from "@/components/dashboard/DashboardSnapshot";
 import { DeviationPanel } from "@/components/dashboard/DeviationPanel";
 import { ProjectDrilldown } from "@/components/dashboard/ProjectDrilldown";
+import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 
 type Project = {
   id: string;
@@ -12,6 +13,7 @@ type Project = {
   type: string;
   types: string;
   isDraft: boolean;
+  blockedReason?: string | null;
   costLines: Array<{ kind: string; amount: number }>;
   projectSettings?: { markup: number } | null;
   materialRequirements: Array<{ materialCode: string; requiredQty: number; allocatedQty: number }>;
@@ -171,7 +173,10 @@ export default function DashboardPage() {
                   }
                   className="flex w-full items-center justify-between rounded-lg border border-gray-200 bg-white px-4 py-3 text-left hover:bg-gray-50"
                 >
-                  <span className="font-medium text-gray-900">{project.name}</span>
+                  <span className="flex flex-wrap items-center gap-2 font-medium text-gray-900">
+                    {project.name}
+                    {project.blockedReason && <BlockedReasonBadge reason={project.blockedReason} />}
+                  </span>
                   <span className="text-sm text-gray-500">
                     {expandedProject === project.id ? "▼" : "▶"}
                   </span>

@@ -761,7 +761,11 @@ function IntegrationsTab({ config, saving, onSave }: {
     setTestError("");
     setTestBoards([]);
     try {
-      const res = await fetch("/api/integrations/monday/boards");
+      const res = await fetch("/api/integrations/monday/boards", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: mondayKey.trim() || undefined }),
+      });
       const data = await res.json();
       if (!res.ok) {
         setTestError(data.error ?? "Connection failed");
@@ -781,7 +785,9 @@ function IntegrationsTab({ config, saving, onSave }: {
       <div>
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Integrations</h2>
         <p className="text-sm text-[var(--foreground-muted)]">
-          Connect external services. API keys are stored in the app database (Admin only).
+          Connect external services. Secrets (e.g. Monday token) are stored only in your app database, never in
+          client-side env vars. Only admins can load or change them; other roles receive config without integration
+          secrets. Use HTTPS in production and protect database backups like any credential store.
         </p>
       </div>
 
@@ -814,7 +820,10 @@ function IntegrationsTab({ config, saving, onSave }: {
             </button>
           </div>
           <p className="text-[10px] text-[var(--foreground-muted)] mt-1.5">
-            Get your key: Monday.com → bottom-left profile → Admin → API → copy token. Save below, then use &quot;Test connection&quot; to list boards.
+            Get your personal token: Monday.com → profile (top right) → <strong>Developers</strong> → API token → Show/Copy.
+            (Admins can also use Administration → Connections → Personal API token.){" "}
+            <strong>Test connection</strong> uses the key in this field immediately — you do not need to save first.
+            Click <strong>Save Integrations</strong> at the bottom to persist it for the AI and imports.
           </p>
         </div>
 
@@ -1077,6 +1086,70 @@ function IntegrationsTab({ config, saving, onSave }: {
 // TAB 7: System Health
 // ════════════════════════════════════════════════════════════════════════
 
+type ReadinessStatsPayload = {
+  windowDays: number;
+  totalReadinessBlocked: number;
+  entriesWithParsedMissing: number;
+  topMissingFields: { field: string; count: number }[];
+};
+
+function ReadinessAdoptionPanel() {
+  const [data, setData] = useState<ReadinessStatsPayload | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    fetch("/api/admin/readiness-stats", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => setData(d))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <p className="text-sm text-[var(--foreground-muted)]">Loading readiness adoption…</p>;
+  }
+  if (!data) {
+    return null;
+  }
+
+  return (
+    <div className="neo-panel-inset rounded-lg p-4 space-y-3 border border-[var(--shadow-dark)]/15">
+      <div>
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">Readiness gate rejections</h3>
+        <p className="text-xs text-[var(--foreground-muted)] mt-1">
+          Audit entries with action <code className="font-mono bg-white/40 px-1 rounded">readiness_blocked</code> when{" "}
+          <code className="font-mono bg-white/40 px-1 rounded">READINESS_GATE_STRICT</code> blocks draft → saved. Window: last{" "}
+          {data.windowDays} days.
+        </p>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-center">
+        <div className="bg-white/30 rounded-lg p-3">
+          <div className="text-xl font-bold text-[var(--foreground)]">{data.totalReadinessBlocked}</div>
+          <div className="text-[10px] text-[var(--foreground-muted)]">Blocked attempts</div>
+        </div>
+        <div className="bg-white/30 rounded-lg p-3">
+          <div className="text-xl font-bold text-[var(--foreground)]">{data.entriesWithParsedMissing}</div>
+          <div className="text-[10px] text-[var(--foreground-muted)]">With parsed fields</div>
+        </div>
+        <div className="bg-white/30 rounded-lg p-3 sm:col-span-1 col-span-2">
+          <div className="text-xs font-medium text-[var(--foreground)] text-left px-1">Top missing fields</div>
+          {data.topMissingFields.length === 0 ? (
+            <p className="text-[10px] text-[var(--foreground-muted)] mt-1">No data yet</p>
+          ) : (
+            <ul className="text-left text-xs mt-1 space-y-0.5">
+              {data.topMissingFields.slice(0, 8).map((row) => (
+                <li key={row.field}>
+                  <span className="font-mono text-[var(--foreground)]">{row.field}</span>{" "}
+                  <span className="text-[var(--foreground-muted)]">×{row.count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function SystemHealthTab() {
   const [errors, setErrors] = useState<AppError[]>([]);
   const [loading, setLoading] = useState(true);
@@ -1124,6 +1197,8 @@ function SystemHealthTab() {
           Error log, AI diagnostics, and application architecture reference.
         </p>
       </div>
+
+      <ReadinessAdoptionPanel />
 
       {/* Summary */}
       <div className="grid grid-cols-3 gap-3">

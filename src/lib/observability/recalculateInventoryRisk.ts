@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db";
 import { getEffectiveRiskSettings } from "@/lib/risk/getEffectiveRiskSettings";
 import { upsertDeviation, resolveDeviation } from "./deviations";
 import { computeInventoryState } from "./recalculateInventoryState";
+import { syncProjectBlockedFromMaterialShortage } from "./syncProjectMaterialBlock";
 
 export async function recalculateInventoryRisk(projectId: string): Promise<void> {
   const project = await prisma.project.findUnique({
@@ -20,6 +21,7 @@ export async function recalculateInventoryRisk(projectId: string): Promise<void>
       where: { projectId, type: "inventory_shortage", resolved: false },
       data: { resolved: true },
     });
+    await syncProjectBlockedFromMaterialShortage(projectId);
     return;
   }
 
@@ -44,7 +46,11 @@ export async function recalculateInventoryRisk(projectId: string): Promise<void>
       const shortage = requiredQty - availableStock;
       const shortagePercent = shortage / requiredQty;
       const severity =
-        shortagePercent >= effectiveRisk.inventoryShortageHigh ? "high" : "medium";
+        shortagePercent >= 0.95
+          ? "critical"
+          : shortagePercent >= effectiveRisk.inventoryShortageHigh
+            ? "high"
+            : "medium";
       const impactValue = shortage;
 
       await upsertDeviation({
@@ -59,4 +65,6 @@ export async function recalculateInventoryRisk(projectId: string): Promise<void>
       await resolveDeviation(projectId, "inventory_shortage", mr.materialCode);
     }
   }
+
+  await syncProjectBlockedFromMaterialShortage(projectId);
 }

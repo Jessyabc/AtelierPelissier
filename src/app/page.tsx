@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { HomeStats, type StatsData } from "@/components/HomeStats";
+import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 
 type Project = {
   id: string;
@@ -19,6 +20,7 @@ type Project = {
   clientLastName: string | null;
   costLines: Array<{ amount: number }>;
   subProjects?: Array<{ id: string; name: string; isDone: boolean; isDraft: boolean }>;
+  blockedReason?: string | null;
 };
 
 const LOAD_TIMEOUT_MS = 8000;
@@ -254,6 +256,11 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
+                    {p.blockedReason && (
+                      <span className="ml-2 align-middle">
+                        <BlockedReasonBadge reason={p.blockedReason} />
+                      </span>
+                    )}
                     {p.subProjects && p.subProjects.length > 0 && (
                       <span className="ml-2 text-xs text-gray-500">({p.subProjects.length} tasks)</span>
                     )}
@@ -306,6 +313,11 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
+                    {p.blockedReason && (
+                      <span className="ml-2 align-middle">
+                        <BlockedReasonBadge reason={p.blockedReason} />
+                      </span>
+                    )}
                     <span className="ml-2 neo-btn-pressed inline-block px-2 py-0.5 text-xs text-gray-600 rounded-lg">Draft</span>
                     <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
                     <span className="ml-2 text-sm text-gray-500">{new Date(p.updatedAt).toLocaleDateString()}</span>
@@ -347,6 +359,11 @@ export default function DashboardPage() {
                 <div className="flex flex-wrap items-center justify-between gap-2 p-4">
                   <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
                     <span className="font-medium text-gray-900">{p.name}</span>
+                    {p.blockedReason && (
+                      <span className="ml-2 align-middle">
+                        <BlockedReasonBadge reason={p.blockedReason} />
+                      </span>
+                    )}
                     <span className="ml-2 inline-block rounded-lg bg-green-100 px-2 py-0.5 text-xs text-green-800">Done</span>
                     {p.subProjects && p.subProjects.length > 0 && (
                       <span className="ml-2 text-xs text-gray-500">({p.subProjects.length} tasks)</span>
@@ -393,7 +410,14 @@ export default function DashboardPage() {
                   className="block neo-card p-4 transition-all hover:shadow-[6px_6px_12px_var(--shadow-dark),-6px_-6px_12px_var(--shadow-light)]"
                 >
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900">{p.name}</span>
+                    <span className="font-medium text-gray-900">
+                      {p.name}
+                      {p.blockedReason && (
+                        <span className="ml-2 align-middle">
+                          <BlockedReasonBadge reason={p.blockedReason} />
+                        </span>
+                      )}
+                    </span>
                     <span className="text-sm font-medium text-gray-700">
                       ${estimateTotal(p.costLines).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
                     </span>

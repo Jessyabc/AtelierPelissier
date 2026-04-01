@@ -64,6 +64,17 @@ export const updateProjectSchema = z.object({
   processTemplateId: z.string().cuid().optional().nullable(),
   targetDate: z.string().optional().nullable(),
   sellingPrice: z.number().min(0).optional().nullable(),
+  blockedReason: z
+    .enum([
+      "missing_material",
+      "waiting_cutlist",
+      "waiting_approval",
+      "supplier_delay",
+      "missing_info",
+      "change_order",
+    ])
+    .optional()
+    .nullable(),
 });
 
 export const vanityInputsSchema = z.object({

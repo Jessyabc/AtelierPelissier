@@ -96,6 +96,7 @@ export async function GET() {
       margin: Math.round(margin * 100) / 100,
       estimateCost: est,
       actualCost: act,
+      blockedReason: p.blockedReason ?? null,
     };
   });
 

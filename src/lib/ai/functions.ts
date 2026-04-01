@@ -11,6 +11,7 @@ import { computeInventoryState } from "@/lib/observability/recalculateInventoryS
 import { buildEmailDraft } from "@/lib/purchasing/buildEmailDraft";
 import { resolveDefaultSupplier } from "@/lib/purchasing/resolveDefaultSupplier";
 import { findBorrowCandidates } from "@/lib/purchasing/borrowAnalysis";
+import { blockedReasonLabel, blockedReasonSeverityRank } from "@/lib/blockedReasonLabels";
 
 export const AI_TOOLS: ChatCompletionTool[] = [
   {
@@ -51,6 +52,15 @@ export const AI_TOOLS: ChatCompletionTool[] = [
           projectId: { type: "string", description: "Optional project ID to filter shortages for." },
         },
       },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "getBlockedProjects",
+      description:
+        "List all non-done projects that are marked blocked (blockedReason set), grouped by reason. Use when the user asks what is blocked, what cannot ship, or operations holdups.",
+      parameters: { type: "object", properties: {} },
     },
   },
   {
@@ -469,6 +479,9 @@ export async function executeFunctionCall(
 
     case "getShortages":
       return { result: await handleGetShortages(args.projectId as string | undefined) };
+
+    case "getBlockedProjects":
+      return { result: await handleGetBlockedProjects() };
 
     case "proposeOrder":
       return handleProposeOrder(args);
@@ -969,6 +982,51 @@ async function handleGetShortages(projectId?: string): Promise<string> {
   return shortages.length > 0
     ? shortages.join("\n")
     : "No material shortages found";
+}
+
+async function handleGetBlockedProjects(): Promise<string> {
+  const rows = await prisma.project.findMany({
+    where: { isDone: false, blockedReason: { not: null } },
+    select: {
+      id: true,
+      name: true,
+      jobNumber: true,
+      blockedReason: true,
+      isDraft: true,
+      updatedAt: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  if (rows.length === 0) {
+    return "No blocked projects (blockedReason is empty for all active projects).";
+  }
+
+  const sorted = [...rows].sort(
+    (a, b) =>
+      blockedReasonSeverityRank(a.blockedReason!) - blockedReasonSeverityRank(b.blockedReason!)
+  );
+
+  const byReason = new Map<string, typeof sorted>();
+  for (const r of sorted) {
+    const key = r.blockedReason ?? "";
+    if (!byReason.has(key)) byReason.set(key, []);
+    byReason.get(key)!.push(r);
+  }
+
+  const lines: string[] = [];
+  for (const [reason, list] of [...byReason.entries()].sort(
+    (a, b) => blockedReasonSeverityRank(a[0]) - blockedReasonSeverityRank(b[0])
+  )) {
+    lines.push(`## ${blockedReasonLabel(reason)} (${list.length})`);
+    for (const p of list) {
+      const ref = p.jobNumber ?? p.name;
+      const draft = p.isDraft ? " [draft]" : "";
+      lines.push(`- ${ref}${draft} — /projects/${p.id}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 function handleProposeOrder(
