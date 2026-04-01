@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { AiMessageBubble } from "@/components/ai/AiMessageBubble";
 import { AiActionCard } from "@/components/ai/AiActionCard";
+import { streamAiChat } from "@/lib/ai/clientStreamChat";
 
 type Message = {
   id?: string;
@@ -10,6 +11,7 @@ type Message = {
   content: string;
   action?: { action: string; [key: string]: unknown } | null;
   actionStatus?: string | null;
+  streaming?: boolean;
 };
 
 type Conversation = {
@@ -42,9 +44,11 @@ export default function AssistantPage() {
   const [showActions, setShowActions] = useState(true);
   const [actionError, setActionError] = useState<string | null>(null);
   const [approvingIndex, setApprovingIndex] = useState<number | null>(null);
+  const [streamPhase, setStreamPhase] = useState<"thinking" | "using_tools" | "reply" | null>(null);
   const [contextProjectId, setContextProjectId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const actionsRef = useRef<HTMLDivElement>(null);
+  const streamingAssistantIdx = useRef<number | null>(null);
 
   // Pick up the last project the user visited from the floating chat widget
   useEffect(() => {
@@ -98,59 +102,90 @@ export default function AssistantPage() {
     setInput("");
     setActionError(null);
     setLoading(true);
+    setStreamPhase("thinking");
     setShowActions(false);
 
+    streamingAssistantIdx.current = null;
+
     try {
-      const res = await fetch("/api/ai/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      await streamAiChat(
+        {
           message: msgText,
           conversationId: activeConvoId,
           pathname: "/assistant",
           ...(contextProjectId ? { projectId: contextProjectId } : {}),
-        }),
-      });
-      const raw = await res.text();
-      let data: {
-        error?: string;
-        details?: string;
-        reply?: string;
-        conversationId?: string;
-        messageId?: string;
-        action?: { action: string; [key: string]: unknown } | null;
-      };
-      try {
-        data = raw ? (JSON.parse(raw) as typeof data) : {};
-      } catch {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "assistant",
-            content: res.ok
-              ? "The server returned an invalid response. Try again."
-              : `Server error (${res.status}): ${raw.slice(0, 280)}`,
+        },
+        {
+          onStart: (convoId) => {
+            setActiveConvoId((prev) => prev ?? convoId);
+            setMessages((prev) => {
+              const next = [
+                ...prev,
+                { role: "assistant" as const, content: "", streaming: true, action: null, actionStatus: null },
+              ];
+              streamingAssistantIdx.current = next.length - 1;
+              return next;
+            });
           },
-        ]);
-        return;
-      }
-      if (!res.ok) {
-        const errMsg = data.error ?? "Something went wrong.";
-        setMessages((prev) => [...prev, { role: "assistant", content: data.details ? `${errMsg}: ${data.details}` : errMsg }]);
-        return;
-      }
-      if (data.conversationId && !activeConvoId) setActiveConvoId(data.conversationId);
-      setMessages((prev) => [...prev, {
-        id: data.messageId,
-        role: "assistant",
-        content: data.reply?.trim() ? data.reply : "No reply returned. Try asking again.",
-        action: data.action ?? null,
-        actionStatus: data.action ? "pending" : null,
-      }]);
+          onPhase: (phase) => setStreamPhase(phase),
+          onDelta: (text) => {
+            setMessages((prev) => {
+              const idx = streamingAssistantIdx.current ?? prev.length - 1;
+              if (idx < 0 || idx >= prev.length || prev[idx]?.role !== "assistant") return prev;
+              const copy = [...prev];
+              const m = copy[idx];
+              copy[idx] = { ...m, content: (m.content ?? "") + text, streaming: true };
+              return copy;
+            });
+          },
+          onDone: ({ messageId, conversationId, action }) => {
+            setActiveConvoId((prev) => prev ?? conversationId);
+            const idxDone = streamingAssistantIdx.current;
+            streamingAssistantIdx.current = null;
+            setMessages((prev) => {
+              const idx = idxDone ?? prev.length - 1;
+              if (idx < 0 || idx >= prev.length || prev[idx]?.role !== "assistant") return prev;
+              const copy = [...prev];
+              const m = copy[idx];
+              const content = m.content?.trim()
+                ? m.content
+                : "No reply returned. Try asking again.";
+              copy[idx] = {
+                ...m,
+                id: messageId,
+                content,
+                streaming: false,
+                action: (action as Message["action"]) ?? null,
+                actionStatus: action ? "pending" : null,
+              };
+              return copy;
+            });
+          },
+          onError: (errMsg) => {
+            const idxErr = streamingAssistantIdx.current;
+            streamingAssistantIdx.current = null;
+            setMessages((prev) => {
+              if (idxErr != null && idxErr >= 0 && idxErr < prev.length && prev[idxErr]?.role === "assistant" && prev[idxErr]?.streaming) {
+                const copy = [...prev];
+                copy[idxErr] = {
+                  ...copy[idxErr],
+                  content: errMsg,
+                  streaming: false,
+                  action: null,
+                  actionStatus: null,
+                };
+                return copy;
+              }
+              return [...prev, { role: "assistant", content: errMsg }];
+            });
+          },
+        }
+      );
     } catch {
       setMessages((prev) => [...prev, { role: "assistant", content: "Failed to connect." }]);
     } finally {
       setLoading(false);
+      setStreamPhase(null);
     }
   }, [input, loading, activeConvoId, contextProjectId]);
 
@@ -300,7 +335,7 @@ export default function AssistantPage() {
           <div className="space-y-3 py-4">
             {messages.map((msg, i) => (
               <div key={i}>
-                <AiMessageBubble role={msg.role} content={msg.content} />
+                <AiMessageBubble role={msg.role} content={msg.content} streaming={msg.streaming} />
                 {msg.action && (msg.actionStatus === "pending" || msg.actionStatus === "executing") && (
                   <AiActionCard
                     action={msg.action}
@@ -322,10 +357,10 @@ export default function AssistantPage() {
                 {actionError}
               </div>
             )}
-            {loading && (
+            {loading && streamPhase !== "reply" && (
               <div className="flex items-center gap-2 text-sm text-[var(--foreground-muted)]">
                 <span className="inline-block w-2 h-2 rounded-full bg-[var(--accent)] animate-pulse" />
-                Thinking...
+                {streamPhase === "using_tools" ? "Running tools…" : "Thinking…"}
               </div>
             )}
           </div>

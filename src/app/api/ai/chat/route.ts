@@ -3,22 +3,19 @@ import { AuthenticationError, RateLimitError } from "openai";
 import { prisma } from "@/lib/db";
 import { getOpenAIClient, getSystemPrompt } from "@/lib/ai/openai";
 import { buildContextMessage } from "@/lib/ai/context";
-import { AI_TOOLS, executeFunctionCall } from "@/lib/ai/functions";
 import { buildIntentHint } from "@/lib/ai/noteIntelligence";
 import { getSessionWithUser } from "@/lib/auth/session";
+import { runToolLoop } from "@/lib/ai/runChatTurn";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 /**
  * POST /api/ai/chat
- * Processes a chat message with GPT-4o, including context injection and function calling.
+ * Body: { message, conversationId?, pathname?, projectId?, stream?: boolean }
  *
- * Body: {
- *   message: string,
- *   conversationId?: string,
- *   pathname: string,
- *   projectId?: string,
- * }
- *
- * Returns: { reply: string, conversationId: string, action?: object }
+ * Default: JSON { reply, conversationId, messageId, action? }
+ * stream: true → text/event-stream with SSE JSON events (start, phase, delta, done | error)
  */
 export async function POST(req: NextRequest) {
   try {
@@ -26,16 +23,16 @@ export async function POST(req: NextRequest) {
     if (!auth.ok) return auth.response;
 
     const body = await req.json();
-    const { message, conversationId, pathname, projectId } = body;
+    const { message, conversationId, pathname, projectId, stream: wantStream } = body;
 
     if (!message) {
       return NextResponse.json({ error: "message required" }, { status: 400 });
     }
 
     const openai = getOpenAIClient();
+    const model = (process.env.OPENAI_MODEL ?? "gpt-4o").trim();
 
-    // Get or create conversation
-    let convoId = conversationId;
+    let convoId = conversationId as string | undefined;
     if (!convoId) {
       const conversation = await prisma.aiConversation.create({
         data: {
@@ -46,23 +43,19 @@ export async function POST(req: NextRequest) {
       convoId = conversation.id;
     }
 
-    // Load conversation history
     const history = await prisma.aiMessage.findMany({
       where: { conversationId: convoId },
       orderBy: { createdAt: "asc" },
       take: 30,
     });
 
-    // Build context
     const contextMessage = await buildContextMessage({
       pathname: pathname ?? "/",
       projectId,
     });
 
-    // Pre-parse intent hints from the user's message
     const intentHint = await buildIntentHint(message);
 
-    // Assemble messages for OpenAI
     const systemPrompt = await getSystemPrompt();
     const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
       { role: "system", content: systemPrompt },
@@ -73,10 +66,11 @@ export async function POST(req: NextRequest) {
       messages.push({ role: "system", content: `[Note intelligence hint: ${intentHint}]` });
     }
 
-    // If user message looks like confirmation and last assistant reply was about Monday/proposal, force tool-call hint
     const lastAssistant = history.filter((m: { role: string }) => m.role === "assistant").pop();
     const lastContent = lastAssistant?.content ?? "";
-    const looksLikeConfirmation = /^(yes|confirm|ok|go ahead|do it|approved|oui|d'accord|sure|please do|go for it|confirmed?|I confirm|let's do it|do them)$/i.test(message.trim());
+    const looksLikeConfirmation = /^(yes|confirm|ok|go ahead|do it|approved|oui|d'accord|sure|please do|go for it|confirmed?|I confirm|let's do it|do them)$/i.test(
+      String(message).trim()
+    );
     const lastWasMondayProposal = /monday|proposed?|approv|create.*project|draft project/i.test(lastContent);
     if (looksLikeConfirmation && lastWasMondayProposal) {
       messages.push({
@@ -86,17 +80,14 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // Add history
     for (const msg of history) {
       if (msg.role === "user" || msg.role === "assistant") {
         messages.push({ role: msg.role as "user" | "assistant", content: msg.content });
       }
     }
 
-    // Add current message
     messages.push({ role: "user", content: message });
 
-    // Save user message
     await prisma.aiMessage.create({
       data: {
         conversationId: convoId,
@@ -105,122 +96,114 @@ export async function POST(req: NextRequest) {
       },
     });
 
-    // Call OpenAI with function calling
-    let finalReply = "";
-    let actionPayload: Record<string, unknown> | null = null;
-    let maxIterations = 5; // prevent infinite loops
+    const encoder = new TextEncoder();
+    const sse = (obj: object) => encoder.encode(`data: ${JSON.stringify(obj)}\n\n`);
 
-    let currentMessages = [...messages];
-
-    while (maxIterations > 0) {
-      maxIterations--;
-
-      const model = (process.env.OPENAI_MODEL ?? "gpt-4o").trim();
-
-      const completion = await openai.chat.completions.create({
-        model,
-        messages: currentMessages as Parameters<typeof openai.chat.completions.create>[0]["messages"],
-        tools: AI_TOOLS,
-        tool_choice: "auto",
-        temperature: 0.3,
-        max_tokens: 1500,
-      });
-
-      const choice = completion.choices[0];
-      if (!choice) break;
-
-      const assistantMsg = choice.message;
-
-      // If the model wants to call a function
-      if (assistantMsg.tool_calls && assistantMsg.tool_calls.length > 0) {
-        // Add assistant message with tool calls to the conversation
-        currentMessages.push(assistantMsg as unknown as typeof currentMessages[0]);
-
-        // Collect multiple createProjectFromMondayItem calls into one batch action
-        const mondayBatch: { boardId: string; itemId: string }[] = [];
-
-        for (const toolCall of assistantMsg.tool_calls) {
-          const tc = toolCall as unknown as Record<string, Record<string, string>>;
-          const fnName = tc.function?.name ?? "";
-          const rawArgs = tc.function?.arguments ?? "{}";
-          let fnArgs: Record<string, unknown>;
-          try {
-            fnArgs = JSON.parse(rawArgs) as Record<string, unknown>;
-          } catch {
-            const callIdBad = (toolCall as unknown as { id: string }).id;
-            currentMessages.push({
-              role: "tool" as unknown as "user",
-              tool_call_id: callIdBad,
-              content: JSON.stringify({
-                error: "invalid_json_arguments",
-                message: "Could not parse tool arguments as JSON; retry with valid JSON only.",
-              }),
-            } as unknown as typeof currentMessages[0]);
-            continue;
-          }
-
-          const fnResult = await executeFunctionCall(fnName, fnArgs);
-
-          if (fnResult.isAction && fnResult.actionPayload) {
-            const p = fnResult.actionPayload;
-            if (p.action === "createProjectFromMonday" && p.boardId && p.itemId) {
-              mondayBatch.push({ boardId: p.boardId as string, itemId: p.itemId as string });
-            } else {
-              actionPayload = p;
-            }
-          }
-
-          const callId = (toolCall as unknown as { id: string }).id;
-          currentMessages.push({
-            role: "tool" as unknown as "user",
-            tool_call_id: callId,
-            content: fnResult.result,
-          } as unknown as typeof currentMessages[0]);
-        }
-
-        if (mondayBatch.length > 0) {
-          actionPayload =
-            mondayBatch.length === 1
-              ? { action: "createProjectFromMonday", boardId: mondayBatch[0].boardId, itemId: mondayBatch[0].itemId }
-              : { action: "createProjectFromMonday", items: mondayBatch };
-        }
-
-        continue;
+    async function persistAndReturnJson(finalReply: string, actionPayload: Record<string, unknown> | null) {
+      let reply = finalReply.trim();
+      if (!reply) {
+        reply =
+          "I couldn’t produce a reply (tools may still have run). Please rephrase your question or try again in a moment.";
       }
 
-      // Model gave a text response — we're done
-      finalReply = assistantMsg.content ?? "";
-      break;
-    }
+      const assistantMsg = await prisma.aiMessage.create({
+        data: {
+          conversationId: convoId!,
+          role: "assistant",
+          content: reply,
+          functionCall: actionPayload ? JSON.stringify(actionPayload) : null,
+          actionStatus: actionPayload ? "pending" : null,
+        },
+      });
 
-    if (!finalReply.trim()) {
-      finalReply =
-        "I couldn’t produce a reply (tools may still have run). Please rephrase your question or try again in a moment.";
-    }
+      await prisma.aiConversation.update({
+        where: { id: convoId! },
+        data: { updatedAt: new Date() },
+      });
 
-    // Save assistant reply and capture id for action approval
-    const assistantMsg = await prisma.aiMessage.create({
-      data: {
+      return NextResponse.json({
+        reply,
         conversationId: convoId,
-        role: "assistant",
-        content: finalReply,
-        functionCall: actionPayload ? JSON.stringify(actionPayload) : null,
-        actionStatus: actionPayload ? "pending" : null,
-      },
+        messageId: assistantMsg.id,
+        action: actionPayload,
+      });
+    }
+
+    if (wantStream === true) {
+      const stream = new ReadableStream({
+        async start(controller) {
+          try {
+            controller.enqueue(sse({ type: "start", conversationId: convoId }));
+
+            const { finalReply, actionPayload } = await runToolLoop({
+              openai,
+              model,
+              messages,
+              onPhase: (phase) => {
+                controller.enqueue(sse({ type: "phase", phase }));
+              },
+            });
+
+            let reply = finalReply.trim();
+            if (!reply) {
+              reply =
+                "I couldn’t produce a reply (tools may still have run). Please rephrase your question or try again in a moment.";
+            }
+
+            controller.enqueue(sse({ type: "phase", phase: "reply" }));
+            const CHUNK = 40;
+            for (let i = 0; i < reply.length; i += CHUNK) {
+              controller.enqueue(sse({ type: "delta", text: reply.slice(i, i + CHUNK) }));
+            }
+
+            const assistantMsg = await prisma.aiMessage.create({
+              data: {
+                conversationId: convoId!,
+                role: "assistant",
+                content: reply,
+                functionCall: actionPayload ? JSON.stringify(actionPayload) : null,
+                actionStatus: actionPayload ? "pending" : null,
+              },
+            });
+
+            await prisma.aiConversation.update({
+              where: { id: convoId! },
+              data: { updatedAt: new Date() },
+            });
+
+            controller.enqueue(
+              sse({
+                type: "done",
+                messageId: assistantMsg.id,
+                conversationId: convoId!,
+                action: actionPayload,
+              })
+            );
+          } catch (e) {
+            const msg = e instanceof Error ? e.message : "Unknown error";
+            controller.enqueue(sse({ type: "error", message: msg }));
+          } finally {
+            controller.close();
+          }
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          Connection: "keep-alive",
+        },
+      });
+    }
+
+    const { finalReply, actionPayload } = await runToolLoop({
+      openai,
+      model,
+      messages,
     });
 
-    // Update conversation timestamp
-    await prisma.aiConversation.update({
-      where: { id: convoId },
-      data: { updatedAt: new Date() },
-    });
-
-    return NextResponse.json({
-      reply: finalReply,
-      conversationId: convoId,
-      messageId: assistantMsg.id,
-      action: actionPayload,
-    });
+    return persistAndReturnJson(finalReply, actionPayload);
   } catch (err) {
     console.error("POST /api/ai/chat error:", err);
 

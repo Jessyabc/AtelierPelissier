@@ -4,6 +4,20 @@ import { logAudit } from "@/lib/audit";
 import { updateProjectSchema } from "@/lib/validators";
 import { recalculateProjectState } from "@/lib/observability/recalculateProjectState";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
+import { computeReadinessCheck } from "@/lib/readiness";
+
+function projectJsonResponse(body: unknown, readinessSoftBypass: string[] | null) {
+  if (readinessSoftBypass?.length) {
+    return NextResponse.json(
+      {
+        ...(body as Record<string, unknown>),
+        readinessWarning: { code: "readiness_incomplete" as const, missing: readinessSoftBypass },
+      },
+      { headers: { "X-Readiness-Warning": "readiness_incomplete" } }
+    );
+  }
+  return NextResponse.json(body);
+}
 
 export async function GET(
   _request: Request,
@@ -81,6 +95,51 @@ export async function PATCH(
     );
   }
   const data = parsed.data;
+
+  let readinessSoftBypass: string[] | null = null;
+
+  if (data.isDraft === false) {
+    const pre = await prisma.project.findUnique({
+      where: { id },
+      select: {
+        isDraft: true,
+        jobNumber: true,
+        clientId: true,
+        clientFirstName: true,
+        clientLastName: true,
+        targetDate: true,
+        _count: { select: { projectItems: true } },
+      },
+    });
+    if (!pre) {
+      return NextResponse.json({ error: "Project not found" }, { status: 404 });
+    }
+    if (pre.isDraft) {
+      const mergedTarget =
+        data.targetDate !== undefined
+          ? data.targetDate
+            ? new Date(data.targetDate)
+            : null
+          : pre.targetDate;
+      const { ready, missing } = computeReadinessCheck({
+        jobNumber: data.jobNumber !== undefined ? data.jobNumber : pre.jobNumber,
+        clientId: data.clientId !== undefined ? data.clientId : pre.clientId,
+        clientFirstName: data.clientFirstName !== undefined ? data.clientFirstName : pre.clientFirstName,
+        clientLastName: data.clientLastName !== undefined ? data.clientLastName : pre.clientLastName,
+        targetDate: mergedTarget,
+        projectItemCount: pre._count.projectItems,
+      });
+      if (!ready) {
+        const strict = process.env.READINESS_GATE_STRICT === "true";
+        if (strict) {
+          await logAudit(id, "readiness_blocked", JSON.stringify({ missing }));
+          return NextResponse.json({ error: "readiness_check_failed", missing }, { status: 400 });
+        }
+        readinessSoftBypass = missing;
+      }
+    }
+  }
+
   const updateData: {
     name?: string;
     type?: string;
@@ -100,6 +159,7 @@ export async function PATCH(
     processTemplateId?: string | null;
     targetDate?: Date | null;
     sellingPrice?: number | null;
+    blockedReason?: string | null;
   } = {};
   if (data.name != null) updateData.name = data.name;
   if (data.types != null) {
@@ -121,6 +181,7 @@ export async function PATCH(
   if (data.clientId !== undefined) updateData.clientId = data.clientId;
   if (data.client2Id !== undefined) updateData.client2Id = data.client2Id;
   if (data.processTemplateId !== undefined) updateData.processTemplateId = data.processTemplateId;
+  if (data.blockedReason !== undefined) updateData.blockedReason = data.blockedReason;
 
   // When linking primary client by ID, populate embedded from Client
   if (data.clientId) {
@@ -209,7 +270,7 @@ export async function PATCH(
       },
     });
     if (!project) return NextResponse.json({ error: "Project not found" }, { status: 404 });
-    return NextResponse.json(project);
+    return projectJsonResponse(project, readinessSoftBypass);
   }
 
   const project = await prisma.project.update({
@@ -283,7 +344,7 @@ export async function PATCH(
         )
           await logAudit(id, "client_updated");
         recalculateProjectState(id).catch(() => {});
-        return NextResponse.json(withItems);
+        return projectJsonResponse(withItems, readinessSoftBypass);
       }
     }
   }
@@ -300,7 +361,7 @@ export async function PATCH(
   )
     await logAudit(id, "client_updated");
   recalculateProjectState(id).catch(() => {});
-  return NextResponse.json(project);
+  return projectJsonResponse(project, readinessSoftBypass);
 }
 
 export async function DELETE(

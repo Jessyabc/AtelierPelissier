@@ -14,8 +14,8 @@ Legend: **Secrets** = exposes tokens/keys; **SideFX** = writes DB or triggers ex
 | `api/ai/conversations` | GET | Full conversation history leak |
 | `api/ai/actions/[id]/approve` | POST | **SideFX** — executes arbitrary queued DB mutations |
 | `api/integrations/monday/create-project` | POST | **SideFX** — creates projects + Monday calls |
-| `api/integrations/monday/boards` | GET | Uses stored API keys server-side |
-| `api/integrations/monday/boards/[boardId]/items` | GET | Same |
+| `api/integrations/monday/boards` | GET, POST | Admin; POST accepts in-body key for test-before-save |
+| `api/integrations/monday/boards/[boardId]/items` | GET | Admin; uses stored Monday key |
 | `api/integrations/sage/connect` | GET | OAuth initiation (should be logged-in admin) |
 
 ## P1 — Writes trusting client-supplied IDs (forgeable without auth)

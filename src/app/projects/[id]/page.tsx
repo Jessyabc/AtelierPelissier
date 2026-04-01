@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { VanityTab } from "@/components/VanityTab";
 import { SideUnitTab } from "@/components/SideUnitTab";
@@ -16,6 +16,9 @@ import { AuditTab } from "@/components/AuditTab";
 import { ServiceCallsTab } from "@/components/ServiceCallsTab";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { ProjectBoardCard } from "@/components/ProjectBoardCard";
+import { ReadinessChecklistCard } from "@/components/ReadinessChecklistCard";
+import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
+import { computeReadinessCheck } from "@/lib/readiness";
 
 type TaskItem = { id: string; label: string; isDone: boolean; sortOrder: number };
 type ProjItem = {
@@ -55,6 +58,7 @@ type Project = {
   materialRequirements?: Array<{ materialCode: string; requiredQty: number; allocatedQty: number }>;
   sellingPrice?: number | null;
   targetDate?: string | null;
+  blockedReason?: string | null;
 };
 
 type Tab = "Overview" | "Prerequisites" | "Costs" | "Quote" | "Service Calls" | "Client" | "Settings" | "History" | "Vanity" | "Side Unit" | "Kitchen";
@@ -107,9 +111,30 @@ export default function ProjectPage() {
     setSaveError(""); setSavingProject(true);
     try {
       const res = await fetch(`/api/projects/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isDraft: false }) });
-      if (!res.ok) throw new Error("Failed");
-      await fetchProject(); toast.success("Project saved");
-    } catch { setSaveError("Failed to save."); toast.error("Failed"); } finally { setSavingProject(false); }
+      const data = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        missing?: string[];
+        readinessWarning?: { missing?: string[] };
+      };
+      if (!res.ok) {
+        if (data.error === "readiness_check_failed" && Array.isArray(data.missing)) {
+          setSaveError(`Complete required fields: ${data.missing.join(", ")}`);
+          toast.error("Readiness check failed");
+          return;
+        }
+        throw new Error("Failed");
+      }
+      await fetchProject();
+      toast.success("Project saved");
+      if (data.readinessWarning?.missing?.length) {
+        toast(`Still incomplete for strict gate: ${data.readinessWarning.missing.join(", ")}`, { duration: 5000 });
+      }
+    } catch {
+      setSaveError("Failed to save.");
+      toast.error("Failed");
+    } finally {
+      setSavingProject(false);
+    }
   }
 
   async function handleDelete() {
@@ -181,6 +206,27 @@ export default function ProjectPage() {
     setEditingPrice(false); await fetchProject(); toast.success("Price saved");
   }
 
+  const publishReadiness = useMemo(() => {
+    if (!project) return { ready: true, missing: [] as string[] };
+    return computeReadinessCheck({
+      jobNumber: project.jobNumber,
+      clientId: project.clientId,
+      clientFirstName: project.clientFirstName,
+      clientLastName: project.clientLastName,
+      targetDate: project.targetDate ? new Date(project.targetDate) : null,
+      projectItemCount: project.projectItems?.length ?? 0,
+    });
+  }, [project]);
+
+  const strictReadinessGate = process.env.NEXT_PUBLIC_READINESS_GATE_STRICT === "true";
+  const saveBlockedByReadiness =
+    project !== null && strictReadinessGate && project.isDraft && !publishReadiness.ready;
+  const saveTitle = saveBlockedByReadiness
+    ? `Complete: ${publishReadiness.missing.join(", ")}`
+    : project !== null && !publishReadiness.ready
+      ? "You can save while the gate is soft; strict mode would require the checklist."
+      : undefined;
+
   if (loading) return <div className="py-12 text-center text-[var(--foreground-muted)]">Loading project...</div>;
   if (!project) return <div className="py-12"><p className="text-red-500">Project not found.</p><Link href="/" className="underline text-[var(--foreground-muted)]">Back</Link></div>;
 
@@ -224,8 +270,19 @@ export default function ProjectPage() {
           <h2 className="text-lg font-semibold text-[var(--foreground)]">{project.name}</h2>
           {project.isDraft && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Draft</span>}
           {project.isDone && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Done</span>}
+          {project.blockedReason && (
+            <BlockedReasonBadge reason={project.blockedReason} />
+          )}
           {project.isDraft && (
-            <button onClick={handleSaveProject} disabled={savingProject} className="neo-btn-primary px-4 py-1.5 text-sm disabled:opacity-50">{savingProject ? "Saving..." : "Save Project"}</button>
+            <button
+              type="button"
+              onClick={handleSaveProject}
+              disabled={savingProject || saveBlockedByReadiness}
+              title={saveTitle}
+              className="neo-btn-primary px-4 py-1.5 text-sm disabled:opacity-50"
+            >
+              {savingProject ? "Saving..." : "Save Project"}
+            </button>
           )}
           <label className="flex items-center gap-1.5 cursor-pointer text-sm text-[var(--foreground)]">
             <input type="checkbox" checked={project.isDone} onChange={handleToggleDone} disabled={togglingDone} className="rounded" />
@@ -255,6 +312,7 @@ export default function ProjectPage() {
       {/* === OVERVIEW TAB === */}
       {activeTab === "Overview" && (
         <div className="space-y-5">
+          {project.isDraft && <ReadinessChecklistCard project={project} />}
           {/* Summary strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="neo-card p-3 text-center">

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { ProjectHealth } from "@/app/home/page";
+import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 
 const severityColor: Record<string, string> = {
   critical: "text-red-600",
@@ -18,8 +19,9 @@ const statusDot: Record<string, string> = {
 };
 
 export function ProjectHealthStrip({ projects }: { projects: ProjectHealth[] }) {
-  const active = projects.filter((p) => !p.isDraft);
-  const drafts = projects.filter((p) => p.isDraft);
+  const blocked = projects.filter((p) => p.blockedReason);
+  const activeNotBlocked = projects.filter((p) => !p.isDraft && !p.blockedReason);
+  const drafts = projects.filter((p) => p.isDraft && !p.blockedReason);
 
   if (projects.length === 0) {
     return (
@@ -32,11 +34,26 @@ export function ProjectHealthStrip({ projects }: { projects: ProjectHealth[] }) 
   return (
     <section>
       <h2 className="text-lg font-semibold text-[var(--foreground)] mb-3">Project Health</h2>
-      <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
-        {active.map((p) => (
-          <ProjectCard key={p.id} project={p} />
-        ))}
-      </div>
+      {blocked.length > 0 && (
+        <div className="mb-4">
+          <h3 className="text-sm font-medium text-red-700 mb-2">Blocked</h3>
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+            {blocked.map((p) => (
+              <ProjectCard key={p.id} project={p} />
+            ))}
+          </div>
+        </div>
+      )}
+      {activeNotBlocked.length > 0 && (
+        <div className="mb-2">
+          <h3 className="text-sm font-medium text-[var(--foreground-muted)] mb-2">Active</h3>
+          <div className="flex gap-4 overflow-x-auto pb-2 -mx-1 px-1">
+            {activeNotBlocked.map((p) => (
+              <ProjectCard key={p.id} project={p} />
+            ))}
+          </div>
+        </div>
+      )}
       {drafts.length > 0 && (
         <details className="mt-3">
           <summary className="text-sm text-[var(--foreground-muted)] cursor-pointer">
@@ -72,6 +89,11 @@ function ProjectCard({ project: p }: { project: ProjectHealth }) {
           <div className="font-semibold text-sm text-[var(--foreground)] truncate">
             {p.jobNumber ? `${p.jobNumber} — ` : ""}{p.name}
           </div>
+          {p.blockedReason && (
+            <div className="mt-1">
+              <BlockedReasonBadge reason={p.blockedReason} className="text-[10px] leading-tight py-0" />
+            </div>
+          )}
           {p.clientName && (
             <div className="text-xs text-[var(--foreground-muted)] truncate">{p.clientName}</div>
           )}

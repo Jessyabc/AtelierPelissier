@@ -9,6 +9,8 @@ import {
 import { getSessionWithUser } from "@/lib/auth/session";
 import { canApproveAiActions, canSchedule } from "@/lib/auth/roles";
 import { buildServiceCallNotificationDrafts } from "@/lib/notifications/serviceCallDrafts";
+import { logAudit } from "@/lib/audit";
+import { computeReadinessCheck } from "@/lib/readiness";
 
 /**
  * POST /api/ai/actions/[id]/approve
@@ -528,6 +530,36 @@ export async function POST(
             : status === "done"
               ? { isDraft: false, isDone: true }
               : { isDraft: true, isDone: false };
+
+        const activating = status === "active" || status === "done";
+        if (activating) {
+          const pre = await prisma.project.findUnique({
+            where: { id: resolvedId },
+            select: {
+              isDraft: true,
+              jobNumber: true,
+              clientId: true,
+              clientFirstName: true,
+              clientLastName: true,
+              targetDate: true,
+              _count: { select: { projectItems: true } },
+            },
+          });
+          if (pre?.isDraft) {
+            const { ready, missing } = computeReadinessCheck({
+              jobNumber: pre.jobNumber,
+              clientId: pre.clientId,
+              clientFirstName: pre.clientFirstName,
+              clientLastName: pre.clientLastName,
+              targetDate: pre.targetDate,
+              projectItemCount: pre._count.projectItems,
+            });
+            if (!ready && process.env.READINESS_GATE_STRICT === "true") {
+              await logAudit(resolvedId, "readiness_blocked", JSON.stringify({ missing }));
+              return NextResponse.json({ error: "readiness_check_failed", missing }, { status: 400 });
+            }
+          }
+        }
 
         await prisma.project.update({ where: { id: resolvedId }, data: statusData });
         result = { status: "project_updated", projectId: resolvedId, newStatus: status };

@@ -9,6 +9,8 @@ const actionLabels: Record<string, string> = {
   createInventoryItem: "Create New Inventory Item",
   updateProjectStatus: "Update Project Status",
   receiveOrder: "Receive Order",
+  scheduleServiceCall: "Schedule service call",
+  createDraftProjectAndServiceCall: "Create draft project + service call",
 };
 
 export function AiActionCard({
@@ -104,6 +106,101 @@ export function AiActionCard({
               <div>Receiving all lines at their ordered quantities.</div>
             )}
             <div className="text-[10px] opacity-80">Updates inventory onHand and advances order status.</div>
+          </>
+        )}
+
+        {action.action === "scheduleServiceCall" && (
+          <>
+            <div>
+              <span className="text-[var(--foreground-muted)]">Project:</span>{" "}
+              <strong>{String(action.projectId ?? "")}</strong>
+            </div>
+            <div>
+              <span className="text-[var(--foreground-muted)]">Date:</span>{" "}
+              <strong>{String(action.serviceDate ?? "")}</strong>
+              {action.serviceTime ? ` @ ${String(action.serviceTime)}` : ""}
+            </div>
+            {action.reasonForService && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Reason:</span> {String(action.reasonForService)}
+              </div>
+            )}
+            {action.technicianName && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Technician:</span> {String(action.technicianName)}
+              </div>
+            )}
+            {action.notes && (
+              <div className="mt-1 p-2 rounded-lg bg-white/40 text-[11px] whitespace-pre-wrap">{String(action.notes)}</div>
+            )}
+            <div className="text-[10px] opacity-80">Creates the visit, adds it to the day plan, and can open notification drafts.</div>
+          </>
+        )}
+
+        {action.action === "createDraftProjectAndServiceCall" && (
+          <>
+            <div>
+              <span className="text-[var(--foreground-muted)]">Draft project:</span>{" "}
+              <strong>{String(action.projectName ?? "")}</strong>
+            </div>
+            <div>
+              <span className="text-[var(--foreground-muted)]">Client:</span>{" "}
+              <strong>{String(action.clientName ?? "")}</strong>
+            </div>
+            {action.clientAddress && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Address:</span> {String(action.clientAddress)}
+              </div>
+            )}
+            {action.clientPhone && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Phone:</span> {String(action.clientPhone)}
+              </div>
+            )}
+            {action.clientEmail && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Email:</span> {String(action.clientEmail)}
+              </div>
+            )}
+            <div>
+              <span className="text-[var(--foreground-muted)]">Schedule:</span>{" "}
+              {action.serviceDate ? (
+                <strong>
+                  {String(action.serviceDate)}
+                  {action.serviceTime ? ` @ ${String(action.serviceTime)}` : ""}
+                </strong>
+              ) : (
+                <em className="text-[var(--foreground-muted)]">Not set yet (won’t show on calendar)</em>
+              )}
+            </div>
+            {Array.isArray(action.serviceCallType) && (action.serviceCallType as string[]).length > 0 && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Types:</span>{" "}
+                {(action.serviceCallType as string[]).join(", ")}
+              </div>
+            )}
+            {action.reasonForService && (
+              <div>
+                <span className="text-[var(--foreground-muted)]">Reason:</span> {String(action.reasonForService)}
+              </div>
+            )}
+            {action.notes && (
+              <div className="mt-1 p-2 rounded-lg bg-white/40 text-[11px] whitespace-pre-wrap">{String(action.notes)}</div>
+            )}
+            {Array.isArray(action.workItems) && (action.workItems as { description: string }[]).length > 0 && (
+              <div className="mt-1">
+                <div className="text-[var(--foreground-muted)] font-medium mb-0.5">Work items</div>
+                <ul className="list-disc list-inside space-y-0.5 text-[11px]">
+                  {(action.workItems as { description: string; quantity?: string | null }[]).map((w, i) => (
+                    <li key={i}>
+                      {w.description}
+                      {w.quantity ? ` (${w.quantity})` : ""}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="text-[10px] opacity-80">Creates a draft project and linked service call; add a job # in the Client tab when ready.</div>
           </>
         )}
       </div>

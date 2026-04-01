@@ -81,6 +81,9 @@ model Project {
   targetDate            DateTime?
   productionDelayWeeks  Int       @default(10)
 
+  /// Ops: why work is blocked (e.g. missing_material). Null = not blocked.
+  blockedReason         String?
+
   // Process template — for tasks (sub-projects): which workflow this task follows
   processTemplateId String?
   processTemplate   ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
