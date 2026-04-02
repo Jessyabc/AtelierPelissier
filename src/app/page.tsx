@@ -63,7 +63,7 @@ function filterProjects(
   return list;
 }
 
-export default function DashboardPage() {
+export default function ProjectsPage() {
   const router = useRouter();
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);

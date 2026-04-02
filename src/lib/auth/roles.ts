@@ -67,7 +67,10 @@ export function isMenuItemAllowedForRole(href: string, role: string): boolean {
   if (href === "#export") return role === "admin";
   const allowed = ROLE_PAGE_ACCESS[role as AppRole];
   if (!allowed) return false;
-  return allowed.includes(href);
+  if (allowed.includes(href)) return true;
+  // Admin sub-pages are accessible if /admin is allowed
+  if (href.startsWith("/admin") && allowed.some((p) => p.startsWith("/admin"))) return true;
+  return false;
 }
 
 /** Default landing page after login (no ?next= param). */
