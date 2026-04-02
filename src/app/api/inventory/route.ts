@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { computeInventoryState } from "@/lib/observability/recalculateInventoryState";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { getSessionWithUser, requireRole } from "@/lib/auth/session";
 
 /**
  * GET: Inventory items with computed onHand, reserved, available.
@@ -22,6 +23,8 @@ const createItemSchema = z.object({
 });
 
 export async function GET() {
+  const auth = await getSessionWithUser();
+  if (!auth.ok) return auth.response;
   const [items, state] = await Promise.all([
     prisma.inventoryItem.findMany({
       orderBy: { materialCode: "asc" },
@@ -51,6 +54,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const postAuth = await requireRole(["admin", "planner"]);
+  if (!postAuth.ok) return postAuth.response;
   let body: unknown;
   try {
     body = await req.json();

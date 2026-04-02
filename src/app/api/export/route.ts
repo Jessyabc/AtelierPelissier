@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -8,6 +9,8 @@ export const dynamic = "force-dynamic";
  * Save the response to a file on your computer for safekeeping.
  */
 export async function GET() {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
   const [projects, distributors] = await Promise.all([
     prisma.project.findMany({
       include: {

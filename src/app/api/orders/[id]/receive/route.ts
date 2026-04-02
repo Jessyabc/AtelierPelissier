@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { triggerOrderInventoryRecalc } from "@/lib/observability/recalculateProjectState";
 import { triggerInventoryRecalcForMaterial } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 /**
  * POST /api/orders/[id]/receive
@@ -29,6 +30,8 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
 
   let body: unknown;

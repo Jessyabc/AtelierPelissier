@@ -1117,7 +1117,7 @@ function ReadinessAdoptionPanel() {
         <h3 className="text-sm font-semibold text-[var(--foreground)]">Readiness gate rejections</h3>
         <p className="text-xs text-[var(--foreground-muted)] mt-1">
           Audit entries with action <code className="font-mono bg-white/40 px-1 rounded">readiness_blocked</code> when{" "}
-          <code className="font-mono bg-white/40 px-1 rounded">READINESS_GATE_STRICT</code> blocks draft → saved. Window: last{" "}
+          <code className="font-mono bg-white/40 px-1 rounded">NEXT_PUBLIC_READINESS_GATE_STRICT</code> blocks draft → saved. Window: last{" "}
           {data.windowDays} days.
         </p>
       </div>

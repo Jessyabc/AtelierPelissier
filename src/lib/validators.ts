@@ -45,37 +45,42 @@ export const createProjectSchema = z.object({
   targetDate: z.string().optional().nullable(),
 });
 
-export const updateProjectSchema = z.object({
-  name: z.string().min(1).max(200).trim().optional(),
-  types: z.array(projectTypeEnum).optional(),
-  isDraft: z.boolean().optional(),
-  isDone: z.boolean().optional(),
-  jobNumber: z.string().max(100).trim().optional().nullable(),
-  notes: z.string().max(5000).trim().optional().nullable(),
-  clientFirstName: z.string().max(100).trim().optional().nullable(),
-  clientLastName: z.string().max(100).trim().optional().nullable(),
-  clientEmail: z.string().max(200).trim().optional().nullable(),
-  clientPhone: z.string().max(50).trim().optional().nullable(),
-  clientPhone2: z.string().max(50).trim().optional().nullable(),
-  clientAddress: z.string().max(500).trim().optional().nullable(),
-  clientId: z.string().cuid().optional().nullable(),
-  client2Id: z.string().cuid().optional().nullable(),
-  client2: clientInputSchema.optional(),
-  processTemplateId: z.string().cuid().optional().nullable(),
-  targetDate: z.string().optional().nullable(),
-  sellingPrice: z.number().min(0).optional().nullable(),
-  blockedReason: z
-    .enum([
-      "missing_material",
-      "waiting_cutlist",
-      "waiting_approval",
-      "supplier_delay",
-      "missing_info",
-      "change_order",
-    ])
-    .optional()
-    .nullable(),
-});
+export const updateProjectSchema = z
+  .object({
+    name: z.string().min(1).max(200).trim().optional(),
+    types: z.array(projectTypeEnum).optional(),
+    isDraft: z.boolean().optional(),
+    isDone: z.boolean().optional(),
+    jobNumber: z.string().max(100).trim().optional().nullable(),
+    notes: z.string().max(5000).trim().optional().nullable(),
+    clientFirstName: z.string().max(100).trim().optional().nullable(),
+    clientLastName: z.string().max(100).trim().optional().nullable(),
+    clientEmail: z.string().max(200).trim().optional().nullable(),
+    clientPhone: z.string().max(50).trim().optional().nullable(),
+    clientPhone2: z.string().max(50).trim().optional().nullable(),
+    clientAddress: z.string().max(500).trim().optional().nullable(),
+    clientId: z.string().cuid().optional().nullable(),
+    client2Id: z.string().cuid().optional().nullable(),
+    client2: clientInputSchema.optional(),
+    processTemplateId: z.string().cuid().optional().nullable(),
+    targetDate: z.string().optional().nullable(),
+    sellingPrice: z.number().min(0).optional().nullable(),
+    blockedReason: z
+      .enum([
+        "missing_material",
+        "waiting_cutlist",
+        "waiting_approval",
+        "supplier_delay",
+        "missing_info",
+        "change_order",
+      ])
+      .optional()
+      .nullable(),
+  })
+  .refine(
+    (data) => !(data.isDraft === true && data.isDone === true),
+    { message: "A project cannot be both draft and done", path: ["isDone"] }
+  );
 
 export const vanityInputsSchema = z.object({
   width: widthInches.default(24),

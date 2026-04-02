@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 export async function PATCH(request: Request, { params }: { params: { id: string } }) {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();
@@ -24,6 +27,8 @@ export async function PATCH(request: Request, { params }: { params: { id: string
 }
 
 export async function DELETE(_request: Request, { params }: { params: { id: string } }) {
+  const delAuth = await requireRole(["admin"]);
+  if (!delAuth.ok) return delAuth.response;
   await prisma.employee.delete({ where: { id: params.id } });
   return NextResponse.json({ ok: true });
 }

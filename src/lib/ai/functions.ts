@@ -6,7 +6,7 @@
 import type { ChatCompletionTool } from "openai/resources/chat/completions";
 import { prisma } from "@/lib/db";
 import { getAppConfig } from "@/lib/config";
-import { fetchMondayBoardItems } from "@/lib/monday";
+import { fetchAllMondayBoardItems, parseMondayItemName, guessRoomType } from "@/lib/monday";
 import { computeInventoryState } from "@/lib/observability/recalculateInventoryState";
 import { buildEmailDraft } from "@/lib/purchasing/buildEmailDraft";
 import { resolveDefaultSupplier } from "@/lib/purchasing/resolveDefaultSupplier";
@@ -188,7 +188,11 @@ export const AI_TOOLS: ChatCompletionTool[] = [
         type: "object",
         properties: {
           boardId: { type: "string", description: "Monday board ID containing the item or subitem." },
-          itemId: { type: "string", description: "Monday item ID or subitem ID (from listMondayItems)." },
+          itemId: {
+            type: "string",
+            description:
+              "Numeric Monday item or subitem ID from listMondayItems (shown in brackets, e.g. [1234567890]). Prefer that over job numbers like MC-xxxx.",
+          },
         },
         required: ["boardId", "itemId"],
       },
@@ -289,7 +293,8 @@ export const AI_TOOLS: ChatCompletionTool[] = [
     type: "function",
     function: {
       name: "createProjectsFromMondayItems",
-      description: "Propose creating draft projects for MULTIPLE Monday.com items or subitems in one step. REQUIRED when the user asks to create projects from Monday or confirms after you listed items. Call listMondayItems first to get item IDs (parent and subitem IDs in brackets e.g. [123], [456]), then call this with boardId and itemIds array. Subitem IDs (e.g. Wood Shop subitems) are supported. If you do not call this function, no Approve button appears and no projects are created. QUEUED — user approves once and all are created.",
+      description:
+        "Propose creating draft projects from Monday.com PARENT items. Each parent item becomes one project; its subitems automatically become rooms (ProjectItems) inside that project. Call listMondayItems first, then pass boardId and ONLY the parent item IDs in brackets — never pass subitem IDs. The server extracts MC-xxxx job numbers and client names from item names, and creates rooms from subitems. QUEUED — user approves once and all are created.",
       parameters: {
         type: "object",
         properties: {
@@ -297,7 +302,8 @@ export const AI_TOOLS: ChatCompletionTool[] = [
           itemIds: {
             type: "array",
             items: { type: "string" },
-            description: "Array of Monday item or subitem IDs to create projects for.",
+            description:
+              "PARENT item IDs only (brackets on each line from listMondayItems). Do NOT include subitem IDs — subitems become rooms automatically. Prefer numeric IDs; MC-xxxx may resolve server-side.",
           },
         },
         required: ["boardId", "itemIds"],
@@ -1294,30 +1300,30 @@ async function handleListMondayItems(boardId?: string): Promise<string> {
 
   for (const board of boards) {
     try {
-      const items = await fetchMondayBoardItems(apiKeyTrimmed, board.id, 25);
+      const items = await fetchAllMondayBoardItems(apiKeyTrimmed, board.id);
       const label = board.name ? `${board.name} (${board.id})` : board.id;
       if (items.length === 0) {
         sections.push(`Board ${label}: no items.`);
       } else {
         if (boards.length > 1) sections.push(`--- ${label} ---`);
-        const allItemIds: string[] = [];
-        const lines = items.flatMap((i) => {
-          const job = i.column_values?.find((c) => /job|invoice|number/i.test(c.column?.title ?? ""))?.text;
-          const client = i.column_values?.find((c) => /client|customer/i.test(c.column?.title ?? ""))?.text;
+        // Parent items = projects; subitems = rooms within that project.
+        // Only parent IDs should be passed to createProjectsFromMondayItems.
+        const parentIds: string[] = [];
+        const lines = items.map((i) => {
+          const parsed = parseMondayItemName(i.name ?? "");
           const status = i.column_values?.find((c) => /status|état|state/i.test(c.column?.title ?? ""))?.text;
-          allItemIds.push(String(i.id));
-          const parentLine = `[${i.id}] ${i.name}${job ? ` | Job: ${job}` : ""}${client ? ` | Client: ${client}` : ""}${status ? ` | Status: ${status}` : ""}`;
+          const group = i.column_values?.find((c) => /group/i.test(c.column?.title ?? ""))?.text;
+          parentIds.push(String(i.id));
           const subitems = i.subitems ?? [];
-          if (subitems.length === 0) return [parentLine];
-          const subLines = subitems.map((s) => {
-            const subStatus = s.column_values?.find((c) => /status|état|state/i.test(c.column?.title ?? ""))?.text;
-            allItemIds.push(String(s.id));
-            return `  └ [${s.id}] ${s.name}${subStatus ? ` | Status: ${subStatus}` : ""}`;
-          });
-          return [parentLine, ...subLines];
+          const roomList = subitems.length > 0
+            ? ` | ${subitems.length} room(s): ${subitems.map((s) => s.name?.trim() || "?").join(", ")}`
+            : "";
+          return `[${i.id}] ${i.name}${parsed.jobNumber ? ` | Job: ${parsed.jobNumber}` : ""}${parsed.clientName ? ` | Client: ${parsed.clientName}` : ""}${status ? ` | Status: ${status}` : ""}${group ? ` | Group: ${group}` : ""}${roomList}`;
         });
         sections.push(lines.join("\n"));
-        sections.push(`(Board ID: ${board.id}. Item IDs for createProjectsFromMondayItems (parents and subitems): ${allItemIds.map((id) => `"${id}"`).join(", ")}.)`);
+        sections.push(
+          `(Board ID: ${board.id}. IMPORTANT: Pass only PARENT item IDs to createProjectsFromMondayItems — subitems will automatically become rooms (ProjectItems) inside each project: ${parentIds.map((id) => `"${id}"`).join(", ")}.)`
+        );
       }
     } catch (err) {
       sections.push(`Board ${board.name ?? board.id}: error — ${err instanceof Error ? err.message : "Unknown"}`);
