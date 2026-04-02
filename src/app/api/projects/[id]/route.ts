@@ -130,7 +130,7 @@ export async function PATCH(
         projectItemCount: pre._count.projectItems,
       });
       if (!ready) {
-        const strict = process.env.READINESS_GATE_STRICT === "true";
+        const strict = process.env.NEXT_PUBLIC_READINESS_GATE_STRICT === "true";
         if (strict) {
           await logAudit(id, "readiness_blocked", JSON.stringify({ missing }));
           return NextResponse.json({ error: "readiness_check_failed", missing }, { status: 400 });
@@ -196,11 +196,23 @@ export async function PATCH(
     }
   }
 
-  // Fetch current project for client sync
+  // Fetch current project for state-machine check + client sync
   const current = await prisma.project.findUnique({
     where: { id },
-    select: { clientId: true, client2Id: true },
+    select: { clientId: true, client2Id: true, isDraft: true, isDone: true },
   });
+
+  // B-01: Prevent invalid state combos (isDraft + isDone)
+  if (current && (updateData.isDraft !== undefined || updateData.isDone !== undefined)) {
+    const finalDraft = updateData.isDraft ?? current.isDraft;
+    const finalDone = updateData.isDone ?? current.isDone;
+    if (finalDraft && finalDone) {
+      return NextResponse.json(
+        { error: "Invalid state: a project cannot be both draft and done" },
+        { status: 400 }
+      );
+    }
+  }
 
   // Sync primary client: when linked, update Client record to match embedded fields
   if (current?.clientId && (data.clientFirstName !== undefined || data.clientLastName !== undefined || data.clientEmail !== undefined || data.clientPhone !== undefined || data.clientPhone2 !== undefined || data.clientAddress !== undefined)) {

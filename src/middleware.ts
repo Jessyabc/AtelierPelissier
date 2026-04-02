@@ -17,6 +17,8 @@ function isPublicApi(pathname: string, request: NextRequest): boolean {
   if (pathname === "/api/admin/errors" && request.method === "POST") return true;
   // Health check for uptime monitors (no auth required)
   if (pathname === "/api/health") return true;
+  // B-21: Cron endpoints authenticate via CRON_SECRET header, not Supabase session
+  if (pathname.startsWith("/api/cron/")) return true;
   return false;
 }
 

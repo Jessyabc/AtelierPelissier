@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { triggerOrderInventoryRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 const createSchema = z.object({
   supplier: z.string().max(200).trim().optional(),
@@ -16,6 +17,8 @@ const createSchema = z.object({
 });
 
 export async function GET() {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const orders = await prisma.order.findMany({
     include: { lines: { include: { inventoryItem: true } } },
     orderBy: { createdAt: "desc" },
@@ -24,6 +27,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const postAuth = await requireRole(["admin", "planner"]);
+  if (!postAuth.ok) return postAuth.response;
   let body: unknown;
   try {
     body = await request.json();
