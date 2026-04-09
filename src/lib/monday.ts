@@ -36,8 +36,96 @@ export type MondayItemForProject = {
   name: string;
   jobNumber: string | null;
   clientName: string | null;
+  clientPhone: string | null;
   notes: string | null;
 };
+
+export type MondayProjectWithRooms = MondayItemForProject & {
+  rooms: { label: string; type: string }[];
+};
+
+// ---------------------------------------------------------------------------
+// Name parsing: extract MC-xxxx, client name, phone from Monday item names
+// e.g. "MC-6576 (Ramon Galvan)" → { jobNumber: "MC-6576", clientName: "Ramon Galvan" }
+// e.g. "MC-6513 Alexis Martin (514-808-2362)" → { jobNumber: "MC-6513", clientName: "Alexis Martin", clientPhone: "514-808-2362" }
+// ---------------------------------------------------------------------------
+
+const PHONE_RE = /\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/;
+
+export function parseMondayItemName(raw: string): {
+  jobNumber: string | null;
+  clientName: string | null;
+  clientPhone: string | null;
+} {
+  let rest = raw.trim();
+  if (!rest) return { jobNumber: null, clientName: null, clientPhone: null };
+
+  // Extract MC-XXXX from start (handles MC6372 and MC-6372)
+  let jobNumber: string | null = null;
+  const mcMatch = rest.match(/^(MC-?\d+)\s*(.*)/i);
+  if (mcMatch) {
+    const mc = mcMatch[1].toUpperCase();
+    jobNumber = mc.startsWith("MC-") ? mc : `MC-${mc.slice(2)}`;
+    rest = mcMatch[2].trim();
+  }
+
+  // Extract phone
+  const phoneMatch = rest.match(PHONE_RE);
+  const clientPhone = phoneMatch
+    ? phoneMatch[0].replace(/[^\d]/g, "").replace(/(\d{3})(\d{3})(\d{4})/, "$1-$2-$3")
+    : null;
+  if (phoneMatch) rest = rest.replace(phoneMatch[0], "");
+
+  // Strip "Client " prefix (e.g. "Client Gilles & Jocelyn")
+  rest = rest.replace(/^Client\s+/i, "");
+
+  // Strip parentheses, collapse whitespace
+  rest = rest.replace(/[()]/g, " ").replace(/\s+/g, " ").trim();
+
+  // Drop pure-note suffixes that aren't names (e.g. "Pas de facture", "Projet Mercier")
+  // Heuristic: if after stripping MC + phone we only have note-like text with no capitals, skip
+  const clientName = rest || null;
+
+  return { jobNumber, clientName, clientPhone };
+}
+
+// Guess ProjectItem type from a subitem label (room/deliverable name)
+export function guessRoomType(label: string): string {
+  const l = label.toLowerCase();
+  // More specific patterns first (e.g. "unité de rangement sur vanité" is a side_unit, not vanity)
+  if (/unit[ée].*rangement|storage|rangement|meuble/i.test(l)) return "side_unit";
+  if (/garde.?robe|closet|walk.?in/i.test(l)) return "closet";
+  if (/cuisine|kitchen/i.test(l)) return "kitchen";
+  if (/vanit[ée]|vanity/i.test(l)) return "vanity";
+  if (/comptoir|counter/i.test(l)) return "custom";
+  if (/pharmacie|medicine/i.test(l)) return "custom";
+  return "custom";
+}
+
+/**
+ * Map a top-level Monday item (with subitems) to a Project + Rooms structure.
+ * Name-based extraction takes priority; column heuristics are fallbacks.
+ */
+export function mapMondayItemToProjectWithRooms(item: MondayItem): MondayProjectWithRooms {
+  const parsed = parseMondayItemName(item.name ?? "");
+  const cols = item.column_values ?? [];
+  const byTitle = (t: string) =>
+    cols.find((c) => c.column?.title?.toLowerCase().includes(t))?.text?.trim() ?? null;
+
+  const rooms = (item.subitems ?? []).map((sub) => ({
+    label: sub.name?.trim() || "Room",
+    type: guessRoomType(sub.name ?? ""),
+  }));
+
+  return {
+    name: item.name?.trim() || "New project",
+    jobNumber: parsed.jobNumber ?? byTitle("job") ?? byTitle("invoice") ?? byTitle("number") ?? null,
+    clientName: parsed.clientName ?? byTitle("client") ?? byTitle("customer") ?? byTitle("name") ?? null,
+    clientPhone: parsed.clientPhone,
+    notes: byTitle("notes") ?? byTitle("description") ?? null,
+    rooms,
+  };
+}
 
 export type MondayFileAsset = {
   columnId: string;
@@ -186,6 +274,167 @@ export async function fetchMondayBoardItems(apiKey: string, boardId: string, lim
   return page?.items ?? [];
 }
 
+const PAGE_LIMIT_FULL = 500;
+
+/**
+ * All top-level items on a board (with subitems), following items_page cursor until exhausted.
+ * Use for AI listing and for resolving job# / name refs when the model did not pass numeric item IDs.
+ */
+export async function fetchAllMondayBoardItems(
+  apiKey: string,
+  boardId: string,
+  maxPages = 50
+): Promise<MondayItem[]> {
+  let cursor: string | null = null;
+  const out: MondayItem[] = [];
+
+  for (let page = 0; page < maxPages; page++) {
+    const query =
+      cursor == null
+        ? `query ($boardId: ID!, $limit: Int!) {
+            boards(ids: [$boardId]) {
+              items_page(limit: $limit) {
+                cursor
+                items {
+                  id
+                  name
+                  column_values {
+                    id
+                    text
+                    value
+                    column { title }
+                  }
+                  subitems {
+                    id
+                    name
+                    column_values {
+                      id
+                      text
+                      value
+                      column { title }
+                    }
+                  }
+                }
+              }
+            }
+          }`
+        : `query ($nextCursor: String!) {
+            next_items_page(cursor: $nextCursor) {
+              cursor
+              items {
+                id
+                name
+                column_values {
+                  id
+                  text
+                  value
+                  column { title }
+                }
+                subitems {
+                  id
+                  name
+                  column_values {
+                    id
+                    text
+                    value
+                    column { title }
+                  }
+                }
+              }
+            }
+          }`;
+
+    const variables =
+      cursor == null ? { boardId, limit: PAGE_LIMIT_FULL } : { nextCursor: cursor };
+
+    const data = (await mondayGraphql(apiKey, query, variables)) as
+      | { boards?: { items_page?: { cursor?: string; items: MondayItem[] } }[] }
+      | { next_items_page?: { cursor?: string; items: MondayItem[] } };
+
+    const pageData: { cursor?: string; items: MondayItem[] } | undefined = cursor == null
+      ? (data as { boards?: { items_page?: { cursor?: string; items: MondayItem[] } }[] }).boards?.[0]?.items_page
+      : (data as { next_items_page?: { cursor?: string; items: MondayItem[] } }).next_items_page;
+
+    const items = pageData?.items ?? [];
+    out.push(...items);
+    cursor = pageData?.cursor ?? null;
+    if (!cursor || items.length < PAGE_LIMIT_FULL) break;
+  }
+
+  return out;
+}
+
+/** Job / invoice / # column text for matching when the model passes MC-xxxx instead of item id. */
+export function mondayJobColumnText(cols: MondayColumnValue[]): string | null {
+  const j = cols.find((c) => /job|invoice|number|facture|#|n°/i.test(c.column?.title ?? ""));
+  return j?.text?.trim() || null;
+}
+
+/**
+ * Score how well a Monday row matches a user/model ref (often a job number or line prefix).
+ * Used when itemId is not a raw Monday ID.
+ */
+export function scoreMondayRefMatch(name: string, jobText: string | null, refRaw: string): number {
+  const ref = refRaw.trim();
+  if (!ref) return 0;
+  const nl = name.toLowerCase();
+  const rl = ref.toLowerCase();
+  const jt = jobText?.trim();
+  const jl = jt?.toLowerCase() ?? "";
+
+  if (jt && jl === rl) return 100;
+  if (jt && (jl.includes(rl) || rl.includes(jl)) && jl.length >= 2 && rl.length >= 2) return 92;
+  if (nl === rl) return 88;
+  if (nl.startsWith(rl)) return 86;
+  const mcRef = rl.match(/^(mc-?\d+)/i);
+  if (mcRef && nl.startsWith(mcRef[1].toLowerCase())) return 84;
+  if (nl.includes(rl) && rl.length >= 4) return 62;
+  if (/^\d{3,}$/.test(rl) && (nl.includes(rl) || jl.includes(rl))) return 55;
+  return 0;
+}
+
+function mapMondayItemToProjectFields(item: MondayItem): MondayItemForProject {
+  const parsed = parseMondayItemName(item.name ?? "");
+  const cols = item.column_values ?? [];
+  const byTitle = (t: string) =>
+    cols.find((c) => c.column?.title?.toLowerCase().includes(t))?.text?.trim() ?? null;
+  return {
+    name: item.name?.trim() || "New project",
+    jobNumber: parsed.jobNumber ?? byTitle("job") ?? byTitle("invoice") ?? byTitle("number") ?? null,
+    clientName: parsed.clientName ?? byTitle("client") ?? byTitle("customer") ?? byTitle("name") ?? null,
+    clientPhone: parsed.clientPhone,
+    notes: byTitle("notes") ?? byTitle("description") ?? null,
+  };
+}
+
+/**
+ * Find parent or subitem best matching ref (e.g. MC-6513 or a job column value).
+ */
+export function findMondayItemByRefInTree(items: MondayItem[], refRaw: string): MondayItem | null {
+  const ref = refRaw.trim();
+  if (!ref) return null;
+
+  let best: { item: MondayItem; score: number } | null = null;
+  const consider = (row: MondayItem) => {
+    const cols = row.column_values ?? [];
+    const job = mondayJobColumnText(cols);
+    const s = scoreMondayRefMatch(row.name ?? "", job, ref);
+    if (s > 0 && (!best || s > best.score)) {
+      best = { item: row, score: s };
+    }
+  };
+
+  for (const parent of items) {
+    consider(parent);
+    for (const sub of parent.subitems ?? []) {
+      consider(sub as unknown as MondayItem);
+    }
+  }
+
+  const result = best as { item: MondayItem; score: number } | null;
+  return result && result.score >= 50 ? result.item : null;
+}
+
 /**
  * Fetch one item by ID and board, then map to project fields.
  * Monday's API no longer supports Board.items(ids); we use items_page and paginate until we find the item.
@@ -196,8 +445,8 @@ export async function getMondayItemAsProject(
   boardId: string,
   itemId: string
 ): Promise<MondayItemForProject> {
-  const PAGE_LIMIT = 500;
   let cursor: string | null = null;
+  const accumulated: MondayItem[] = [];
 
   for (let page = 0; page < 50; page++) {
     const query =
@@ -256,7 +505,7 @@ export async function getMondayItemAsProject(
           }`;
 
     const variables =
-      cursor == null ? { boardId, limit: PAGE_LIMIT } : { nextCursor: cursor };
+      cursor == null ? { boardId, limit: PAGE_LIMIT_FULL } : { nextCursor: cursor };
 
     const data = (await mondayGraphql(apiKey, query, variables)) as
       | { boards?: { items_page?: { cursor?: string; items: MondayItem[] } }[] }
@@ -267,6 +516,7 @@ export async function getMondayItemAsProject(
       : (data as { next_items_page?: { cursor?: string; items: MondayItem[] } }).next_items_page;
 
     const items = pageData?.items ?? [];
+    accumulated.push(...items);
 
     // Match top-level item
     let item = items.find((i) => String(i.id) === String(itemId)) ?? null;
@@ -282,19 +532,17 @@ export async function getMondayItemAsProject(
     }
 
     if (item) {
-      const cols = item.column_values ?? [];
-      const byTitle = (t: string) =>
-        cols.find((c) => c.column?.title?.toLowerCase().includes(t))?.text?.trim() ?? null;
-      return {
-        name: item.name?.trim() || "New project",
-        jobNumber: byTitle("job") ?? byTitle("invoice") ?? byTitle("number") ?? null,
-        clientName: byTitle("client") ?? byTitle("customer") ?? byTitle("name") ?? null,
-        notes: byTitle("notes") ?? byTitle("description") ?? null,
-      };
+      return mapMondayItemToProjectFields(item);
     }
 
     cursor = pageData?.cursor ?? null;
-    if (!cursor || items.length < PAGE_LIMIT) break;
+    if (!cursor || items.length < PAGE_LIMIT_FULL) break;
+  }
+
+  // Model often passes job labels (e.g. MC-6372) instead of numeric item IDs — resolve by name/job column.
+  const byRef = findMondayItemByRefInTree(accumulated, itemId);
+  if (byRef) {
+    return mapMondayItemToProjectFields(byRef);
   }
 
   throw new Error("Monday item not found");

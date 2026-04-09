@@ -62,7 +62,7 @@ type Project = {
   blockedReason?: string | null;
 };
 
-type Tab = "Overview" | "Prerequisites" | "Costs" | "Quote" | "Service Calls" | "Client" | "Settings" | "History" | "Vanity" | "Side Unit" | "Kitchen";
+type Tab = "Overview" | "Client & Info" | "Estimates & Costs" | "Service Calls" | "History";
 
 export default function ProjectPage() {
   const params = useParams();
@@ -238,14 +238,8 @@ export default function ProjectPage() {
   const profit = sellingPrice - realCost;
   const variance = estimatedCost - realCost;
 
-  // Smart tabs: only show relevant ones
   const types = project.types.split(",").map((t) => t.trim());
-  const baseTabs: Tab[] = ["Overview", "Prerequisites", "Costs", "Quote", "Service Calls", "Client", "Settings", "History"];
-  const extraTabs: Tab[] = [];
-  if (types.includes("vanity")) extraTabs.push("Vanity");
-  if (types.includes("side_unit")) extraTabs.push("Side Unit");
-  if (types.includes("kitchen")) extraTabs.push("Kitchen");
-  const tabs = [...baseTabs.slice(0, 1), ...extraTabs, ...baseTabs.slice(1)];
+  const tabs: Tab[] = ["Overview", "Client & Info", "Estimates & Costs", "Service Calls", "History"];
 
   // Total task progress (per-room tasks only)
   const allItems = project.projectItems ?? [];
@@ -479,19 +473,66 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* Content tabs */}
-      {activeTab !== "Overview" && (
+      {/* Client & Info — merges Client + Settings */}
+      {activeTab === "Client & Info" && (
+        <div className="space-y-6">
+          <div className="neo-card p-6 sm:p-8">
+            <ClientTab projectId={id} project={project} onUpdate={fetchProject} />
+          </div>
+          <div className="neo-card p-6 sm:p-8">
+            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Project Settings</h3>
+            <SettingsTab projectId={id} project={project} onUpdate={fetchProject} />
+          </div>
+        </div>
+      )}
+
+      {/* Estimates & Costs — type inputs + prerequisites + costs + quote */}
+      {activeTab === "Estimates & Costs" && (
+        <div className="space-y-6">
+          {types.includes("vanity") && (
+            <div className="neo-card p-6 sm:p-8">
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Vanity Estimator</h3>
+              <VanityTab projectId={id} project={project} onUpdate={fetchProject} />
+            </div>
+          )}
+          {types.includes("side_unit") && (
+            <div className="neo-card p-6 sm:p-8">
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Side Unit Estimator</h3>
+              <SideUnitTab projectId={id} project={project} onUpdate={fetchProject} />
+            </div>
+          )}
+          {types.includes("kitchen") && (
+            <div className="neo-card p-6 sm:p-8">
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Kitchen Estimator</h3>
+              <KitchenTab projectId={id} project={project} onUpdate={fetchProject} />
+            </div>
+          )}
+          <div className="neo-card p-6 sm:p-8">
+            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Prerequisites & Materials</h3>
+            <PrerequisitesTab projectId={id} project={project} onUpdate={fetchProject} />
+          </div>
+          <div className="neo-card p-6 sm:p-8">
+            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Cost Lines</h3>
+            <CostsTab projectId={id} project={project} onUpdate={fetchProject} />
+          </div>
+          <div className="neo-card p-6 sm:p-8">
+            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Quote Summary</h3>
+            <QuoteTab project={project} />
+          </div>
+        </div>
+      )}
+
+      {/* Service Calls */}
+      {activeTab === "Service Calls" && (
         <div className="neo-card p-6 sm:p-8">
-          {activeTab === "Vanity" && <VanityTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Side Unit" && <SideUnitTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Kitchen" && <KitchenTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Prerequisites" && <PrerequisitesTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Costs" && <CostsTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Quote" && <QuoteTab project={project} />}
-          {activeTab === "Service Calls" && <ServiceCallsTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Client" && <ClientTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "Settings" && <SettingsTab projectId={id} project={project} onUpdate={fetchProject} />}
-          {activeTab === "History" && <AuditTab projectId={id} />}
+          <ServiceCallsTab projectId={id} project={project} onUpdate={fetchProject} />
+        </div>
+      )}
+
+      {/* History */}
+      {activeTab === "History" && (
+        <div className="neo-card p-6 sm:p-8">
+          <AuditTab projectId={id} />
         </div>
       )}
 

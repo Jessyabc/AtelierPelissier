@@ -11,34 +11,52 @@ type MenuItemConfig = {
   label: string;
   visible: boolean;
   order: number;
+  group?: string;
   exportData?: boolean;
 };
 
-const FALLBACK_MENU: MenuItemConfig[] = [
-  { href: "/home", label: "Operations Cockpit", visible: true, order: 0 },
-  { href: "/", label: "Projects", visible: true, order: 1 },
-  { href: "/projects/new", label: "New project", visible: true, order: 2 },
-  { href: "/assistant", label: "Afaqi", visible: true, order: 3 },
-  { href: "/dashboard", label: "Executive Dashboard", visible: true, order: 4 },
-  { href: "/inventory", label: "Inventory", visible: true, order: 5 },
-  { href: "/distributors", label: "Suppliers & Purchasing", visible: true, order: 6 },
-  { href: "/costing", label: "Costing", visible: true, order: 7 },
-  { href: "/processes", label: "Processes", visible: true, order: 8 },
-  { href: "/service-calls", label: "Service calls", visible: true, order: 9 },
-  { href: "/calendar", label: "Calendar", visible: true, order: 10 },
-  { href: "/settings/risk", label: "Risk settings", visible: true, order: 11 },
-  { href: "/admin", label: "Admin Hub", visible: true, order: 12 },
-  { href: "/admin/employees", label: "Team Members", visible: true, order: 13 },
-  { href: "/admin/stations", label: "Work Stations & QR", visible: true, order: 14 },
-  { href: "/admin/punches", label: "Punch Board", visible: true, order: 15 },
-  { href: "#export", label: "Export data (backup)", visible: true, order: 16, exportData: true },
+type MenuGroup = { label: string; items: MenuItemConfig[] };
+
+const GROUPED_MENU: MenuItemConfig[] = [
+  { href: "/", label: "Projects", visible: true, order: 0, group: "Work" },
+  { href: "/projects/new", label: "New Project", visible: true, order: 1, group: "Work" },
+  { href: "/service-calls", label: "Service Calls", visible: true, order: 2, group: "Work" },
+  { href: "/calendar", label: "Calendar", visible: true, order: 3, group: "Work" },
+
+  { href: "/home", label: "Cockpit", visible: true, order: 10, group: "Ops" },
+  { href: "/dashboard", label: "Dashboard", visible: true, order: 11, group: "Ops" },
+  { href: "/inventory", label: "Inventory", visible: true, order: 12, group: "Ops" },
+  { href: "/distributors", label: "Purchasing", visible: true, order: 13, group: "Ops" },
+  { href: "/costing", label: "Costing", visible: true, order: 14, group: "Ops" },
+
+  { href: "/assistant", label: "Afaqi", visible: true, order: 20, group: "Tools" },
+  { href: "/processes", label: "Processes", visible: true, order: 21, group: "Tools" },
+
+  { href: "/admin", label: "Admin Hub", visible: true, order: 30, group: "Config" },
+  { href: "#export", label: "Export Backup", visible: true, order: 31, group: "Config", exportData: true },
 ];
+
+function buildGroups(items: MenuItemConfig[], role: string): MenuGroup[] {
+  const visible = items
+    .filter((m) => m.visible)
+    .filter((m) => isMenuItemAllowedForRole(m.href, role))
+    .sort((a, b) => a.order - b.order);
+
+  const map = new Map<string, MenuItemConfig[]>();
+  for (const item of visible) {
+    const g = item.group || "Other";
+    if (!map.has(g)) map.set(g, []);
+    map.get(g)!.push(item);
+  }
+
+  return Array.from(map.entries()).map(([label, items]) => ({ label, items }));
+}
 
 export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [menuItems, setMenuItems] = useState<MenuItemConfig[]>(FALLBACK_MENU);
+  const [menuItems, setMenuItems] = useState<MenuItemConfig[]>(GROUPED_MENU);
   const [companyName, setCompanyName] = useState("Atelier Pelissier");
   const [logoUrl, setLogoUrl] = useState("/logo.svg");
   const [userRole, setUserRole] = useState<string>("admin");
@@ -74,9 +92,7 @@ export function AppHeader() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const visibleItems = menuItems
-    .filter((m) => m.visible)
-    .filter((m) => isMenuItemAllowedForRole(m.href, userRole));
+  const groups = buildGroups(menuItems, userRole);
 
   if (pathname === "/login" || pathname?.startsWith("/auth")) {
     return null;
@@ -91,6 +107,25 @@ export function AppHeader() {
     }
     router.push("/login");
     router.refresh();
+  }
+
+  async function handleExport() {
+    setOpen(false);
+    try {
+      const res = await fetch("/api/export");
+      if (!res.ok) throw new Error("Export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download =
+        res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ??
+        `atelier-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      window.open("/api/export", "_blank");
+    }
   }
 
   return (
@@ -115,56 +150,49 @@ export function AppHeader() {
           </button>
           {open && (
             <nav
-              className="neo-dropdown absolute left-0 top-full z-50 mt-3 min-w-[200px] rounded-xl py-2"
+              className="neo-dropdown absolute left-0 top-full z-50 mt-3 min-w-[220px] rounded-xl py-2"
               role="menu"
             >
-              {visibleItems.map((item) =>
-                item.exportData ? (
-                  <button
-                    key={item.label}
-                    type="button"
-                    onClick={async () => {
-                      setOpen(false);
-                      try {
-                        const res = await fetch("/api/export");
-                        if (!res.ok) throw new Error("Export failed");
-                        const blob = await res.blob();
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] ?? `atelier-backup-${new Date().toISOString().slice(0, 10)}.json`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      } catch {
-                        window.open("/api/export", "_blank");
-                      }
-                    }}
-                    role="menuitem"
-                    className="block w-full px-5 py-2.5 text-left text-sm text-gray-700 hover:bg-white/50 transition-colors"
-                  >
-                    {item.label}
-                  </button>
-                ) : (
-                  <Link
-                    key={item.href}
-                    href={item.href}
-                    onClick={() => setOpen(false)}
-                    role="menuitem"
-                    className={`block px-5 py-2.5 text-sm transition-colors ${
-                      pathname === item.href
-                        ? "font-medium text-[var(--accent-hover)] bg-white/60"
-                        : "text-gray-700 hover:bg-white/50"
-                    }`}
-                  >
-                    {item.label}
-                  </Link>
-                )
-              )}
+              {groups.map((group, gi) => (
+                <div key={group.label}>
+                  {gi > 0 && <div className="my-1.5 border-t border-gray-200/60" />}
+                  <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
+                    {group.label}
+                  </div>
+                  {group.items.map((item) =>
+                    item.exportData ? (
+                      <button
+                        key={item.label}
+                        type="button"
+                        onClick={handleExport}
+                        role="menuitem"
+                        className="block w-full px-5 py-2 text-left text-sm text-gray-700 hover:bg-white/50 transition-colors"
+                      >
+                        {item.label}
+                      </button>
+                    ) : (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        onClick={() => setOpen(false)}
+                        role="menuitem"
+                        className={`block px-5 py-2 text-sm transition-colors ${
+                          pathname === item.href
+                            ? "font-medium text-[var(--accent-hover)] bg-white/60"
+                            : "text-gray-700 hover:bg-white/50"
+                        }`}
+                      >
+                        {item.label}
+                      </Link>
+                    )
+                  )}
+                </div>
+              ))}
             </nav>
           )}
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="hidden text-sm text-white/70 sm:inline">Operations · Internal use</span>
+          <span className="hidden text-sm text-white/70 sm:inline">{companyName}</span>
           <button
             type="button"
             onClick={() => void handleSignOut()}

@@ -1,7 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getAppConfig } from "@/lib/config";
-import { getMondayItemAsProject } from "@/lib/monday";
+import {
+  fetchAllMondayBoardItems,
+  mapMondayItemToProjectWithRooms,
+  findMondayItemByRefInTree,
+  type MondayItem,
+} from "@/lib/monday";
 import {
   triggerInventoryRecalcForMaterial,
   triggerOrderInventoryRecalc,
@@ -73,6 +78,10 @@ export async function POST(
       data: { actionStatus: "executing" },
     });
 
+    // B-13: Ensure actionStatus is never stuck on "executing" when we hit an early exit.
+    const failAction = () =>
+      prisma.aiMessage.update({ where: { id: messageId }, data: { actionStatus: "rejected" } });
+
     let result: Record<string, unknown> = {};
 
     switch (payload.action) {
@@ -97,11 +106,13 @@ export async function POST(
           where: { id: pid },
         });
         if (!project) {
+          await failAction();
           return NextResponse.json({ error: "Project not found" }, { status: 404 });
         }
 
         const [y, m, d] = serviceDate.split("-").map(Number);
         if (!y || !m || !d) {
+          await failAction();
           return NextResponse.json({ error: "Invalid serviceDate" }, { status: 400 });
         }
         const dayStart = new Date(y, m - 1, d);
@@ -284,8 +295,16 @@ export async function POST(
       }
 
       case "createOrder": {
-        // Resolve items to inventory IDs
-        const items = payload.items as { materialCode: string; quantity: number }[];
+        const rawItems = payload.items as { materialCode: string; quantity: number }[];
+        // B-04: validate and sanitize line quantities
+        const items = rawItems.map((i) => ({
+          materialCode: i.materialCode,
+          quantity: Number.isFinite(Number(i.quantity)) && Number(i.quantity) > 0 ? Number(i.quantity) : 0,
+        })).filter((i) => i.quantity > 0);
+        if (items.length === 0) {
+          await failAction();
+          return NextResponse.json({ error: "No valid order lines (quantities must be positive)" }, { status: 400 });
+        }
         const invItems = await prisma.inventoryItem.findMany({
           where: { materialCode: { in: items.map((i) => i.materialCode) } },
         });
@@ -333,26 +352,33 @@ export async function POST(
       }
 
       case "addMaterial": {
-        const { projectId, materialCode, quantity } = payload;
+        const { projectId, materialCode, quantity: rawQty } = payload;
 
-        // Validate materialCode exists
+        // B-04: validate quantity
+        const quantity = Number(rawQty);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          await failAction();
+          return NextResponse.json({ error: "quantity must be a positive finite number" }, { status: 400 });
+        }
+
         const invCheck = await prisma.inventoryItem.findUnique({
           where: { materialCode: materialCode as string },
           select: { id: true },
         });
         if (!invCheck) {
+          await failAction();
           return NextResponse.json(
             { error: `Material code not found: ${materialCode}. Create it in inventory first or use createInventoryItem.` },
             { status: 404 }
           );
         }
 
-        // Resolve project ID
         let resolvedProjectId = projectId;
         const directCheck = await prisma.project.findUnique({ where: { id: projectId as string }, select: { id: true } });
         if (!directCheck) {
           const byJob = await prisma.project.findFirst({ where: { jobNumber: projectId as string }, select: { id: true } });
           if (!byJob) {
+            await failAction();
             return NextResponse.json({ error: `Project not found: ${projectId}` }, { status: 404 });
           }
           resolvedProjectId = byJob.id;
@@ -365,11 +391,11 @@ export async function POST(
               materialCode: materialCode as string,
             },
           },
-          update: { requiredQty: { increment: quantity as number } },
+          update: { requiredQty: { increment: quantity } },
           create: {
             projectId: resolvedProjectId as string,
             materialCode: materialCode as string,
-            requiredQty: quantity as number,
+            requiredQty: quantity,
           },
         });
 
@@ -388,6 +414,7 @@ export async function POST(
         const config = await getAppConfig();
         const apiKey = config.integrations?.mondayApiKey as string | undefined;
         if (!apiKey?.trim()) {
+          await failAction();
           return NextResponse.json({ error: "Monday API key not configured" }, { status: 400 });
         }
         const key = apiKey.trim();
@@ -409,46 +436,106 @@ export async function POST(
             : [];
 
         if (entries.length === 0) {
+          await failAction();
           return NextResponse.json({ error: "No Monday items to create", details: "Payload missing items or boardId/itemId" }, { status: 400 });
         }
 
-        const created: { id: string; name: string }[] = [];
+        const created: { id: string; name: string; rooms: number }[] = [];
         const errors: string[] = [];
 
-        // Scale guardrails: keep the approval endpoint reliable for big Monday batches.
-        // If user selects 50+ items, we process in chunks and may return a partial result on timeout.
         const startedAt = Date.now();
-        const MAX_MS = 25_000; // keep under common serverless timeouts
+        const MAX_MS = 25_000;
         const CHUNK_SIZE = 25;
         const MAX_ITEMS = 250;
         const list = entries.slice(0, MAX_ITEMS);
         const skipped = entries.length > MAX_ITEMS ? entries.length - MAX_ITEMS : 0;
 
+        // Fetch each board ONCE instead of per-item (B-10 fix)
+        const boardCache = new Map<string, MondayItem[]>();
+        const uniqueBoards = [...new Set(list.map((e) => e.boardId))];
+        for (const bid of uniqueBoards) {
+          try {
+            boardCache.set(bid, await fetchAllMondayBoardItems(key, bid));
+          } catch (e) {
+            errors.push(`Board ${bid}: ${e instanceof Error ? e.message : "fetch failed"}`);
+          }
+        }
+
+        const jobsSeen = new Set<string>();
+
         for (let i = 0; i < list.length; i++) {
           const { boardId, itemId, overrides } = list[i] as (typeof entries)[number];
           try {
-            const mapped = await getMondayItemAsProject(key, boardId, itemId);
+            const boardItems = boardCache.get(boardId) ?? [];
+
+            // Find the parent item by numeric ID, then fallback to ref (MC-xxxx)
+            let parent = boardItems.find((it) => String(it.id) === String(itemId)) ?? null;
+            if (!parent) parent = findMondayItemByRefInTree(boardItems, itemId);
+            if (!parent) {
+              errors.push(`${itemId}: Monday item not found on board ${boardId}`);
+              continue;
+            }
+
+            // Parent item → Project; subitems → rooms (ProjectItems)
+            const mapped = mapMondayItemToProjectWithRooms(parent);
             const name = mapped.name?.trim() || "New project";
-            const jobRaw = overrides?.jobNumber ?? mapped.jobNumber;
-            const jobNumber = typeof jobRaw === "string" && jobRaw.trim() ? jobRaw.trim() : null;
-            const clientRaw = overrides?.clientName ?? mapped.clientName;
-            const clientName = typeof clientRaw === "string" && clientRaw.trim() ? clientRaw.trim() : null;
-            const notes = overrides?.notes ?? mapped.notes ?? null;
+            const jobNumber = overrides?.jobNumber?.trim() || mapped.jobNumber || null;
+            const clientName = overrides?.clientName?.trim() || mapped.clientName || null;
+            const notes = overrides?.notes?.trim() || mapped.notes || null;
+            const clientPhone = mapped.clientPhone || null;
+
+            if (jobNumber) {
+              if (jobsSeen.has(jobNumber)) {
+                errors.push(`${name}: duplicate job ${jobNumber} in this batch — skipped`);
+                continue;
+              }
+              const existing = await prisma.project.findFirst({
+                where: { jobNumber },
+                select: { id: true, name: true },
+              });
+              if (existing) {
+                errors.push(`${name}: project with job ${jobNumber} already exists ("${existing.name}") — skipped`);
+                continue;
+              }
+              jobsSeen.add(jobNumber);
+            }
+
+            // Derive project types from rooms
+            const roomTypes = mapped.rooms.map((r) => r.type);
+            const uniqueTypes = [...new Set(roomTypes)].filter(Boolean);
+            const types = uniqueTypes.length > 0 ? uniqueTypes.join(",") : "custom";
+            const primaryType = uniqueTypes[0] ?? "custom";
+
             const project = await prisma.project.create({
               data: {
                 name,
-                type: "custom",
-                types: "custom",
+                type: primaryType,
+                types,
                 jobNumber,
                 notes,
                 isDraft: true,
                 isDone: false,
                 clientFirstName: clientName ? clientName.split(/\s+/)[0] ?? null : null,
                 clientLastName: clientName ? clientName.split(/\s+/).slice(1).join(" ") || null : null,
-                clientAddress: typeof overrides?.address === "string" && overrides.address.trim() ? overrides.address.trim() : null,
+                clientPhone,
+                clientAddress: overrides?.address?.trim() || null,
               },
             });
-            created.push({ id: project.id, name: project.name });
+
+            // Create ProjectItems (rooms) from subitems
+            for (let ri = 0; ri < mapped.rooms.length; ri++) {
+              const room = mapped.rooms[ri];
+              await prisma.projectItem.create({
+                data: {
+                  projectId: project.id,
+                  type: room.type,
+                  label: room.label,
+                  sortOrder: ri,
+                },
+              });
+            }
+
+            created.push({ id: project.id, name: project.name, rooms: mapped.rooms.length });
           } catch (e) {
             const msg = e instanceof Error ? e.message : String(e);
             errors.push(`${itemId}: ${msg}`);
@@ -472,11 +559,13 @@ export async function POST(
           );
         }
 
+        const totalRooms = created.reduce((s, c) => s + c.rooms, 0);
         result = {
           status: created.length ? "project_created" : "failed",
           projectId: created[0]?.id ?? null,
           projectIds: created.map((p) => p.id),
           count: created.length,
+          totalRooms,
           total: list.length,
           errors: errors.length ? errors : undefined,
         };
@@ -484,15 +573,23 @@ export async function POST(
       }
 
       case "receiveInventory": {
-        const { materialCode, quantity, note, orderId } = payload as {
+        const { materialCode, quantity: rawQty, note, orderId } = payload as {
           materialCode: string;
           quantity: number;
           note?: string;
           orderId?: string;
         };
 
+        // B-04: validate quantity
+        const quantity = Number(rawQty);
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          await failAction();
+          return NextResponse.json({ error: "quantity must be a positive finite number" }, { status: 400 });
+        }
+
         const invItem = await prisma.inventoryItem.findUnique({ where: { materialCode } });
         if (!invItem) {
+          await failAction();
           return NextResponse.json({ error: `Inventory item not found: ${materialCode}` }, { status: 404 });
         }
 
@@ -512,13 +609,15 @@ export async function POST(
           }),
         ]);
 
+        // Re-read actual onHand after transaction for accurate response
+        const updated = await prisma.inventoryItem.findUnique({ where: { materialCode }, select: { onHand: true } });
         triggerInventoryRecalcForMaterial(materialCode).catch(() => {});
-        result = { status: "inventory_received", materialCode, quantity, newOnHand: invItem.onHand + quantity };
+        result = { status: "inventory_received", materialCode, quantity, newOnHand: updated?.onHand ?? invItem.onHand + quantity };
         break;
       }
 
       case "createInventoryItem": {
-        const { materialCode, description, unit, onHand, category, minThreshold } = payload as {
+        const { materialCode, description, unit, onHand: rawOnHand, category, minThreshold: rawThreshold } = payload as {
           materialCode: string;
           description: string;
           unit?: string;
@@ -527,8 +626,13 @@ export async function POST(
           minThreshold?: number;
         };
 
+        // B-04: sanitize numeric fields (NaN ?? 0 is still NaN)
+        const onHand = Math.max(0, Number.isFinite(Number(rawOnHand)) ? Number(rawOnHand) : 0);
+        const minThreshold = Math.max(0, Number.isFinite(Number(rawThreshold)) ? Number(rawThreshold) : 0);
+
         const existing = await prisma.inventoryItem.findUnique({ where: { materialCode } });
         if (existing) {
+          await failAction();
           return NextResponse.json({ error: `Material code already exists: ${materialCode}` }, { status: 409 });
         }
 
@@ -537,10 +641,10 @@ export async function POST(
             materialCode,
             description,
             unit: unit ?? "sheets",
-            onHand: onHand ?? 0,
-            stockQty: onHand ?? 0,
+            onHand,
+            stockQty: onHand,
             category: category ?? "sheetGoods",
-            minThreshold: minThreshold ?? 0,
+            minThreshold,
           },
         });
 
@@ -560,6 +664,7 @@ export async function POST(
         if (!directCheck) {
           const byJob = await prisma.project.findFirst({ where: { jobNumber: statusProjectId }, select: { id: true } });
           if (!byJob) {
+            await failAction();
             return NextResponse.json({ error: `Project not found: ${statusProjectId}` }, { status: 404 });
           }
           resolvedId = byJob.id;
@@ -595,9 +700,21 @@ export async function POST(
               targetDate: pre.targetDate,
               projectItemCount: pre._count.projectItems,
             });
-            if (!ready && process.env.READINESS_GATE_STRICT === "true") {
-              await logAudit(resolvedId, "readiness_blocked", JSON.stringify({ missing }));
-              return NextResponse.json({ error: "readiness_check_failed", missing }, { status: 400 });
+            if (!ready) {
+              if (process.env.NEXT_PUBLIC_READINESS_GATE_STRICT === "true") {
+                await logAudit(resolvedId, "readiness_blocked", JSON.stringify({ missing }));
+                await failAction();
+                return NextResponse.json({ error: "readiness_check_failed", missing }, { status: 400 });
+              }
+              // B-12: soft mode — allow but include warning in result (parity with PATCH route)
+              await prisma.project.update({ where: { id: resolvedId }, data: statusData });
+              result = {
+                status: "project_updated",
+                projectId: resolvedId,
+                newStatus: status,
+                readinessWarning: { code: "readiness_incomplete", missing },
+              };
+              break;
             }
           }
         }
@@ -618,15 +735,20 @@ export async function POST(
           include: { lines: { include: { inventoryItem: true } } },
         });
         if (!order) {
+          await failAction();
           return NextResponse.json({ error: `Order not found: ${orderId}` }, { status: 404 });
         }
         if (order.status === "cancelled") {
+          await failAction();
           return NextResponse.json({ error: "Cannot receive a cancelled order" }, { status: 400 });
         }
 
         const lineUpdates = new Map<string, number>();
         if (receiveLines && receiveLines.length > 0) {
-          for (const l of receiveLines) lineUpdates.set(l.orderLineId, l.receivedQty);
+          for (const l of receiveLines) {
+            const v = Number(l.receivedQty);
+            if (Number.isFinite(v) && v > 0) lineUpdates.set(l.orderLineId, v);
+          }
         } else {
           for (const l of order.lines) lineUpdates.set(l.id, l.quantity);
         }
@@ -635,8 +757,11 @@ export async function POST(
 
         await prisma.$transaction(async (tx) => {
           for (const line of order.lines) {
-            const qty = lineUpdates.get(line.id);
-            if (!qty || qty <= 0) continue;
+            const rawQty = lineUpdates.get(line.id);
+            if (!rawQty || rawQty <= 0) continue;
+            // B-04 + B-16: cap at ordered quantity to prevent over-receiving
+            const qty = Math.min(rawQty, Math.max(0, line.quantity - line.receivedQty));
+            if (qty <= 0) continue;
 
             await tx.orderLine.update({
               where: { id: line.id },
@@ -679,6 +804,7 @@ export async function POST(
       }
 
       default:
+        await failAction();
         return NextResponse.json({ error: `Unknown action: ${payload.action}` }, { status: 400 });
     }
 
@@ -690,6 +816,11 @@ export async function POST(
     return NextResponse.json({ status: "executed", result });
   } catch (err) {
     console.error("POST /api/ai/actions approve error:", err);
+    // B-13: best-effort reset so action doesn't stay stuck on "executing"
+    try {
+      const msgId = (await params).id ?? params.id;
+      await prisma.aiMessage.update({ where: { id: msgId as string }, data: { actionStatus: "rejected" } });
+    } catch { /* swallow — original error is more important */ }
     return NextResponse.json({ error: "Execution failed" }, { status: 500 });
   }
 }

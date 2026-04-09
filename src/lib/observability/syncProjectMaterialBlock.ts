@@ -23,17 +23,14 @@ export async function syncProjectBlockedFromMaterialShortage(projectId: string):
   if (!proj) return;
 
   if (severeCount > 0) {
-    const prev = proj.blockedReason;
-    if (prev !== "missing_material") {
+    // B-11: Only auto-set if no reason is set or it's already missing_material.
+    // Don't overwrite manually-set reasons (waiting_approval, supplier_delay, etc.).
+    if (!proj.blockedReason) {
       await prisma.project.update({
         where: { id: projectId },
         data: { blockedReason: "missing_material" },
       });
-      await logAudit(
-        projectId,
-        "material_shortage_blocked",
-        prev ? JSON.stringify({ previousReason: prev }) : null
-      );
+      await logAudit(projectId, "material_shortage_blocked", null);
     }
   } else if (proj.blockedReason === "missing_material") {
     await prisma.project.update({

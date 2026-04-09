@@ -105,9 +105,9 @@ export async function POST(request: Request) {
       project = await prisma.project.create({
         data: {
           name: projectName,
-          type: "vanity",
-          types: "vanity",
-          isDraft: false, // legacy behavior: standalone service call creates an active placeholder project
+          type: "service_call",
+          types: "service_call",
+          isDraft: true,
           jobNumber,
           clientFirstName: data.clientName ? data.clientName.trim().split(/\s+/)[0] ?? null : null,
           clientLastName:

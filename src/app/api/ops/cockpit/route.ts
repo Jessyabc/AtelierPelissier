@@ -2,10 +2,13 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { computeInventoryState } from "@/lib/observability/recalculateInventoryState";
 import { resolveDefaultSuppliers } from "@/lib/purchasing/resolveDefaultSupplier";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
 export async function GET() {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const [
     projects,
     deviations,

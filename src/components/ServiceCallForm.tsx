@@ -290,6 +290,131 @@ export function ServiceCallForm({
           </div>
         </section>
 
+        {/* Work Items — the core of the service call: what needs to be done */}
+        <section className="neo-panel-inset p-4 rounded-xl border-2 border-indigo-100">
+          <h3 className="mb-3 text-sm font-semibold text-gray-800">
+            Work items
+            <span className="ml-2 text-xs font-normal text-gray-500">What needs to be done on site</span>
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <input
+              type="text"
+              placeholder="Describe a task or item…"
+              value={newItemDesc}
+              onChange={(e) => onNewItemDescChange(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  onAddItem({
+                    description: newItemDesc.trim(),
+                    quantity: newItemQty?.trim() || null,
+                    providedBy: newItemProvidedBy || null,
+                  });
+                }
+              }}
+              className="flex-1 min-w-[200px] neo-input px-4 py-2.5 text-sm"
+            />
+            {onNewItemQtyChange != null && (
+              <input
+                type="text"
+                placeholder="Qty"
+                value={newItemQty}
+                onChange={(e) => onNewItemQtyChange(e.target.value)}
+                className="neo-input w-20 px-3 py-2 text-sm"
+              />
+            )}
+            {onNewItemProvidedByChange != null && (
+              <select
+                value={newItemProvidedBy}
+                onChange={(e) => onNewItemProvidedByChange(e.target.value as "" | "company" | "client")}
+                className="neo-input px-3 py-2 text-sm"
+              >
+                <option value="">Provided by</option>
+                <option value="company">Company</option>
+                <option value="client">Client</option>
+              </select>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                onAddItem({
+                  description: newItemDesc.trim(),
+                  quantity: newItemQty?.trim() || null,
+                  providedBy: newItemProvidedBy || null,
+                })
+              }
+              disabled={addingItem || !newItemDesc.trim()}
+              className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
+            >
+              {addingItem ? "Adding…" : "Add"}
+            </button>
+          </div>
+          {items.length > 0 && (
+            <ul className="mt-3 space-y-3">
+              {items.map((item) => {
+                const canAddFiles = onAddFile && onRemoveFile && !item.id.startsWith("tmp-");
+                const itemFiles = item.files ?? [];
+                return (
+                  <li key={item.id} className="neo-panel-inset px-3 py-2 text-sm rounded-lg">
+                    <div className="flex items-center justify-between">
+                      <span>
+                        {item.description}
+                        {item.quantity && ` · Qty: ${item.quantity}`}
+                        {item.providedBy && ` · ${item.providedBy}`}
+                      </span>
+                      <button type="button" onClick={() => onRemoveItem(item.id)} className="text-red-600 hover:text-red-800">
+                        Remove
+                      </button>
+                    </div>
+                    {canAddFiles && (
+                      <div className="mt-2 border-t border-gray-100 pt-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="cursor-pointer neo-btn px-2 py-1 text-xs">
+                            + Add file
+                            <input
+                              type="file"
+                              className="hidden"
+                              multiple
+                              onChange={(e) => {
+                                const files = e.target.files;
+                                if (!files?.length) return;
+                                for (let i = 0; i < files.length; i++) {
+                                  onAddFile?.(item.id, files[i]!);
+                                }
+                                e.target.value = "";
+                              }}
+                            />
+                          </label>
+                          {itemFiles.map((f) => (
+                            <span
+                              key={f.id}
+                              className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs"
+                            >
+                              <a href={`/${f.storagePath}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
+                                {f.fileName}
+                              </a>
+                              <button
+                                type="button"
+                                onClick={() => onRemoveFile?.(item.id, f.id)}
+                                className="text-red-600 hover:text-red-800"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {items.length === 0 && (
+            <p className="mt-2 text-xs text-gray-400 italic">No work items yet — add what needs to be done on this visit.</p>
+          )}
+        </section>
+
         {/* Service Call Details */}
         <section className="neo-panel-inset p-4 rounded-xl">
           <h3 className="mb-3 text-sm font-semibold text-gray-800">Service call details</h3>
@@ -511,128 +636,6 @@ export function ServiceCallForm({
               );
             })}
           </div>
-        </section>
-
-        {/* Materials / Parts Used */}
-        <section className="neo-panel-inset p-4 rounded-xl">
-          <h3 className="mb-3 text-sm font-semibold text-gray-800">Materials / parts used</h3>
-          <div className="flex flex-wrap gap-2">
-            <input
-              type="text"
-              placeholder="Description…"
-              value={newItemDesc}
-              onChange={(e) => onNewItemDescChange(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  e.preventDefault();
-                  onAddItem({
-                    description: newItemDesc.trim(),
-                    quantity: newItemQty?.trim() || null,
-                    providedBy: newItemProvidedBy || null,
-                  });
-                }
-              }}
-              className="neo-input px-4 py-2.5 text-sm"
-            />
-            {onNewItemQtyChange != null && (
-              <input
-                type="text"
-                placeholder="Qty"
-                value={newItemQty}
-                onChange={(e) => onNewItemQtyChange(e.target.value)}
-                className="neo-input w-20 px-3 py-2 text-sm"
-              />
-            )}
-            {onNewItemProvidedByChange != null && (
-              <select
-                value={newItemProvidedBy}
-                onChange={(e) => onNewItemProvidedByChange(e.target.value as "" | "company" | "client")}
-                className="neo-input px-3 py-2 text-sm"
-              >
-                <option value="">Provided by</option>
-                <option value="company">Company</option>
-                <option value="client">Client</option>
-              </select>
-            )}
-            <button
-              type="button"
-              onClick={() =>
-                onAddItem({
-                  description: newItemDesc.trim(),
-                  quantity: newItemQty?.trim() || null,
-                  providedBy: newItemProvidedBy || null,
-                })
-              }
-              disabled={addingItem || !newItemDesc.trim()}
-              className="neo-btn-primary px-4 py-2 text-sm font-medium disabled:opacity-50"
-            >
-              {addingItem ? "Adding…" : "Add"}
-            </button>
-          </div>
-          {items.length > 0 && (
-            <ul className="mt-3 space-y-3">
-              {items.map((item) => {
-                const canAddFiles = onAddFile && onRemoveFile && !item.id.startsWith("tmp-");
-                const itemFiles = item.files ?? [];
-                return (
-                  <li
-                    key={item.id}
-                    className="neo-panel-inset px-3 py-2 text-sm rounded-lg"
-                  >
-                    <div className="flex items-center justify-between">
-                      <span>
-                        {item.description}
-                        {item.quantity && ` · Qty: ${item.quantity}`}
-                        {item.providedBy && ` · ${item.providedBy}`}
-                      </span>
-                      <button type="button" onClick={() => onRemoveItem(item.id)} className="text-red-600 hover:text-red-800">
-                        Remove item
-                      </button>
-                    </div>
-                    {canAddFiles && (
-                      <div className="mt-2 border-t border-gray-100 pt-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <label className="cursor-pointer neo-btn px-2 py-1 text-xs">
-                            + Add file
-                            <input
-                              type="file"
-                              className="hidden"
-                              multiple
-                              onChange={(e) => {
-                                const files = e.target.files;
-                                if (!files?.length) return;
-                                for (let i = 0; i < files.length; i++) {
-                                  onAddFile?.(item.id, files[i]!);
-                                }
-                                e.target.value = "";
-                              }}
-                            />
-                          </label>
-                          {itemFiles.map((f) => (
-                            <span
-                              key={f.id}
-                              className="inline-flex items-center gap-1 rounded bg-gray-100 px-2 py-0.5 text-xs"
-                            >
-                              <a href={`/${f.storagePath}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">
-                                {f.fileName}
-                              </a>
-                              <button
-                                type="button"
-                                onClick={() => onRemoveFile?.(item.id, f.id)}
-                                className="text-red-600 hover:text-red-800"
-                              >
-                                ×
-                              </button>
-                            </span>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-          )}
         </section>
 
         {/* Service Status */}
