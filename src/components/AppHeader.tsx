@@ -18,10 +18,11 @@ type MenuItemConfig = {
 type MenuGroup = { label: string; items: MenuItemConfig[] };
 
 const GROUPED_MENU: MenuItemConfig[] = [
-  { href: "/", label: "Projects", visible: true, order: 0, group: "Work" },
-  { href: "/projects/new", label: "New Project", visible: true, order: 1, group: "Work" },
-  { href: "/service-calls", label: "Service Calls", visible: true, order: 2, group: "Work" },
-  { href: "/calendar", label: "Calendar", visible: true, order: 3, group: "Work" },
+  { href: "/today", label: "My Day", visible: true, order: 0, group: "Work" },
+  { href: "/", label: "Projects", visible: true, order: 1, group: "Work" },
+  { href: "/projects/new", label: "New Project", visible: true, order: 2, group: "Work" },
+  { href: "/service-calls", label: "Service Calls", visible: true, order: 3, group: "Work" },
+  { href: "/calendar", label: "Calendar", visible: true, order: 4, group: "Work" },
 
   { href: "/home", label: "Cockpit", visible: true, order: 10, group: "Ops" },
   { href: "/dashboard", label: "Dashboard", visible: true, order: 11, group: "Ops" },
