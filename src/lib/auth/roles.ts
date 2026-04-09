@@ -44,7 +44,7 @@ const ROLE_PAGE_ACCESS: Record<AppRole, readonly string[]> = {
     "/calendar", "/distributors", "/costing", "/onboarding",
   ],
   woodworker: [
-    "/", "/assistant", "/calendar", "/onboarding",
+    "/assistant", "/calendar", "/onboarding",
   ],
 };
 
@@ -55,7 +55,8 @@ export function isPageAllowedForRole(pathname: string, role: string): boolean {
   // Exact match first
   if (allowed.includes(pathname)) return true;
   // Dynamic sub-paths: /projects/[id], /processes/[id], /punch/[station] — always allowed if parent is
-  if (pathname.startsWith("/projects/") && allowed.includes("/")) return true;
+  // Projects are accessible either via the Projects list ("/") or via Calendar ("/calendar") links.
+  if (pathname.startsWith("/projects/") && (allowed.includes("/") || allowed.includes("/calendar"))) return true;
   if (pathname.startsWith("/processes/") && allowed.includes("/processes")) return true;
   if (pathname.startsWith("/punch/")) return true;
   if (pathname.startsWith("/admin/") && allowed.some((p) => p.startsWith("/admin"))) return true;
@@ -76,7 +77,7 @@ export function isMenuItemAllowedForRole(href: string, role: string): boolean {
 /** Default landing page after login (no ?next= param). */
 export function getDefaultLandingPage(role: string): string {
   switch (role) {
-    case "woodworker": return "/";
+    case "woodworker": return "/calendar";
     case "planner": return "/home";
     case "admin": return "/";
     case "salesperson": return "/";

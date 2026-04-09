@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { parseServiceCallTypesJson } from "@/lib/serviceCallTypes";
+import { canSchedule } from "@/lib/auth/roles";
 
 type CalendarEvent = {
   id: string;
@@ -88,6 +89,8 @@ function CalendarContent() {
   const [addExistingScId, setAddExistingScId] = useState("");
   const [addingExisting, setAddingExisting] = useState(false);
   const [companyName, setCompanyName] = useState("Atelier Pelissier");
+  const [userRole, setUserRole] = useState<string>("admin");
+  const canEdit = canSchedule(userRole);
 
   const fetchEvents = useCallback(async () => {
     setLoading(true);
@@ -122,6 +125,13 @@ function CalendarContent() {
     fetch("/api/admin/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
       if (cfg?.companyName) setCompanyName(cfg.companyName);
     }).catch(() => {});
+    fetch("/api/auth/me")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((me) => {
+        const role = me?.user?.role;
+        if (typeof role === "string" && role.length > 0) setUserRole(role);
+      })
+      .catch(() => {});
   }, [fetchEvents]);
 
   useEffect(() => {
@@ -332,7 +342,11 @@ function CalendarContent() {
         </div>
         <button type="button" onClick={goToday} className="neo-btn px-3 py-1.5 text-sm font-medium">Today</button>
         <button type="button" onClick={() => fetchEvents()} disabled={loading} className="neo-btn px-3 py-1.5 text-sm font-medium disabled:opacity-50" title="Refresh">Refresh</button>
-        <Link href="/service-calls" className="rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900">New service call</Link>
+        {canEdit && (
+          <Link href="/service-calls" className="rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900">
+            New service call
+          </Link>
+        )}
       </div>
 
       {loading ? (
@@ -415,47 +429,51 @@ function CalendarContent() {
 
             <div className="p-4 space-y-4">
               {/* Add existing service call */}
-              <div className="neo-panel-inset p-4 rounded-xl">
-                <h3 className="mb-3 text-sm font-semibold text-gray-800">Add existing service call</h3>
-                <div className="flex flex-wrap gap-2">
-                  <select
-                    value={addExistingScId}
-                    onChange={(e) => setAddExistingScId(e.target.value)}
-                    className="neo-input min-w-[200px] px-3 py-2 text-sm"
-                  >
-                    <option value="">— Select —</option>
-                    {serviceCalls
-                      .filter((sc) => !dayEvents.some((e) => e.serviceCallId === sc.id))
-                      .map((sc) => (
-                        <option key={sc.id} value={sc.id}>
-                          {sc.serviceCallNumber || sc.jobNumber || "—"} · {sc.clientName} {sc.serviceDate ? `(${sc.serviceDate.slice(0, 10)})` : ""}
-                        </option>
-                      ))}
-                  </select>
-                  <button
-                    type="button"
-                    onClick={addExistingServiceCall}
-                    disabled={addingExisting || !addExistingScId}
-                    className="rounded bg-gray-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-                  >
-                    {addingExisting ? "Adding…" : "Add"}
-                  </button>
+              {canEdit && (
+                <div className="neo-panel-inset p-4 rounded-xl">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-800">Add existing service call</h3>
+                  <div className="flex flex-wrap gap-2">
+                    <select
+                      value={addExistingScId}
+                      onChange={(e) => setAddExistingScId(e.target.value)}
+                      className="neo-input min-w-[200px] px-3 py-2 text-sm"
+                    >
+                      <option value="">— Select —</option>
+                      {serviceCalls
+                        .filter((sc) => !dayEvents.some((e) => e.serviceCallId === sc.id))
+                        .map((sc) => (
+                          <option key={sc.id} value={sc.id}>
+                            {sc.serviceCallNumber || sc.jobNumber || "—"} · {sc.clientName} {sc.serviceDate ? `(${sc.serviceDate.slice(0, 10)})` : ""}
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={addExistingServiceCall}
+                      disabled={addingExisting || !addExistingScId}
+                      className="rounded bg-gray-700 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+                    >
+                      {addingExisting ? "Adding…" : "Add"}
+                    </button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Add new event */}
-              <div className="neo-panel-inset p-4 rounded-xl">
-                <h3 className="mb-3 text-sm font-semibold text-gray-800">Add new event</h3>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <input type="text" placeholder="Title *" value={addManualTitle} onChange={(e) => setAddManualTitle(e.target.value)} className="neo-input px-3 py-2 text-sm" />
-                  <input type="time" placeholder="Time" value={addManualTime} onChange={(e) => setAddManualTime(e.target.value)} className="neo-input px-3 py-2 text-sm" />
-                  <input type="text" placeholder="Address / destination" value={addManualAddress} onChange={(e) => setAddManualAddress(e.target.value)} className="sm:col-span-2 neo-input px-3 py-2 text-sm" />
-                  <input type="text" placeholder="Notes" value={addManualNotes} onChange={(e) => setAddManualNotes(e.target.value)} className="sm:col-span-2 neo-input px-3 py-2 text-sm" />
+              {canEdit && (
+                <div className="neo-panel-inset p-4 rounded-xl">
+                  <h3 className="mb-3 text-sm font-semibold text-gray-800">Add new event</h3>
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input type="text" placeholder="Title *" value={addManualTitle} onChange={(e) => setAddManualTitle(e.target.value)} className="neo-input px-3 py-2 text-sm" />
+                    <input type="time" placeholder="Time" value={addManualTime} onChange={(e) => setAddManualTime(e.target.value)} className="neo-input px-3 py-2 text-sm" />
+                    <input type="text" placeholder="Address / destination" value={addManualAddress} onChange={(e) => setAddManualAddress(e.target.value)} className="sm:col-span-2 neo-input px-3 py-2 text-sm" />
+                    <input type="text" placeholder="Notes" value={addManualNotes} onChange={(e) => setAddManualNotes(e.target.value)} className="sm:col-span-2 neo-input px-3 py-2 text-sm" />
+                  </div>
+                  <button type="button" onClick={addManualEvent} disabled={addingManual || !addManualTitle.trim()} className="mt-2 rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-50">
+                    {addingManual ? "Adding…" : "Add"}
+                  </button>
                 </div>
-                <button type="button" onClick={addManualEvent} disabled={addingManual || !addManualTitle.trim()} className="mt-2 rounded bg-gray-800 px-3 py-1.5 text-sm font-medium text-white hover:bg-gray-900 disabled:opacity-50">
-                  {addingManual ? "Adding…" : "Add"}
-                </button>
-              </div>
+              )}
 
               {/* Day events list */}
               {dayLoading ? (
@@ -473,9 +491,13 @@ function CalendarContent() {
                         {ev.clientName && ev.type === "service_call" && <span className="block text-xs text-gray-500">{ev.clientName}</span>}
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
-                        <button type="button" onClick={() => moveEvent(idx, "up")} disabled={idx === 0} className="rounded border px-1.5 py-0.5 text-xs disabled:opacity-40" title="Move up">↑</button>
-                        <button type="button" onClick={() => moveEvent(idx, "down")} disabled={idx === dayEvents.length - 1} className="rounded border px-1.5 py-0.5 text-xs disabled:opacity-40" title="Move down">↓</button>
-                        <button type="button" onClick={() => removeFromDay(ev.id)} className="rounded border border-red-200 px-1.5 py-0.5 text-xs text-red-700" title="Remove from day">✕</button>
+                        {canEdit && (
+                          <>
+                            <button type="button" onClick={() => moveEvent(idx, "up")} disabled={idx === 0} className="rounded border px-1.5 py-0.5 text-xs disabled:opacity-40" title="Move up">↑</button>
+                            <button type="button" onClick={() => moveEvent(idx, "down")} disabled={idx === dayEvents.length - 1} className="rounded border px-1.5 py-0.5 text-xs disabled:opacity-40" title="Move down">↓</button>
+                            <button type="button" onClick={() => removeFromDay(ev.id)} className="rounded border border-red-200 px-1.5 py-0.5 text-xs text-red-700" title="Remove from day">✕</button>
+                          </>
+                        )}
                         {ev.type === "service_call" && ev.projectId && (
                           <Link href={`/projects/${ev.projectId}`} className="ml-1 rounded border px-2 py-1 text-xs hover:bg-gray-50">Open</Link>
                         )}
