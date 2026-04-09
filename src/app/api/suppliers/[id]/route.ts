@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { requireRole } from "@/lib/auth/session";
 
 const updateSchema = z.object({
   name: z.string().min(1).max(200).trim().optional(),
@@ -13,6 +14,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
   let body: unknown;
   try {
@@ -35,6 +38,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
   await prisma.supplier.delete({ where: { id } });
   return NextResponse.json({ ok: true });

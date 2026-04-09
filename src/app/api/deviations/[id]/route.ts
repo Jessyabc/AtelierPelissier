@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { requireRole } from "@/lib/auth/session";
 
 const updateSchema = z.object({
   resolved: z.boolean(),
@@ -10,6 +11,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
   let body: unknown;
   try {

@@ -1,12 +1,32 @@
 /**
  * Recalculation orchestrator – calls all modules in order.
- * Fire-and-forget from API routes; errors are logged, not thrown.
+ * Fire-and-forget from API routes; errors are logged to AppErrorLog and console.
  */
 
 import { recalculateFinancialState } from "./recalculateFinancialState";
 import { recalculateMaterialRequirements } from "./recalculateMaterialRequirements";
 import { recalculateInventoryRisk } from "./recalculateInventoryRisk";
 import { recalculateOrderRisk } from "./recalculateOrderRisk";
+
+async function logRecalcError(projectId: string, err: unknown): Promise<void> {
+  try {
+    const { prisma } = await import("@/lib/db");
+    const message = err instanceof Error ? err.message : String(err);
+    const stack = err instanceof Error ? (err.stack ?? null) : null;
+    await prisma.appErrorLog.create({
+      data: {
+        source: "server",
+        severity: "error",
+        message: `recalculateProjectState failed: ${message}`,
+        stack,
+        route: `/api/projects/${projectId}/recalculate`,
+        context: JSON.stringify({ projectId, type: "recalc_failed" }),
+      },
+    });
+  } catch {
+    // Never let error logging crash the app
+  }
+}
 
 export async function recalculateProjectState(projectId: string): Promise<void> {
   try {
@@ -16,6 +36,7 @@ export async function recalculateProjectState(projectId: string): Promise<void> 
     await recalculateOrderRisk(projectId);
   } catch (err) {
     console.error(`recalculateProjectState(${projectId}) failed:`, err);
+    logRecalcError(projectId, err).catch(() => {});
   }
 }
 

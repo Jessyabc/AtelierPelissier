@@ -20,6 +20,7 @@ import { ReadinessChecklistCard } from "@/components/ReadinessChecklistCard";
 import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 import { computeReadinessCheck } from "@/lib/readiness";
 import { DraftIntakePanel } from "@/components/DraftIntakePanel";
+import { ProductionTab } from "@/components/ProductionTab";
 
 type TaskItem = { id: string; label: string; isDone: boolean; sortOrder: number };
 type ProjItem = {
@@ -62,7 +63,7 @@ type Project = {
   blockedReason?: string | null;
 };
 
-type Tab = "Overview" | "Client & Info" | "Estimates & Costs" | "Service Calls" | "History";
+type Tab = "Overview" | "Client & Info" | "Estimates & Costs" | "Production" | "Service Calls" | "History";
 
 export default function ProjectPage() {
   const params = useParams();
@@ -77,6 +78,7 @@ export default function ProjectPage() {
   const [duplicating, setDuplicating] = useState(false);
   const [togglingDone, setTogglingDone] = useState(false);
   const [processTemplates, setProcessTemplates] = useState<Array<{ id: string; name: string }>>([]);
+  const [companyConfig, setCompanyConfig] = useState<{ companyName?: string; companyPhone?: string; companyEmail?: string; companyAddress?: string }>({});
 
   // Board state
   const [expandedItemId, setExpandedItemId] = useState<string | null>(null);
@@ -93,6 +95,38 @@ export default function ProjectPage() {
   const [editingPrice, setEditingPrice] = useState(false);
   const [priceInput, setPriceInput] = useState("");
 
+  // Recalculation health
+  const [recalcError, setRecalcError] = useState<{ message: string; failedAt: string } | null>(null);
+  const [retryingRecalc, setRetryingRecalc] = useState(false);
+
+  const checkRecalcStatus = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/projects/${id}/recalc-status`);
+      if (!res.ok) return;
+      const data = await res.json();
+      setRecalcError(data.ok ? null : { message: data.error, failedAt: data.failedAt });
+    } catch { /* non-critical */ }
+  }, [id]);
+
+  const retryRecalc = async () => {
+    setRetryingRecalc(true);
+    try {
+      const res = await fetch(`/api/projects/${id}/recalc-status`, { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        setRecalcError(null);
+        toast.success("Recalculation succeeded");
+        await fetchProject();
+      } else {
+        toast.error("Recalculation failed again — check System Health");
+      }
+    } catch {
+      toast.error("Could not reach server");
+    } finally {
+      setRetryingRecalc(false);
+    }
+  };
+
   const fetchProject = useCallback(async () => {
     try {
       const res = await fetch(`/api/projects/${id}`);
@@ -101,9 +135,12 @@ export default function ProjectPage() {
     } catch { setProject(null); } finally { setLoading(false); }
   }, [id, router]);
 
-  useEffect(() => { fetchProject(); }, [fetchProject]);
+  useEffect(() => { fetchProject(); checkRecalcStatus(); }, [fetchProject, checkRecalcStatus]);
   useEffect(() => {
     fetch("/api/process-templates").then((r) => r.ok ? r.json() : []).then((d) => setProcessTemplates(Array.isArray(d) ? d : [])).catch(() => {});
+    fetch("/api/admin/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
+      if (cfg) setCompanyConfig({ companyName: cfg.companyName, companyPhone: cfg.companyPhone, companyEmail: cfg.companyEmail, companyAddress: cfg.companyAddress });
+    }).catch(() => {});
   }, []);
 
   // --- Handlers ---
@@ -239,7 +276,7 @@ export default function ProjectPage() {
   const variance = estimatedCost - realCost;
 
   const types = project.types.split(",").map((t) => t.trim());
-  const tabs: Tab[] = ["Overview", "Client & Info", "Estimates & Costs", "Service Calls", "History"];
+  const tabs: Tab[] = ["Overview", "Client & Info", "Estimates & Costs", "Production", "Service Calls", "History"];
 
   // Total task progress (per-room tasks only)
   const allItems = project.projectItems ?? [];
@@ -255,6 +292,32 @@ export default function ProjectPage() {
 
   return (
     <div>
+      {/* Recalculation error banner */}
+      {recalcError && (
+        <div className="mb-4 flex items-center gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          <span className="shrink-0 text-base">⚠️</span>
+          <span className="flex-1">
+            <strong>Numbers may be stale.</strong> The last recalculation failed: {recalcError.message}
+          </span>
+          <button
+            type="button"
+            onClick={retryRecalc}
+            disabled={retryingRecalc}
+            className="shrink-0 rounded border border-amber-400 bg-white px-3 py-1 text-xs font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+          >
+            {retryingRecalc ? "Retrying…" : "Retry"}
+          </button>
+          <button
+            type="button"
+            onClick={() => setRecalcError(null)}
+            className="shrink-0 text-amber-500 hover:text-amber-700"
+            aria-label="Dismiss"
+          >
+            ✕
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="mb-4">
         <div className="flex flex-wrap items-center gap-2 text-sm text-[var(--foreground-muted)]">
@@ -517,8 +580,18 @@ export default function ProjectPage() {
           </div>
           <div className="neo-card p-6 sm:p-8">
             <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Quote Summary</h3>
-            <QuoteTab project={project} />
+            <QuoteTab project={project} companyName={companyConfig.companyName} companyPhone={companyConfig.companyPhone} companyEmail={companyConfig.companyEmail} companyAddress={companyConfig.companyAddress} />
           </div>
+        </div>
+      )}
+
+      {/* Production */}
+      {activeTab === "Production" && (
+        <div className="neo-card p-6 sm:p-8">
+          <ProductionTab
+            projectId={id}
+            processTemplateId={project.processTemplate?.id ?? null}
+          />
         </div>
       )}
 

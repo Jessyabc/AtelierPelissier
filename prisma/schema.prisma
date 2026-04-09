@@ -96,6 +96,7 @@ model Project {
   projectItems       ProjectItem[]
   prerequisiteLines  PrerequisiteLine[]
   timePunches        TimePunch[]
+  processSteps       ProjectProcessStep[]
 
   @@index([isDone, isDraft])
   @@index([jobNumber])
@@ -686,19 +687,47 @@ model ProcessTemplate {
 }
 
 model ProcessStep {
-  id          String   @id @default(cuid())
-  templateId  String
-  template    ProcessTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
-  label       String
-  description String?
-  type        String   // "start" | "step" | "decision" | "end"
-  isOptional  Boolean  @default(false)
-  positionX   Float    @default(0)
-  positionY   Float    @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-  outgoingEdges ProcessStepEdge[] @relation("OutgoingEdges")
-  incomingEdges ProcessStepEdge[] @relation("IncomingEdges")
+  id               String   @id @default(cuid())
+  templateId       String
+  template         ProcessTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  label            String
+  description      String?
+  type             String   // "start" | "step" | "decision" | "end"
+  isOptional       Boolean  @default(false)
+  positionX        Float    @default(0)
+  positionY        Float    @default(0)
+  estimatedMinutes Int?     // Default duration hint for this step (used when seeding ProjectProcessSteps)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  outgoingEdges    ProcessStepEdge[]      @relation("OutgoingEdges")
+  incomingEdges    ProcessStepEdge[]      @relation("IncomingEdges")
+  projectInstances ProjectProcessStep[]
+}
+
+// Project-specific instance of a process step: assigned to an employee, scheduled on a date.
+// Created when a process template is assigned to a project (one row per step per project).
+model ProjectProcessStep {
+  id               String    @id @default(cuid())
+  projectId        String
+  project          Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  stepId           String?   // Null for ad-hoc steps not from a template
+  step             ProcessStep? @relation(fields: [stepId], references: [id], onDelete: SetNull)
+  label            String    // Copied from step.label at creation; can be overridden per project
+  description      String?
+  sortOrder        Int       @default(0)
+  assignedEmployeeId String?
+  assignedEmployee  Employee? @relation(fields: [assignedEmployeeId], references: [id], onDelete: SetNull)
+  scheduledDate    DateTime? // Date this step is planned for (used to populate calendar)
+  estimatedMinutes Int?      // Expected duration; seeded from step.estimatedMinutes
+  status           String    @default("pending") // "pending" | "in_progress" | "done" | "skipped"
+  completedAt      DateTime?
+  notes            String?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([projectId, sortOrder])
+  @@index([assignedEmployeeId, scheduledDate])
+  @@index([scheduledDate])
 }
 
 model ProcessStepEdge {
@@ -799,7 +828,8 @@ model Employee {
 
   user          User?
   timePunches   TimePunch[]
-  projects      Project[]   @relation("SalesPerson")
+  projects      Project[]            @relation("SalesPerson")
+  assignedSteps ProjectProcessStep[]
 }
 
 model WorkStation {

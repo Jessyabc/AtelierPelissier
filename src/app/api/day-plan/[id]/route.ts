@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -7,6 +8,8 @@ export const dynamic = "force-dynamic";
  * PATCH: Update day plan item (reorder, edit manual fields)
  */
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   try {
     const { id } = await params;
     let body: unknown;
@@ -66,6 +69,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
  * DELETE: Remove from day plan
  */
 export async function DELETE(_request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   try {
     const { id } = await params;
     await prisma.dayPlanItem.delete({ where: { id } });

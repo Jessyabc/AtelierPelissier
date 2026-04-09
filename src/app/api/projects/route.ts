@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createProjectSchema } from "@/lib/validators";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
+import { requireRole } from "@/lib/auth/session";
 
 const PROJECTS_GET_TIMEOUT_MS = 8000;
 
@@ -62,6 +63,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();
