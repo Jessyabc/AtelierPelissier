@@ -20,6 +20,7 @@ const TABS = [
   { id: "email", label: "Email Templates" },
   { id: "integrations", label: "Integrations" },
   { id: "health", label: "System Health" },
+  { id: "simulate", label: "Simulate Role" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -68,6 +69,8 @@ function AdminPageContent() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState("");
+  const [me, setMe] = useState<null | { role: string; realRole?: string; impersonation?: { role: string } | null }>(null);
+  const [simRole, setSimRole] = useState<string>("planner");
 
   useEffect(() => {
     const t = searchParams.get("tab");
@@ -85,8 +88,17 @@ function AdminPageContent() {
 
   const loadConfig = useCallback(async () => {
     try {
-      const res = await fetch("/api/admin/config");
-      if (res.ok) setConfig(await res.json());
+      const [cfgRes, meRes] = await Promise.all([
+        fetch("/api/admin/config"),
+        fetch("/api/auth/me"),
+      ]);
+      if (cfgRes.ok) setConfig(await cfgRes.json());
+      if (meRes.ok) {
+        const data = await meRes.json();
+        setMe(data?.user ?? null);
+        const current = data?.user?.impersonation?.role;
+        if (typeof current === "string" && current.length > 0) setSimRole(current);
+      }
     } finally {
       setLoading(false);
     }
@@ -109,6 +121,40 @@ function AdminPageContent() {
       }
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function enableSimulation(role: string) {
+    try {
+      const res = await fetch("/api/admin/impersonation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ role }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => null);
+        setToast(err?.error ?? "Failed to enable simulation");
+        setTimeout(() => setToast(""), 2500);
+        return;
+      }
+      setToast(`Now viewing as ${role}`);
+      setTimeout(() => setToast(""), 2000);
+      await loadConfig();
+    } catch {
+      setToast("Failed to enable simulation");
+      setTimeout(() => setToast(""), 2500);
+    }
+  }
+
+  async function disableSimulation() {
+    try {
+      await fetch("/api/admin/impersonation", { method: "DELETE" });
+      setToast("Simulation cleared");
+      setTimeout(() => setToast(""), 2000);
+      await loadConfig();
+    } catch {
+      setToast("Failed to clear simulation");
+      setTimeout(() => setToast(""), 2500);
     }
   }
 
@@ -167,6 +213,100 @@ function AdminPageContent() {
         {tab === "email" && <EmailTemplatesTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "integrations" && <IntegrationsTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "health" && <SystemHealthTab />}
+        {tab === "simulate" && (
+          <div className="space-y-5">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Simulate Role (Admin)</h2>
+              <p className="text-sm text-[var(--foreground-muted)]">
+                Temporarily “view as” a role to test permissions and workflows without creating separate accounts.
+                This affects API authorization and the visible menu. Exit simulation before doing real work.
+              </p>
+            </div>
+
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+              <div className="font-semibold">Safety note</div>
+              <div className="mt-1">
+                Simulation is powerful and can create real records. Use it for testing only.
+              </div>
+            </div>
+
+            <div className="neo-panel-inset rounded-xl p-4 space-y-3">
+              <div className="text-sm">
+                <span className="font-medium">Current effective role:</span>{" "}
+                <code className="font-mono">{me?.role ?? "unknown"}</code>
+                {me?.realRole && me.realRole !== me.role && (
+                  <span className="ml-2 text-[var(--foreground-muted)]">
+                    (real: <code className="font-mono">{me.realRole}</code>)
+                  </span>
+                )}
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] items-end">
+                <div>
+                  <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Role to simulate</label>
+                  <select
+                    value={simRole}
+                    onChange={(e) => setSimRole(e.target.value)}
+                    className="neo-input w-full px-3 py-2 text-sm"
+                  >
+                    <option value="planner">planner</option>
+                    <option value="salesperson">salesperson</option>
+                    <option value="woodworker">woodworker</option>
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void enableSimulation(simRole)}
+                  className="neo-btn-primary px-4 py-2 text-sm font-semibold"
+                >
+                  Enable
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void disableSimulation()}
+                  className="rounded-lg border border-black/10 bg-white/60 px-4 py-2 text-sm font-semibold text-[var(--foreground)] hover:bg-white/80"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
+
+            <div className="neo-panel-inset rounded-xl p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">Cleanup test artifacts</h3>
+                <p className="text-xs text-[var(--foreground-muted)] mt-1">
+                  Deletes projects that were created while simulation was enabled (best-effort, based on audit logs).
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    const res = await fetch("/api/admin/test-artifacts", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ limit: 50 }),
+                    });
+                    const data = await res.json().catch(() => null);
+                    if (!res.ok) {
+                      setToast(data?.error ?? "Cleanup failed");
+                      setTimeout(() => setToast(""), 2500);
+                      return;
+                    }
+                    setToast(`Deleted ${data?.deletedProjects ?? 0} test projects`);
+                    setTimeout(() => setToast(""), 2500);
+                  } catch {
+                    setToast("Cleanup failed");
+                    setTimeout(() => setToast(""), 2500);
+                  }
+                }}
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-800 hover:bg-red-100"
+              >
+                Delete test projects
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

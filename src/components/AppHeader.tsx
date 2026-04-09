@@ -60,6 +60,7 @@ export function AppHeader() {
   const [companyName, setCompanyName] = useState("Atelier Pelissier");
   const [logoUrl, setLogoUrl] = useState("/logo.svg");
   const [userRole, setUserRole] = useState<string>("admin");
+  const [impersonation, setImpersonation] = useState<null | { role: string }>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -78,6 +79,8 @@ export function AppHeader() {
           }
         }
         if (me?.user?.role) setUserRole(me.user.role);
+        if (me?.user?.impersonation?.role) setImpersonation({ role: me.user.impersonation.role });
+        else setImpersonation(null);
       })
       .catch(() => {});
   }, []);
@@ -107,6 +110,17 @@ export function AppHeader() {
     }
     router.push("/login");
     router.refresh();
+  }
+
+  async function clearImpersonation() {
+    try {
+      await fetch("/api/admin/impersonation", { method: "DELETE" });
+    } catch {
+      // ignore
+    } finally {
+      setImpersonation(null);
+      router.refresh();
+    }
   }
 
   async function handleExport() {
@@ -192,6 +206,16 @@ export function AppHeader() {
           )}
         </div>
         <div className="ml-auto flex items-center gap-3">
+          {impersonation?.role && (
+            <button
+              type="button"
+              onClick={() => void clearImpersonation()}
+              className="hidden sm:inline-flex items-center gap-2 rounded border border-amber-200 bg-amber-50 px-2 py-1 text-xs text-amber-900 hover:bg-amber-100"
+              title="You are viewing as another role. Click to exit."
+            >
+              Viewing as <span className="font-semibold">{impersonation.role}</span> (exit)
+            </button>
+          )}
           <span className="hidden text-sm text-white/70 sm:inline">{companyName}</span>
           <button
             type="button"

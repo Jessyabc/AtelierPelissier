@@ -68,7 +68,7 @@ export async function POST(
     }
 
     const actionName = payload.action as string;
-    if (!roleMayExecuteAction(auth.dbUser.role, actionName)) {
+    if (!roleMayExecuteAction(auth.effectiveRole, actionName)) {
       return NextResponse.json({ error: "Forbidden for your role" }, { status: 403 });
     }
 

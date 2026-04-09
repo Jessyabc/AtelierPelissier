@@ -25,7 +25,8 @@ export async function GET() {
 
   try {
     const config = await getAppConfig();
-    if (!isAdminRole(session.dbUser.role)) {
+    // If an admin is impersonating, treat them as the impersonated role for secret redaction.
+    if (!isAdminRole(session.effectiveRole)) {
       return NextResponse.json(sanitizeConfig(config));
     }
     return NextResponse.json(config);

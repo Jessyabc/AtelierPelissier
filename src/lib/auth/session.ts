@@ -3,10 +3,34 @@ import type { User as SupabaseAuthUser } from "@supabase/supabase-js";
 import { prisma } from "@/lib/db";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import type { User as DbUser } from "@prisma/client";
+import { cookies } from "next/headers";
+import { APP_ROLES, type AppRole } from "@/lib/auth/roles";
 
 export type SessionResult =
-  | { ok: true; supabaseUser: SupabaseAuthUser; dbUser: DbUser }
+  | {
+      ok: true;
+      supabaseUser: SupabaseAuthUser;
+      dbUser: DbUser;
+      /** The role used for authorization checks (may be impersonated if admin enabled it). */
+      effectiveRole: string;
+      /** The original role on the DB user row (always the truth). */
+      realRole: string;
+      impersonation: null | { role: AppRole; enabledByAdminUserId: string };
+    }
   | { ok: false; response: NextResponse };
+
+const IMPERSONATION_COOKIE = "apops_view_as_role";
+
+function resolveImpersonatedRole(dbUser: DbUser): null | AppRole {
+  // Only admins can impersonate, and we never allow "impersonate admin" (no-op / confusing).
+  if (dbUser.role !== "admin") return null;
+
+  const raw = cookies().get(IMPERSONATION_COOKIE)?.value?.trim() ?? "";
+  if (!raw) return null;
+  if (!APP_ROLES.includes(raw as AppRole)) return null;
+  if ((raw as AppRole) === "admin") return null;
+  return raw as AppRole;
+}
 
 /**
  * Resolve Neon User row for the current Supabase session, bootstrapping the first admin or a pending invite by email.
@@ -94,13 +118,25 @@ export async function getSessionWithUser(): Promise<SessionResult> {
     };
   }
 
-  return { ok: true, supabaseUser, dbUser };
+  const impersonatedRole = resolveImpersonatedRole(dbUser);
+  const effectiveRole = impersonatedRole ?? dbUser.role;
+
+  return {
+    ok: true,
+    supabaseUser,
+    dbUser,
+    effectiveRole,
+    realRole: dbUser.role,
+    impersonation: impersonatedRole
+      ? { role: impersonatedRole, enabledByAdminUserId: dbUser.id }
+      : null,
+  };
 }
 
 export async function requireRole(allowed: string[]): Promise<SessionResult> {
   const session = await getSessionWithUser();
   if (!session.ok) return session;
-  if (!allowed.includes(session.dbUser.role)) {
+  if (!allowed.includes(session.effectiveRole)) {
     return {
       ok: false,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
