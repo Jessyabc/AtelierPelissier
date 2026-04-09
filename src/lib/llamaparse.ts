@@ -19,7 +19,10 @@ export async function parsePdfWithLlamaParse(
   pdfBuffer: Buffer,
   fileName: string = "cutlist.pdf"
 ): Promise<LlamaParseResult> {
-  const apiKey = process.env.LLAMAPARSE_API_KEY?.trim();
+  const apiKey =
+    process.env.LLAMAPARSE_API_KEY?.trim() ??
+    // Back-compat: some env files use underscores (LLAMA_PARSE_API_KEY).
+    process.env.LLAMA_PARSE_API_KEY?.trim();
   if (!apiKey) {
     throw new Error(
       "LLAMAPARSE_API_KEY is not set. Add it to .env.local to use OCR for scanned PDFs."
