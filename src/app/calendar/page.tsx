@@ -9,7 +9,7 @@ import { canSchedule } from "@/lib/auth/roles";
 
 type CalendarEvent = {
   id: string;
-  type?: "service_call" | "manual";
+  type?: "service_call" | "manual" | "process_step";
   projectId?: string;
   serviceCallNumber?: string | null;
   serviceCallType?: string | null;
@@ -19,6 +19,12 @@ type CalendarEvent = {
   jobNumber?: string | null;
   projectName?: string;
   address?: string | null;
+  // process_step extras
+  stepLabel?: string;
+  assignedTo?: string | null;
+  assignedColor?: string | null;
+  estimatedMinutes?: number | null;
+  stepStatus?: string;
 };
 
 type DayEvent = {
@@ -376,6 +382,39 @@ function CalendarContent() {
                       <div className={`mb-2 text-sm font-medium ${isToday ? "text-blue-700" : "text-gray-700"}`}>{d.getDate()}</div>
                       <div className="space-y-1">
                         {(eventsByDate[dateKey] ?? []).map((ev) => {
+                          // Process step chip
+                          if (ev.type === "process_step") {
+                            const isDone = ev.stepStatus === "done";
+                            const chip = (
+                              <div
+                                key={ev.id}
+                                className={`px-2 py-1.5 text-xs rounded-lg border-l-2 ${isDone ? "opacity-50" : ""}`}
+                                style={{
+                                  borderLeftColor: ev.assignedColor ?? "#6366f1",
+                                  background: "var(--bg-card)",
+                                }}
+                              >
+                                <span className={`font-medium ${isDone ? "line-through text-gray-400" : "text-gray-900"} block truncate`}>
+                                  {ev.stepLabel ?? ev.clientName}
+                                </span>
+                                {ev.assignedTo && (
+                                  <span className="block truncate text-gray-500">{ev.assignedTo}</span>
+                                )}
+                                {ev.projectName && (
+                                  <span className="block truncate text-gray-400">{ev.jobNumber ? `#${ev.jobNumber}` : ev.projectName}</span>
+                                )}
+                              </div>
+                            );
+                            if (ev.projectId) {
+                              return (
+                                <Link key={ev.id} href={`/projects/${ev.projectId}?tab=Production`} onClick={(e) => e.stopPropagation()}>
+                                  {chip}
+                                </Link>
+                              );
+                            }
+                            return chip;
+                          }
+
                           const types = parseServiceCallTypesJson(ev.serviceCallType ?? null);
                           const typeLabel = types.length ? types.map((t) => t.charAt(0).toUpperCase() + t.slice(1)).join(", ") : "";
                           const content = (

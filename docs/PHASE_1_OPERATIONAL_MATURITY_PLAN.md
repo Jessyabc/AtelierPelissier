@@ -1,4 +1,5 @@
 # Phase 1: Operational Maturity Plan
+> **This is a supporting detail document.** The master backlog and priorities live in [`/ROADMAP.md`](../ROADMAP.md). The maturity scorecard lives in [`docs/OPERATIONS_MATURITY_ROADMAP.md`](./OPERATIONS_MATURITY_ROADMAP.md). Use this file for detailed workstream specs (WS-1 through WS-8) when implementing.
 
 ## 1. Executive judgment
 

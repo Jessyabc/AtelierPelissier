@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 export async function GET() {
   try {
@@ -24,6 +25,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

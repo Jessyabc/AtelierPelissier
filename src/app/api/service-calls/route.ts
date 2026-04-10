@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createServiceCallSchema } from "@/lib/validators";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic"; // Always return fresh list (no cache)
 
@@ -51,6 +52,8 @@ export async function GET() {
  * - If not: create new project with jobNumber, then add service call #1
  */
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

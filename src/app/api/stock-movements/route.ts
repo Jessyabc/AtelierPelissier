@@ -5,6 +5,7 @@ import {
   triggerMaterialInventoryOrderRecalc,
   triggerInventoryRecalcForMaterial,
 } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 const createSchema = z.object({
   inventoryItemId: z.string().min(1),
@@ -16,6 +17,8 @@ const createSchema = z.object({
 });
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

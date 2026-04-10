@@ -25,7 +25,7 @@ export async function GET(request: Request) {
   const start = new Date(year, month, 1);
   const end = new Date(year, month + 1, 0, 23, 59, 59, 999);
 
-  const [serviceCalls, manualEvents] = await Promise.all([
+  const [serviceCalls, manualEvents, processSteps] = await Promise.all([
     prisma.serviceCall.findMany({
       where: { serviceDate: { gte: start, lte: end } },
       include: {
@@ -39,11 +39,19 @@ export async function GET(request: Request) {
       where: { eventDate: { gte: start, lte: end } },
       orderBy: [{ eventDate: "asc" }, { scheduledTime: "asc" }, { sortOrder: "asc" }],
     }),
+    prisma.projectProcessStep.findMany({
+      where: { scheduledDate: { gte: start, lte: end } },
+      include: {
+        project: { select: { id: true, name: true, jobNumber: true } },
+        assignedEmployee: { select: { id: true, name: true, color: true } },
+      },
+      orderBy: [{ scheduledDate: "asc" }, { sortOrder: "asc" }],
+    }),
   ]);
 
   type CalendarEventItem = {
     id: string;
-    type: "service_call" | "manual";
+    type: "service_call" | "manual" | "process_step";
     projectId?: string;
     serviceCallNumber?: string | null;
     serviceCallType?: string | null;
@@ -53,6 +61,12 @@ export async function GET(request: Request) {
     jobNumber: string | null;
     projectName?: string;
     address: string | null;
+    /** process_step extras */
+    stepLabel?: string;
+    assignedTo?: string | null;
+    assignedColor?: string | null;
+    estimatedMinutes?: number | null;
+    stepStatus?: string;
   };
 
   const toDateStr = (d: Date) =>
@@ -83,6 +97,26 @@ export async function GET(request: Request) {
       clientName: ev.title,
       jobNumber: null,
       address: ev.address,
+    });
+  }
+
+  // Add process steps
+  for (const ps of processSteps) {
+    if (!ps.scheduledDate) continue;
+    events.push({
+      id: ps.id,
+      type: "process_step",
+      projectId: ps.projectId,
+      serviceDate: toDateStr(new Date(ps.scheduledDate)),
+      clientName: ps.label,
+      jobNumber: ps.project.jobNumber,
+      projectName: ps.project.name,
+      address: null,
+      stepLabel: ps.label,
+      assignedTo: ps.assignedEmployee?.name ?? null,
+      assignedColor: ps.assignedEmployee?.color ?? null,
+      estimatedMinutes: ps.estimatedMinutes,
+      stepStatus: ps.status,
     });
   }
 

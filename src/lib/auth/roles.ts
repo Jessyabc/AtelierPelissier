@@ -29,7 +29,7 @@ const ALL_PAGES = [
   "/inventory", "/distributors", "/costing", "/processes",
   "/service-calls", "/calendar", "/settings/risk", "/purchasing",
   "/admin", "/admin/employees", "/admin/stations", "/admin/punches",
-  "/admin/invites", "/onboarding", "/structure",
+  "/admin/invites", "/onboarding", "/structure", "/today",
 ] as const;
 
 const ROLE_PAGE_ACCESS: Record<AppRole, readonly string[]> = {
@@ -37,14 +37,14 @@ const ROLE_PAGE_ACCESS: Record<AppRole, readonly string[]> = {
   planner: [
     "/", "/home", "/projects/new", "/assistant", "/dashboard",
     "/inventory", "/distributors", "/costing", "/processes",
-    "/service-calls", "/calendar", "/onboarding",
+    "/service-calls", "/calendar", "/onboarding", "/today",
   ],
   salesperson: [
     "/", "/projects/new", "/assistant", "/service-calls",
-    "/calendar", "/distributors", "/costing", "/onboarding",
+    "/calendar", "/distributors", "/costing", "/onboarding", "/today",
   ],
   woodworker: [
-    "/assistant", "/calendar", "/onboarding",
+    "/assistant", "/calendar", "/onboarding", "/today",
   ],
 };
 
@@ -77,7 +77,7 @@ export function isMenuItemAllowedForRole(href: string, role: string): boolean {
 /** Default landing page after login (no ?next= param). */
 export function getDefaultLandingPage(role: string): string {
   switch (role) {
-    case "woodworker": return "/calendar";
+    case "woodworker": return "/today";
     case "planner": return "/home";
     case "admin": return "/";
     case "salesperson": return "/";

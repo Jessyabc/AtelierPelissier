@@ -5,6 +5,7 @@ import { updateProjectSchema } from "@/lib/validators";
 import { recalculateProjectState } from "@/lib/observability/recalculateProjectState";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
 import { computeReadinessCheck } from "@/lib/readiness";
+import { requireRole } from "@/lib/auth/session";
 
 function projectJsonResponse(body: unknown, readinessSoftBypass: string[] | null) {
   if (readinessSoftBypass?.length) {
@@ -380,6 +381,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
   await logAudit(id, "deleted");
   await prisma.project.delete({ where: { id } });

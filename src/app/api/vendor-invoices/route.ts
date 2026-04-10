@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { requireRole } from "@/lib/auth/session";
 
 const createSchema = z.object({
   supplierId: z.string().min(1),
@@ -20,6 +21,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

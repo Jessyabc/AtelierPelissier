@@ -34,7 +34,19 @@ function printQuote() {
   setTimeout(() => document.body.classList.remove("printing-quote"), 500);
 }
 
-export function QuoteTab({ project, companyName }: { project: Project; companyName?: string }) {
+export function QuoteTab({
+  project,
+  companyName,
+  companyPhone,
+  companyEmail,
+  companyAddress,
+}: {
+  project: Project;
+  companyName?: string;
+  companyPhone?: string;
+  companyEmail?: string;
+  companyAddress?: string;
+}) {
   const estimateLines = project.costLines.filter((l) => l.kind === "estimate");
   const subtotal = estimateLines.reduce((s, l) => s + l.amount, 0);
   const settings = project.projectSettings;
@@ -70,6 +82,9 @@ export function QuoteTab({ project, companyName }: { project: Project; companyNa
           <div>
             <h1 className="text-2xl font-bold text-gray-900">{companyName ?? "Atelier Pelissier"}</h1>
             <p className="text-sm text-gray-500 mt-1">Estimate / Soumission</p>
+            {companyAddress && <p className="text-xs text-gray-500 mt-1">{companyAddress}</p>}
+            {companyPhone && <p className="text-xs text-gray-500">{companyPhone}</p>}
+            {companyEmail && <p className="text-xs text-gray-500">{companyEmail}</p>}
           </div>
           <div className="text-right text-sm text-gray-600">
             <p>{new Date().toLocaleDateString("fr-CA")}</p>
@@ -147,8 +162,22 @@ export function QuoteTab({ project, companyName }: { project: Project; companyNa
           </div>
         </div>
 
+        {/* Signature section */}
+        <div className="mt-10 grid grid-cols-2 gap-8 text-sm">
+          <div>
+            <p className="text-xs text-gray-500 mb-6">Signature du client / Client signature</p>
+            <div className="border-b border-gray-400 mb-1" />
+            <p className="text-xs text-gray-400">Date: _______________</p>
+          </div>
+          <div>
+            <p className="text-xs text-gray-500 mb-6">Représentant / Representative</p>
+            <div className="border-b border-gray-400 mb-1" />
+            <p className="text-xs text-gray-400">Date: _______________</p>
+          </div>
+        </div>
+
         {/* Footer */}
-        <div className="mt-10 pt-6 border-t border-gray-100 text-xs text-gray-400 flex justify-between">
+        <div className="mt-8 pt-4 border-t border-gray-100 text-xs text-gray-400 flex justify-between">
           <span>{companyName ?? "Atelier Pelissier"} · Soumission</span>
           <span>Valide 30 jours · {new Date().toLocaleDateString("fr-CA")}</span>
         </div>

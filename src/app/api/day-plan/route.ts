@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -118,6 +119,8 @@ export async function GET(request: Request) {
  * Body: { date, type, serviceCallId? (if service_call), title?, scheduledTime?, address?, notes? (if manual) }
  */
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   try {
     let body: unknown;
     try {
