@@ -2,7 +2,8 @@ import { prisma } from "@/lib/db";
 
 /**
  * Returns ordered step labels from a process template for seeding checklist items.
- * Uses type="step" only, ordered by positionY then positionX (flowchart layout order).
+ * Excludes start/end nodes; includes step + decision (and any other middle nodes).
+ * Ordered by flowchart layout (positionY then positionX).
  * Returns null if template not found.
  */
 export async function getOrderedStepLabels(
@@ -12,11 +13,17 @@ export async function getOrderedStepLabels(
     where: { id: processTemplateId },
     include: {
       steps: {
-        where: { type: "step" },
         orderBy: [{ positionY: "asc" }, { positionX: "asc" }],
       },
     },
   });
   if (!template) return null;
-  return template.steps.map((s) => s.label).filter(Boolean);
+  const t = (s: string) => s.trim().toLowerCase();
+  return template.steps
+    .filter((s) => {
+      const ty = t(s.type);
+      return ty !== "start" && ty !== "end";
+    })
+    .map((s) => s.label)
+    .filter(Boolean);
 }
