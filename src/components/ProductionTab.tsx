@@ -81,20 +81,27 @@ export function ProductionTab({
       .catch(() => {});
   }, [fetchSteps]);
 
-  async function handleSeed() {
+  async function handleSeed(opts?: { replace?: boolean }) {
+    const replace = opts?.replace === true;
+    if (replace && steps.length > 0) {
+      const ok = window.confirm(
+        "Replace all production steps with steps from the current project process template? Existing step rows (assignments, dates, status) will be removed."
+      );
+      if (!ok) return;
+    }
     setSeeding(true);
     try {
       const res = await fetch(`/api/projects/${projectId}/process-steps`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "seed" }),
+        body: JSON.stringify({ action: "seed", ...(replace ? { replace: true } : {}) }),
       });
       if (!res.ok) {
         const data = await res.json();
         toast.error(data.error ?? "Seeding failed");
         return;
       }
-      toast.success("Steps loaded from template");
+      toast.success(replace ? "Steps replaced from template" : "Steps loaded from template");
       await fetchSteps();
     } catch {
       toast.error("Failed");
@@ -183,13 +190,13 @@ export function ProductionTab({
           )}
         </div>
         <div className="flex gap-2 flex-wrap">
-          {steps.length === 0 && processTemplateId && (
+          {processTemplateId && (
             <button
-              onClick={handleSeed}
+              onClick={() => void handleSeed({ replace: steps.length > 0 })}
               disabled={seeding}
               className="neo-btn-primary px-3 py-1.5 text-xs disabled:opacity-50"
             >
-              {seeding ? "Loading…" : "Load from template"}
+              {seeding ? "Loading…" : steps.length === 0 ? "Load from template" : "Reload from template"}
             </button>
           )}
           <button

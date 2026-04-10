@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { getOrderedTemplateSteps } from "@/lib/processTemplate";
 import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +28,8 @@ export async function GET(
  * POST: Seed ProjectProcessSteps from the project's assigned process template,
  * or add a single ad-hoc step.
  *
- * Body (seed from template): { action: "seed" }
+ * Body (seed from template): { action: "seed", replace?: boolean }
+ *   replace=true deletes existing ProjectProcessSteps first (fix wrong template seed).
  * Body (ad-hoc):             { action: "add", label, estimatedMinutes? }
  */
 export async function POST(
@@ -45,10 +47,11 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const { action, label, estimatedMinutes } = body as {
+  const { action, label, estimatedMinutes, replace } = body as {
     action: "seed" | "add";
     label?: string;
     estimatedMinutes?: number;
+    replace?: boolean;
   };
 
   if (action === "seed") {
@@ -60,16 +63,31 @@ export async function POST(
       return NextResponse.json({ error: "Project has no process template assigned" }, { status: 400 });
     }
 
-    // Don't re-seed if steps already exist
     const existing = await prisma.projectProcessStep.count({ where: { projectId } });
-    if (existing > 0) {
-      return NextResponse.json({ error: "Steps already seeded for this project" }, { status: 409 });
+    if (existing > 0 && !replace) {
+      return NextResponse.json(
+        { error: "Steps already seeded for this project. Send replace: true to reload from template." },
+        { status: 409 }
+      );
+    }
+    if (existing > 0 && replace) {
+      await prisma.projectProcessStep.deleteMany({ where: { projectId } });
     }
 
-    const templateSteps = await prisma.processStep.findMany({
-      where: { templateId: project.processTemplateId, type: "step" },
-      orderBy: [{ positionY: "asc" }, { positionX: "asc" }],
-    });
+    // Must match per-room checklist logic (getOrderedTemplateSteps): include decision nodes,
+    // not only type "step" — otherwise Planning/Shipping etc. are missing vs the flowchart.
+    const templateSteps =
+      (await getOrderedTemplateSteps(project.processTemplateId)) ?? [];
+
+    if (templateSteps.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "No steps to load from this template (only Start/End, or empty). Add steps in Processes.",
+        },
+        { status: 400 }
+      );
+    }
 
     const created = await prisma.$transaction(
       templateSteps.map((s, idx) =>
