@@ -207,8 +207,29 @@ export default function ProjectPage() {
       toast.error("Select a process for this room");
       return;
     }
-    await fetch(`/api/projects/${id}/project-items`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ type: newProjectItemType, label: newProjectItemLabel.trim(), processTemplateId: newProjectItemProcessId.trim() }) });
-    toast.success("Room added"); setNewProjectItemLabel(""); setNewProjectItemProcessId(""); setAddingProjectItem(false); await fetchProject();
+    try {
+      const res = await fetch(`/api/projects/${id}/project-items`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: newProjectItemType,
+          label: newProjectItemLabel.trim(),
+          processTemplateId: newProjectItemProcessId.trim(),
+        }),
+      });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        toast.error(data.error ?? `Could not add room (${res.status})`);
+        return;
+      }
+      toast.success("Room added");
+      setNewProjectItemLabel("");
+      setNewProjectItemProcessId("");
+      setAddingProjectItem(false);
+      await fetchProject();
+    } catch {
+      toast.error("Could not add room — check your connection");
+    }
   }
 
   async function handleDeleteProjectItem(itemId: string) {
@@ -472,6 +493,15 @@ export default function ProjectPage() {
                 {addingProjectItem && (
                   <div className="neo-panel-inset p-4 space-y-3">
                     <input value={newProjectItemLabel} onChange={(e) => setNewProjectItemLabel(e.target.value)} placeholder="Room label (e.g. Master Bath Vanity)" className="neo-input w-full px-3 py-2 text-sm" autoFocus />
+                    {processTemplates.length === 0 && (
+                      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        No process templates are defined yet. Create at least one{" "}
+                        <Link href="/processes" className="font-medium underline underline-offset-2">
+                          Process
+                        </Link>{" "}
+                        first, then add rooms here.
+                      </p>
+                    )}
                     <div className="flex flex-wrap gap-3">
                       <select value={newProjectItemType} onChange={(e) => setNewProjectItemType(e.target.value)} className="neo-select px-3 py-2 text-sm">
                         <option value="kitchen">Kitchen</option>
