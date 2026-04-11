@@ -13,8 +13,11 @@
     "test:watch": "jest --watch",
     "db:generate": "prisma generate",
     "db:push": "dotenv -e .env.local -- prisma db push",
+    "db:push:prod": "node scripts/ensure-production-database-url.js && dotenv -e .env.production.local -- prisma db push",
+    "sync:website": "npm run db:push:prod",
     "db:migrate:dev": "dotenv -e .env.local -- prisma migrate dev",
     "db:migrate:deploy": "dotenv -e .env.local -- prisma migrate deploy",
+    "db:migrate:deploy:prod": "node scripts/ensure-production-database-url.js && dotenv -e .env.production.local -- prisma migrate deploy",
     "cron:monday:sync": "node -e \"console.error('Call POST /api/cron/monday-sync with x-cron-secret; this is not a local CLI.'); process.exit(1)\"",
     "db:studio": "dotenv -e .env.local -- prisma studio",
     "db:seed": "dotenv -e .env.local -- npx tsx prisma/seed.ts"
