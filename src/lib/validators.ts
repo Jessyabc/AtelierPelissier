@@ -82,9 +82,21 @@ export const updateProjectSchema = z
     { message: "A project cannot be both draft and done", path: ["isDone"] }
   );
 
+const VANITY_SECTION_LAYOUTS = ["doors", "drawer_over_doors", "doors_over_drawer", "all_drawers", "open"] as const;
+
+const vanitySectionSchema = z.object({
+  id: z.string().min(1),
+  sortOrder: z.number().int().min(0),
+  layoutType: z.enum(VANITY_SECTION_LAYOUTS),
+  width: z.number().min(1).max(120),
+  doors: nonNegativeInt.max(10),
+  drawers: nonNegativeInt.max(10),
+});
+
 export const vanityInputsSchema = z.object({
   width: widthInches.default(24),
   depth: depthInches.default(22),
+  height: z.number().min(12).max(120).optional().nullable(),
   kickplate: z.boolean().default(false),
   framingStyle: z.enum(FRAMING).default("Sides only"),
   mountingStyle: z.enum(MOUNTING).default("Freestanding"),
@@ -99,6 +111,7 @@ export const vanityInputsSchema = z.object({
   sinks: z.enum(COUNTERTOP_SINKS).optional().nullable(),
   faucetHoles: z.enum(FAUCET_HOLES).optional().nullable(),
   priceRangePi2: z.number().min(0).max(1000).optional().nullable(),
+  sections: z.string().optional().nullable(), // JSON string of VanitySection[]
 });
 
 export const sideUnitInputsSchema = z.object({
@@ -112,6 +125,7 @@ export const sideUnitInputsSchema = z.object({
   doors: nonNegativeInt.max(20).default(0),
   thickFrame: z.boolean().default(false),
   doorStyle: z.enum(DOOR_STYLE).default("Slab/Flat"),
+  sections: z.string().optional().nullable(), // JSON string of SideUnitSection[]
 });
 
 export const projectSettingsSchema = z.object({

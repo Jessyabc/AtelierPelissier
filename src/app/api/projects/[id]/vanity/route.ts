@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { vanityInputsSchema } from "@/lib/validators";
+import { computeConfigHash } from "@/lib/ingredients/types";
+import { markSnapshotStale } from "@/lib/ingredients/snapshot";
 
 export async function PATCH(
   request: Request,
@@ -29,6 +31,7 @@ export async function PATCH(
       projectId,
       width: data.width,
       depth: data.depth,
+      height: data.height ?? null,
       kickplate: data.kickplate,
       framingStyle: data.framingStyle,
       mountingStyle: data.mountingStyle,
@@ -43,10 +46,12 @@ export async function PATCH(
       sinks: data.countertop ? data.sinks ?? null : null,
       faucetHoles: data.countertop ? data.faucetHoles ?? null : null,
       priceRangePi2: data.countertop ? data.priceRangePi2 ?? null : null,
+      sections: data.sections ?? null,
     },
     update: {
       width: data.width,
       depth: data.depth,
+      height: data.height ?? null,
       kickplate: data.kickplate,
       framingStyle: data.framingStyle,
       mountingStyle: data.mountingStyle,
@@ -61,9 +66,19 @@ export async function PATCH(
       sinks: data.countertop ? data.sinks ?? null : null,
       faucetHoles: data.countertop ? data.faucetHoles ?? null : null,
       priceRangePi2: data.countertop ? data.priceRangePi2 ?? null : null,
+      sections: data.sections ?? null,
     },
   });
   await logAudit(projectId, "vanity_updated");
+
+  // Stale tracking: check if active snapshot's configHash differs from new config
+  const newHash = computeConfigHash(data as Record<string, unknown>);
+  const activeSnapshot = await prisma.materialSnapshot.findFirst({
+    where: { projectId, sourceType: "vanity", isActive: true },
+  });
+  if (activeSnapshot && activeSnapshot.configHash !== newHash) {
+    await markSnapshotStale(projectId, "vanity");
+  }
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },

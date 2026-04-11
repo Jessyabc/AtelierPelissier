@@ -16,6 +16,7 @@ const TABS = [
   { id: "company", label: "Company" },
   { id: "navigation", label: "Navigation" },
   { id: "rooms", label: "Room Types" },
+  { id: "standards", label: "Construction Standards" },
   { id: "ai", label: "AI Intelligence" },
   { id: "email", label: "Email Templates" },
   { id: "integrations", label: "Integrations" },
@@ -209,6 +210,7 @@ function AdminPageContent() {
         {tab === "company" && <CompanyTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "navigation" && <NavigationTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "rooms" && <RoomTypesTab config={config} saving={saving} onSave={saveConfig} />}
+        {tab === "standards" && <ConstructionStandardsTab />}
         {tab === "ai" && <AiIntelligenceTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "email" && <EmailTemplatesTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "integrations" && <IntegrationsTab config={config} saving={saving} onSave={saveConfig} />}
@@ -1507,6 +1509,124 @@ function SystemHealthTab() {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Construction Standards Tab ────────────────────────────────────────
+
+type StandardsData = {
+  standardBaseDepth: number;
+  defaultVanityHeight: number;
+  wallHungHeight: number;
+  kickplateHeight: number;
+  panelThickness: number;
+  backThickness: number;
+  stretcherDepth: number;
+  framingWidth: number;
+  drawerBoxHeight: number;
+  drawerFrontHeight: number;
+  doorGap: number;
+  shelfSetback: number;
+  thickFrameThickness: number;
+  minSectionWidth: number;
+  minSectionHeight: number;
+};
+
+const STANDARDS_FIELDS: { key: keyof StandardsData; label: string; unit: string }[] = [
+  { key: "standardBaseDepth", label: "Standard base depth", unit: "in" },
+  { key: "defaultVanityHeight", label: "Default vanity height (freestanding)", unit: "in" },
+  { key: "wallHungHeight", label: "Wall-hung vanity height", unit: "in" },
+  { key: "kickplateHeight", label: "Kickplate height", unit: "in" },
+  { key: "panelThickness", label: "Panel thickness (5/8\")", unit: "in" },
+  { key: "backThickness", label: "Back panel thickness (1/4\")", unit: "in" },
+  { key: "stretcherDepth", label: "Top stretcher depth", unit: "in" },
+  { key: "framingWidth", label: "Framing strip width", unit: "in" },
+  { key: "drawerBoxHeight", label: "Drawer box height", unit: "in" },
+  { key: "drawerFrontHeight", label: "Drawer front height", unit: "in" },
+  { key: "doorGap", label: "Gap between doors", unit: "in" },
+  { key: "shelfSetback", label: "Shelf setback from front", unit: "in" },
+  { key: "thickFrameThickness", label: "Thick frame thickness (3/4\")", unit: "in" },
+  { key: "minSectionWidth", label: "Min section width", unit: "in" },
+  { key: "minSectionHeight", label: "Min section height", unit: "in" },
+];
+
+function ConstructionStandardsTab() {
+  const [standards, setStandards] = useState<StandardsData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [toast, setToast] = useState("");
+
+  useEffect(() => {
+    fetch("/api/admin/construction-standards")
+      .then((r) => r.json())
+      .then((data) => setStandards(data))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!standards) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/admin/construction-standards", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(standards),
+      });
+      if (res.ok) {
+        setStandards(await res.json());
+        setToast("Construction standards saved");
+        setTimeout(() => setToast(""), 2000);
+      }
+    } finally {
+      setSaving(false);
+    }
+  }, [standards]);
+
+  if (loading || !standards) {
+    return <div className="py-8 text-center text-[var(--foreground-muted)]">Loading standards...</div>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Construction Standards</h2>
+        <p className="text-sm text-[var(--foreground-muted)]">
+          Default construction dimensions used by the ingredient estimation engine. Changes here affect all new estimates.
+        </p>
+      </div>
+      {toast && (
+        <div className="rounded bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-700">
+          {toast}
+        </div>
+      )}
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {STANDARDS_FIELDS.map(({ key, label, unit }) => (
+          <div key={key}>
+            <label className="mb-1 block text-sm font-medium text-[var(--foreground-muted)]">
+              {label} ({unit})
+            </label>
+            <input
+              type="number"
+              step="0.001"
+              min={0}
+              value={standards[key]}
+              onChange={(e) =>
+                setStandards({ ...standards, [key]: Number(e.target.value) })
+              }
+              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+            />
+          </div>
+        ))}
+      </div>
+      <button
+        type="button"
+        onClick={handleSave}
+        disabled={saving}
+        className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+      >
+        {saving ? "Saving..." : "Save construction standards"}
+      </button>
     </div>
   );
 }

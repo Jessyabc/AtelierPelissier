@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { sideUnitInputsSchema } from "@/lib/validators";
+import { computeConfigHash } from "@/lib/ingredients/types";
+import { markSnapshotStale } from "@/lib/ingredients/snapshot";
 
 export async function PATCH(
   request: Request,
@@ -37,6 +39,7 @@ export async function PATCH(
       doors: data.doors,
       thickFrame: data.thickFrame,
       doorStyle: data.doorStyle,
+      sections: data.sections ?? null,
     },
     update: {
       width: data.width,
@@ -49,9 +52,19 @@ export async function PATCH(
       doors: data.doors,
       thickFrame: data.thickFrame,
       doorStyle: data.doorStyle,
+      sections: data.sections ?? null,
     },
   });
   await logAudit(projectId, "side_unit_updated");
+
+  // Stale tracking: check if active snapshot's configHash differs from new config
+  const newHash = computeConfigHash(data as Record<string, unknown>);
+  const activeSnapshot = await prisma.materialSnapshot.findFirst({
+    where: { projectId, sourceType: "side_unit", isActive: true },
+  });
+  if (activeSnapshot && activeSnapshot.configHash !== newHash) {
+    await markSnapshotStale(projectId, "side_unit");
+  }
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },

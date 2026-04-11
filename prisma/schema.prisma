@@ -97,6 +97,7 @@ model Project {
   prerequisiteLines  PrerequisiteLine[]
   timePunches        TimePunch[]
   processSteps       ProjectProcessStep[]
+  materialSnapshots  MaterialSnapshot[]
 
   @@index([isDone, isDraft])
   @@index([jobNumber])
@@ -161,6 +162,7 @@ model VanityInputs {
 
   width          Float   // inches
   depth          Float
+  height         Float?  // inches — nullable for backward compat; engine defaults from mountingStyle
   kickplate      Boolean
   framingStyle   String  // Sides only | Sides and bottom | Around | Frame everything
   mountingStyle  String  // Freestanding | Wall-hung | Custom legs | Box base
@@ -175,6 +177,7 @@ model VanityInputs {
   sinks          String? // Single | Double | Single Vessel | Double Vessel | None
   faucetHoles    String? // 4" center | 8" center | One hole | No Hole
   priceRangePi2  Float?
+  sections       String? // JSON: VanitySection[] — null = legacy single-section mode
 }
 
 model SideUnitInputs {
@@ -192,6 +195,7 @@ model SideUnitInputs {
   doors         Int
   thickFrame    Boolean
   doorStyle     String
+  sections      String? // JSON: SideUnitSection[] — null = legacy single-section mode
 }
 
 model KitchenInputs {
@@ -861,6 +865,58 @@ model TimePunch {
   @@index([employeeId, startTime])
   @@index([projectId])
   @@index([stationId])
+}
+
+// --- Construction Standards (singleton — admin-editable construction defaults) ---
+// No ingredient engine may use hardcoded construction constants; all must come from this model
+// via getConstructionStandards(). This mirrors the risk settings pattern.
+model ConstructionStandards {
+  id                    String   @id @default(cuid())
+  standardBaseDepth     Float    @default(23.5)   // 23"1/2 — standard depth for base cabinets
+  defaultVanityHeight   Float    @default(30)     // freestanding vanity height
+  wallHungHeight        Float    @default(24)     // wall-hung vanity height
+  kickplateHeight       Float    @default(4)      // kickplate band height
+  panelThickness        Float    @default(0.625)  // 5/8" carcass panels
+  backThickness         Float    @default(0.25)   // 1/4" back panels
+  stretcherDepth        Float    @default(3.5)    // top stretcher depth
+  framingWidth          Float    @default(1.5)    // framing strip width
+  drawerBoxHeight       Float    @default(6)      // internal drawer box height
+  drawerFrontHeight     Float    @default(7)      // visible drawer front height
+  doorGap               Float    @default(0.125)  // gap between adjacent doors
+  shelfSetback          Float    @default(1)      // shelf inset from front
+  thickFrameThickness   Float    @default(0.75)   // 3/4" thick frame
+  minSectionWidth       Float    @default(8)      // minimum section width (inches)
+  minSectionHeight      Float    @default(5)      // minimum section height (inches)
+  updatedAt             DateTime @updatedAt
+}
+
+// --- Material Snapshot: persisted record of what materials a project is "saved with" ---
+// The live estimate is computed on-the-fly from current config and is NOT persisted.
+// The saved snapshot IS the project's operational material truth until config changes again.
+// A stale snapshot means config changed since save — must be regenerated before production use.
+model MaterialSnapshot {
+  id              String   @id @default(cuid())
+  projectId       String
+  project         Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  sourceType      String   // "vanity" | "side_unit"
+  configHash      String   // SHA-256 of ingredient-driving fields at save time
+  isActive        Boolean  @default(true)
+  isStale         Boolean  @default(false)
+  savedAt         DateTime @default(now())
+  savedByUserId   String?  // references User.id — nullable for system/migration saves
+  // Summary metrics persisted for quick access without recomputing
+  panelCount      Int
+  hardwareCount   Int
+  sheetCount      Float
+  // Future-hook metrics for internal cost, production time, scheduling weight
+  frontCount      Int      @default(0)
+  drawerCount     Int      @default(0)
+  hingeCount      Int      @default(0)
+  dividerCount    Int      @default(0)
+  complexityScore Float    @default(0)
+
+  @@index([projectId, sourceType, isActive])
+  @@index([projectId, isStale])
 }
 
 // --- AI Assistant ---
