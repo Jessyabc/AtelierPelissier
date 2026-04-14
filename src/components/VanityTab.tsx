@@ -9,10 +9,17 @@ import { computeConfigWarnings } from "@/lib/ingredients/warnings";
 import { CABINET_DEFAULTS } from "@/lib/ingredients/types";
 import type { VanityInputs } from "@/lib/pricing/vanity";
 import type { CountertopInputs } from "@/lib/pricing/countertop";
-import type { VanitySection } from "@/lib/ingredients/types";
+import type { VanitySection, VanitySectionLayout } from "@/lib/ingredients/types";
 import { SectionConfigurator } from "./SectionConfigurator";
 import { CabinetWireframe } from "./CabinetWireframe";
 import { IngredientEstimatePanel } from "./IngredientEstimatePanel";
+
+/**
+ * Countertop overhang default (inches). Countertops traditionally overhang the
+ * cabinet by a small amount on width/depth; making this a named constant keeps
+ * the "Match vanity" button behaviour obvious.
+ */
+const COUNTERTOP_OVERHANG = 0.5;
 
 type Project = {
   vanityInputs: Partial<VanityInputs> & {
@@ -57,6 +64,66 @@ function parseSections(json: string | null | undefined): VanitySection[] {
   }
 }
 
+/**
+ * Section-canonical load: the refactored tab treats sections as the single
+ * source of truth for layout. On first load we synthesise one implicit section
+ * from whatever legacy flat doors/drawers data exists, so existing projects
+ * keep working with zero user action.
+ */
+function loadInitialSections(
+  v: Project["vanityInputs"],
+  width: number
+): VanitySection[] {
+  const parsed = parseSections(v?.sections);
+  if (parsed.length > 0) return parsed;
+  const drawers = v?.drawers ?? 0;
+  const doors = v?.doors ?? 0;
+  const layout: VanitySectionLayout =
+    drawers > 0 && doors > 0
+      ? "drawer_over_doors"
+      : drawers > 0
+        ? "all_drawers"
+        : doors > 0
+          ? "doors"
+          : "doors"; // default to doors for brand-new projects
+  return [
+    {
+      id: `s${Date.now()}`,
+      sortOrder: 0,
+      layoutType: layout,
+      width,
+      doors: doors || (layout === "doors" ? 1 : 0),
+      drawers,
+    },
+  ];
+}
+
+/**
+ * Proportional rescale: when the user changes the total vanity width the
+ * existing sections are scaled so their relative proportions are preserved
+ * and they continue to sum to the new total. This prevents the "widths don't
+ * match" conflict that used to appear when the total and the section sum
+ * drifted apart.
+ */
+function rescaleSections(
+  sections: VanitySection[],
+  newTotal: number,
+  minSection: number
+): VanitySection[] {
+  if (sections.length === 0) return sections;
+  const currentTotal = sections.reduce((s, sec) => s + sec.width, 0);
+  if (currentTotal <= 0) {
+    // Distribute evenly
+    const even = Math.max(minSection, newTotal / sections.length);
+    return sections.map((s) => ({ ...s, width: even }));
+  }
+  const factor = newTotal / currentTotal;
+  return sections.map((s) => ({
+    ...s,
+    width: Math.max(minSection, Math.round(s.width * factor * 4) / 4),
+  }));
+}
+
 export function VanityTab({
   projectId,
   project,
@@ -67,36 +134,47 @@ export function VanityTab({
   onUpdate: () => void;
 }) {
   const v = project.vanityInputs;
-  const [width, setWidth] = useState(v?.width ?? 24);
+  const initialWidth = v?.width ?? 24;
+  const [width, setWidthState] = useState(initialWidth);
   const [depth, setDepth] = useState(v?.depth ?? 22);
   const [height, setHeight] = useState<number | "">(v?.height ?? "");
   const [kickplate, setKickplate] = useState(v?.kickplate ?? false);
   const [framingStyle, setFramingStyle] = useState(v?.framingStyle ?? "Sides only");
   const [mountingStyle, setMountingStyle] = useState(v?.mountingStyle ?? "Freestanding");
-  const [drawers, setDrawers] = useState(v?.drawers ?? 0);
-  const [doors, setDoors] = useState(v?.doors ?? 0);
   const [thickFrame, setThickFrame] = useState(v?.thickFrame ?? false);
   const [numberOfSinks, setNumberOfSinks] = useState<"Single" | "Double">(
     (v?.numberOfSinks as "Single" | "Double") ?? "Single"
   );
   const [doorStyle, setDoorStyle] = useState(v?.doorStyle ?? "Slab/Flat");
   const [countertop, setCountertop] = useState(v?.countertop ?? false);
-  const [countertopWidth, setCountertopWidth] = useState(v?.countertopWidth ?? 48);
-  const [countertopDepth, setCountertopDepth] = useState(v?.countertopDepth ?? 24);
-  const [sinks, setSinks] = useState(v?.sinks ?? "None");
+  const [countertopWidth, setCountertopWidth] = useState(
+    v?.countertopWidth ?? initialWidth + COUNTERTOP_OVERHANG
+  );
+  const [countertopDepth, setCountertopDepth] = useState(
+    v?.countertopDepth ?? (v?.depth ?? 22) + COUNTERTOP_OVERHANG
+  );
+  const [sinks, setSinks] = useState(v?.sinks ?? "Single");
   const [faucetHoles, setFaucetHoles] = useState(v?.faucetHoles ?? "No Hole");
   const [priceRangePi2, setPriceRangePi2] = useState(v?.priceRangePi2 ?? 50);
-  const [sections, setSections] = useState<VanitySection[]>(() => {
-    const parsed = parseSections(v?.sections);
-    return parsed.length > 0 ? parsed : [];
-  });
+  // Section-canonical layout: always at least one section. Legacy projects
+  // with flat doors/drawers are synthesised into an implicit single section.
+  const [sections, setSections] = useState<VanitySection[]>(() =>
+    loadInitialSections(v, initialWidth)
+  );
   const [saving, setSaving] = useState(false);
 
-  // Derive flat doors/drawers from sections for pricing compatibility
-  const sectionDoors = sections.reduce((s, sec) => s + sec.doors, 0);
-  const sectionDrawers = sections.reduce((s, sec) => s + sec.drawers, 0);
-  const effectiveDoors = sections.length > 0 ? sectionDoors : doors;
-  const effectiveDrawers = sections.length > 0 ? sectionDrawers : drawers;
+  // Width is source-of-truth; when it changes, the sections rescale to match.
+  // This kills the "section sum vs. total width" conflict that used to confuse
+  // users. Section edits inside the configurator still work normally — the
+  // configurator validates against `totalDimension`.
+  const setWidth = useCallback((next: number) => {
+    setWidthState(next);
+    setSections((prev) => rescaleSections(prev, next, CABINET_DEFAULTS.minSectionWidth));
+  }, []);
+
+  // Derived totals — always come from sections now.
+  const effectiveDoors = sections.reduce((s, sec) => s + sec.doors, 0);
+  const effectiveDrawers = sections.reduce((s, sec) => s + sec.drawers, 0);
 
   const vanityInputs: VanityInputs = {
     width: Number(width) || 24,
@@ -130,7 +208,7 @@ export function VanityTab({
       {
         ...vanityInputs,
         height: height === "" ? undefined : height,
-        sections: sections.length > 0 ? sections : undefined,
+        sections,
       },
       { standards: CABINET_DEFAULTS }
     );
@@ -144,7 +222,7 @@ export function VanityTab({
         : CABINET_DEFAULTS.defaultVanityHeight
       : height;
 
-  // Config warnings
+  // Config warnings — sections are always present so no fallback branch here.
   const warnings = useMemo(
     () =>
       computeConfigWarnings(
@@ -154,7 +232,7 @@ export function VanityTab({
           height: effectiveHeight,
           mountingStyle: vanityInputs.mountingStyle,
           kickplate: vanityInputs.kickplate,
-          sections: sections.length > 0 ? sections : undefined,
+          sections,
           numberOfSinks: vanityInputs.numberOfSinks,
           sinks: countertop ? sinks : undefined,
         },
@@ -163,27 +241,18 @@ export function VanityTab({
     [vanityInputs, effectiveHeight, sections, countertop, sinks]
   );
 
-  // Wireframe sections (use sections if configured, else synthesize from flat inputs)
-  const wireframeSections: VanitySection[] = useMemo(() => {
-    if (sections.length > 0) return sections;
-    return [
-      {
-        id: "__flat__",
-        sortOrder: 0,
-        layoutType:
-          effectiveDrawers > 0 && effectiveDoors > 0
-            ? "drawer_over_doors"
-            : effectiveDrawers > 0
-              ? "all_drawers"
-              : effectiveDoors > 0
-                ? "doors"
-                : "open",
-        width: vanityInputs.width,
-        doors: effectiveDoors,
-        drawers: effectiveDrawers,
-      },
-    ];
-  }, [sections, vanityInputs.width, effectiveDoors, effectiveDrawers]);
+  // Wireframe always reads directly from sections — no more legacy synthesis.
+  const wireframeSections: VanitySection[] = sections;
+
+  // Countertop is a candidate for "matches vanity?" check so we can show the
+  // overhang reset button only when the user has deviated.
+  const countertopIsOverhang =
+    Math.abs(countertopWidth - (width + COUNTERTOP_OVERHANG)) < 0.01 &&
+    Math.abs(countertopDepth - (depth + COUNTERTOP_OVERHANG)) < 0.01;
+  const matchVanityCountertop = useCallback(() => {
+    setCountertopWidth(width + COUNTERTOP_OVERHANG);
+    setCountertopDepth(depth + COUNTERTOP_OVERHANG);
+  }, [width, depth]);
 
   const save = useCallback(async () => {
     setSaving(true);
@@ -307,18 +376,23 @@ export function VanityTab({
           />
           <label htmlFor="thickFrame">Thick frame</label>
         </div>
-        <div>
-          <label className="mb-1 block text-sm font-medium text-gray-700">Number of sinks</label>
-          <select
-            value={numberOfSinks}
-            onChange={(e) => setNumberOfSinks(e.target.value as "Single" | "Double")}
-            className="w-full rounded border border-gray-300 px-3 py-2"
-          >
-            {SINKS.map((o) => (
-              <option key={o} value={o}>{o}</option>
-            ))}
-          </select>
-        </div>
+        {/* Vanity-level sinks are only meaningful without a countertop. When a
+            countertop is enabled the sink config lives in the countertop block
+            to avoid the duplicate/conflicting-info problem that used to exist. */}
+        {!countertop && (
+          <div>
+            <label className="mb-1 block text-sm font-medium text-gray-700">Number of sinks</label>
+            <select
+              value={numberOfSinks}
+              onChange={(e) => setNumberOfSinks(e.target.value as "Single" | "Double")}
+              className="w-full rounded border border-gray-300 px-3 py-2"
+            >
+              {SINKS.map((o) => (
+                <option key={o} value={o}>{o}</option>
+              ))}
+            </select>
+          </div>
+        )}
         <div>
           <label className="mb-1 block text-sm font-medium text-gray-700">Door style</label>
           <select
@@ -331,34 +405,6 @@ export function VanityTab({
             ))}
           </select>
         </div>
-
-        {/* Legacy flat doors/drawers — shown only when no sections configured */}
-        {sections.length === 0 && (
-          <>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Drawers</label>
-              <input
-                type="number"
-                min={0}
-                max={20}
-                value={drawers}
-                onChange={(e) => setDrawers(Number(e.target.value))}
-                className="w-full rounded border border-gray-300 px-3 py-2"
-              />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Doors</label>
-              <input
-                type="number"
-                min={0}
-                max={20}
-                value={doors}
-                onChange={(e) => setDoors(Number(e.target.value))}
-                className="w-full rounded border border-gray-300 px-3 py-2"
-              />
-            </div>
-          </>
-        )}
       </div>
 
       {/* Section Configurator */}
@@ -385,20 +431,42 @@ export function VanityTab({
 
       {/* Countertop */}
       <div className="border-t pt-4">
-        <h3 className="mb-2 font-medium text-gray-800">Countertop</h3>
+        <div className="mb-2 flex items-center justify-between">
+          <h3 className="font-medium text-gray-800">Countertop</h3>
+          {countertop && !countertopIsOverhang && (
+            <button
+              type="button"
+              onClick={matchVanityCountertop}
+              className="text-xs text-[var(--accent-hover)] underline"
+              title={`Reset to vanity size + ${COUNTERTOP_OVERHANG}" overhang`}
+            >
+              Match vanity
+            </button>
+          )}
+        </div>
         <div className="flex items-center gap-2 mb-4">
           <input
             type="checkbox"
             id="countertop"
             checked={countertop}
-            onChange={(e) => setCountertop(e.target.checked)}
+            onChange={(e) => {
+              const next = e.target.checked;
+              setCountertop(next);
+              // Seed sensible defaults the first time countertop turns on.
+              if (next) {
+                setCountertopWidth(width + COUNTERTOP_OVERHANG);
+                setCountertopDepth(depth + COUNTERTOP_OVERHANG);
+              }
+            }}
           />
           <label htmlFor="countertop">Include countertop</label>
         </div>
         {countertop && (
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Countertop width (in)</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Countertop width (in) <span className="text-gray-400 text-xs">default: vanity + {COUNTERTOP_OVERHANG}&quot;</span>
+              </label>
               <input
                 type="number"
                 min={0}
@@ -410,7 +478,9 @@ export function VanityTab({
               />
             </div>
             <div>
-              <label className="mb-1 block text-sm font-medium text-gray-700">Countertop depth (in)</label>
+              <label className="mb-1 block text-sm font-medium text-gray-700">
+                Countertop depth (in) <span className="text-gray-400 text-xs">default: depth + {COUNTERTOP_OVERHANG}&quot;</span>
+              </label>
               <input
                 type="number"
                 min={0}

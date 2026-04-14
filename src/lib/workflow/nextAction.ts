@@ -24,12 +24,27 @@ export type NextAction = {
   terminal?: boolean;
 };
 
+/**
+ * Sales lifecycle stage.
+ *
+ * - `quote`     — working estimate, no invoice issued ("quick quote")
+ * - `invoiced`  — invoice issued, awaiting deposit
+ * - `confirmed` — deposit received, greenlit for production
+ *
+ * A project can be in any stage independent of isDraft/isDone. The stage is
+ * what drives the salesperson path; planner/woodworker only care about it
+ * insofar as stage=quote means "don't touch yet".
+ */
+export type ProjectStage = "quote" | "invoiced" | "confirmed";
+
 /** Minimal project shape needed by the resolver — any richer type assignable. */
 export type NextActionProject = {
   id: string;
   isDraft: boolean;
   isDone: boolean;
   types?: string | null;
+  stage?: ProjectStage | string | null;
+  depositReceivedAt?: string | null;
   clientId?: string | null;
   clientFirstName?: string | null;
   clientLastName?: string | null;
@@ -75,7 +90,7 @@ export function getNextAction(
     };
   }
 
-  // Salesperson story — quote to close
+  // Salesperson story — capture → configure → estimate → invoice → deposit → confirm
   if (role === "salesperson") {
     if (!hasClient) {
       return {
@@ -101,6 +116,26 @@ export function getNextAction(
         tone: "primary",
       };
     }
+    // Stage branch — everything below assumes the project at least has a price.
+    const stage = project.stage ?? "confirmed";
+    if (stage === "quote") {
+      // A quick quote just needs to be sent or turned into an invoice.
+      return {
+        label: "Send quote",
+        href: `/projects/${project.id}?tab=Estimates+%26+Costs`,
+        reason: "Quick quote — send to client or convert to invoice",
+        tone: "primary",
+      };
+    }
+    if (stage === "invoiced") {
+      return {
+        label: "Confirm deposit",
+        href: `/projects/${project.id}?tab=Client+%26+Info`,
+        reason: "Awaiting deposit on invoice",
+        tone: "warning",
+      };
+    }
+    // stage === "confirmed"
     if (draft) {
       return {
         label: "Save project",
@@ -110,15 +145,33 @@ export function getNextAction(
       };
     }
     return {
-      label: "Send quote",
-      href: `/projects/${project.id}?tab=Estimates+%26+Costs`,
-      reason: "Generate and send quote PDF",
-      tone: "neutral",
+      label: "Hand off to shop",
+      href: `/projects/${project.id}?tab=Production`,
+      reason: "Deposit received — project is greenlit",
+      tone: "success",
     };
   }
 
   // Planner story — intake to production-ready
   if (role === "planner" || role === "admin") {
+    // Sales lifecycle gates — planner doesn't plan projects until sales are in.
+    const stage = project.stage ?? "confirmed";
+    if (stage === "quote") {
+      return {
+        label: "Waiting on sales",
+        href: `/projects/${project.id}`,
+        reason: "Still a quote — not yet invoiced",
+        tone: "neutral",
+      };
+    }
+    if (stage === "invoiced") {
+      return {
+        label: "Waiting on deposit",
+        href: `/projects/${project.id}`,
+        reason: "Invoice issued, deposit not yet received",
+        tone: "neutral",
+      };
+    }
     if (project.blockedReason) {
       return {
         label: "Resolve block",

@@ -24,12 +24,17 @@ const clientInputSchema = z.object({
   address: z.string().max(500).trim().optional(),
 });
 
+export const projectStageEnum = z.enum(["quote", "invoiced", "confirmed"]);
+
 export const createProjectSchema = z.object({
   name: z.string().min(1, "Name is required").max(200).trim(),
   types: z.array(projectTypeEnum).min(1, "Select at least one type").default(["vanity"]),
   jobNumber: z.string().max(100).trim().optional(),
   parentProjectId: z.string().cuid().optional().nullable(),
   processTemplateId: z.string().cuid().optional(),
+  // Sales lifecycle stage — see nextAction.ts ProjectStage for semantics.
+  stage: projectStageEnum.default("confirmed"),
+  depositReceivedAt: z.string().optional().nullable(),
   // Client: use existing by ID, or create from inline data
   clientId: z.string().cuid().optional().nullable(),
   client: clientInputSchema.optional(),
@@ -76,6 +81,8 @@ export const updateProjectSchema = z
       ])
       .optional()
       .nullable(),
+    stage: projectStageEnum.optional(),
+    depositReceivedAt: z.string().optional().nullable(),
   })
   .refine(
     (data) => !(data.isDraft === true && data.isDone === true),

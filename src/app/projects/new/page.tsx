@@ -28,9 +28,17 @@ type Client = {
 
 type ProcessTemplate = { id: string; name: string };
 
+// Sales lifecycle stage — drives getNextAction, projects-list grouping, and
+// the deposit field. See src/lib/workflow/nextAction.ts for semantics.
+type Stage = "quote" | "invoiced" | "confirmed";
+
 export default function NewProjectPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
+  // Step 0 = stage picker, 1 = basics, 2 = rooms, 3 = review.
+  const [step, setStep] = useState(0);
+
+  // Step 0: sales lifecycle stage
+  const [stage, setStage] = useState<Stage>("quote");
 
   // Step 1: basics
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -219,6 +227,9 @@ export default function NewProjectPage() {
           name,
           jobNumber: jobNum || undefined,
           types,
+          stage,
+          // depositReceivedAt is stamped server-side when stage === "confirmed"
+          // unless the client provides one explicitly.
           processTemplateId: projectProcessId.trim() || undefined,
           clientId: clientId ?? undefined,
           client: client ?? undefined,
@@ -257,7 +268,7 @@ export default function NewProjectPage() {
 
       {/* Progress indicator */}
       <div className="flex items-center gap-2 mb-8">
-        {[1, 2, 3].map((s) => (
+        {[0, 1, 2, 3].map((s) => (
           <div key={s} className="flex items-center gap-2">
             <button
               onClick={() => s < step && setStep(s)}
@@ -267,15 +278,79 @@ export default function NewProjectPage() {
                 "bg-[var(--bg-light)] text-[var(--foreground-muted)]"
               }`}
             >
-              {s < step ? "✓" : s}
+              {s < step ? "✓" : s + 1}
             </button>
             {s < 3 && <div className={`w-12 h-0.5 ${s < step ? "bg-[var(--accent)]" : "bg-[var(--bg-light)]"}`} />}
           </div>
         ))}
         <span className="text-xs text-[var(--foreground-muted)] ml-2">
-          {step === 1 ? "Basics" : step === 2 ? "What does this project include?" : "Review"}
+          {step === 0 ? "Stage" : step === 1 ? "Basics" : step === 2 ? "What does this project include?" : "Review"}
         </span>
       </div>
+
+      {/* Step 0: Sales stage — what kind of project is this right now? */}
+      {step === 0 && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">What kind of project is this?</h3>
+            <p className="text-sm text-[var(--foreground-muted)]">
+              This drives the next-step guidance for everyone on the team. You can change it later from the project page.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              {
+                value: "quote" as const,
+                icon: "💬",
+                title: "Quick quote",
+                desc: "Working estimate. No invoice yet.",
+              },
+              {
+                value: "invoiced" as const,
+                icon: "🧾",
+                title: "Invoice issued",
+                desc: "Invoice sent. No deposit yet.",
+              },
+              {
+                value: "confirmed" as const,
+                icon: "✅",
+                title: "Deposit received",
+                desc: "Greenlit for production.",
+              },
+            ]).map((opt) => {
+              const selected = stage === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setStage(opt.value)}
+                  className={`neo-card p-4 text-left transition-all ${
+                    selected ? "ring-2 ring-[var(--accent)] translate-y-[-2px]" : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{opt.icon}</div>
+                  <div className="text-sm font-semibold text-[var(--foreground)]">{opt.title}</div>
+                  <div className="text-xs text-[var(--foreground-muted)] mt-1">{opt.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex justify-between">
+            <button type="button" onClick={() => router.push("/")} className="neo-btn px-4 py-2.5 text-sm">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="neo-btn-primary px-6 py-2.5 text-sm font-medium"
+            >
+              Next: Basics
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Step 1: Basics */}
       {step === 1 && (
@@ -435,8 +510,8 @@ export default function NewProjectPage() {
             </fieldset>
           )}
 
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => router.push("/")} className="neo-btn px-4 py-2.5 text-sm">Cancel</button>
+          <div className="flex justify-between gap-3">
+            <button type="button" onClick={() => setStep(0)} className="neo-btn px-4 py-2.5 text-sm">Back</button>
             <button type="button" onClick={() => { if (!invoiceNumber.trim() && !projectDescription.trim()) { setError("Enter a job number or description."); return; } setError(""); setStep(2); }} className="neo-btn-primary px-6 py-2.5 text-sm font-medium">
               Next: Rooms
             </button>
@@ -498,6 +573,12 @@ export default function NewProjectPage() {
 
           <div className="neo-card p-5 space-y-3">
             <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-[var(--foreground-muted)]">Stage:</span>{" "}
+                <span className="font-medium text-[var(--foreground)]">
+                  {stage === "quote" ? "Quick quote" : stage === "invoiced" ? "Invoice issued" : "Deposit received"}
+                </span>
+              </div>
               <div>
                 <span className="text-[var(--foreground-muted)]">Job #:</span>{" "}
                 <span className="font-medium text-[var(--foreground)]">{invoiceNumber || "—"}</span>

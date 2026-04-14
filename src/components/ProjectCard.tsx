@@ -48,6 +48,22 @@ function toneClass(tone: "primary" | "neutral" | "warning" | "success"): string 
   }
 }
 
+/** Small pill for the sales lifecycle stage — only shown when pre-confirmed. */
+function StageBadge({ stage }: { stage?: string | null }) {
+  if (!stage || stage === "confirmed") return null;
+  const map: Record<string, { label: string; className: string }> = {
+    quote: { label: "Quote", className: "bg-blue-100 text-blue-800" },
+    invoiced: { label: "Invoiced", className: "bg-amber-100 text-amber-800" },
+  };
+  const cfg = map[stage];
+  if (!cfg) return null;
+  return (
+    <span className={`inline-block rounded-lg px-2 py-0.5 text-xs ${cfg.className}`}>
+      {cfg.label}
+    </span>
+  );
+}
+
 /**
  * Role-aware project card.
  *
@@ -138,6 +154,7 @@ export function ProjectCard({
                 Done
               </span>
             )}
+            <StageBadge stage={p.stage ?? undefined} />
             {p.blockedReason && <BlockedReasonBadge reason={p.blockedReason} />}
             {p.subProjects && p.subProjects.length > 0 && (
               <span className="text-xs text-gray-500">({p.subProjects.length} tasks)</span>

@@ -95,9 +95,18 @@ export async function POST(request: Request) {
     clientPhone2,
     clientAddress,
     targetDate,
+    stage,
+    depositReceivedAt,
   } = parsed.data;
   const typesStr = typesList.join(",");
   const firstType = typesList[0] ?? "vanity";
+  // If the caller marks a project as confirmed but forgot a deposit timestamp,
+  // stamp it as "now" so stage and timestamp stay consistent in the DB.
+  const resolvedDepositAt: Date | null = depositReceivedAt
+    ? new Date(depositReceivedAt)
+    : stage === "confirmed"
+      ? new Date()
+      : null;
 
   // Resolve primary client: existing by id, or create from input
   let resolvedClientId: string | null = clientId ?? null;
@@ -164,6 +173,8 @@ export async function POST(request: Request) {
       type: firstType,
       types: typesStr,
       isDraft: true,
+      stage,
+      depositReceivedAt: resolvedDepositAt,
       parentProjectId,
       jobNumber: jobNumber?.trim() || parent.jobNumber,
       clientId: resolvedClientId,
@@ -188,6 +199,8 @@ export async function POST(request: Request) {
       type: firstType,
       types: typesStr,
       isDraft: true,
+      stage,
+      depositReceivedAt: resolvedDepositAt,
       jobNumber: jobNumber?.trim() || null,
       processTemplateId: processTemplateId?.trim() || null,
       clientId: resolvedClientId,

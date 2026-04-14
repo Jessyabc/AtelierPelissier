@@ -161,6 +161,8 @@ export async function PATCH(
     targetDate?: Date | null;
     sellingPrice?: number | null;
     blockedReason?: string | null;
+    stage?: string;
+    depositReceivedAt?: Date | null;
   } = {};
   if (data.name != null) updateData.name = data.name;
   if (data.types != null) {
@@ -183,6 +185,19 @@ export async function PATCH(
   if (data.client2Id !== undefined) updateData.client2Id = data.client2Id;
   if (data.processTemplateId !== undefined) updateData.processTemplateId = data.processTemplateId;
   if (data.blockedReason !== undefined) updateData.blockedReason = data.blockedReason;
+  // Sales lifecycle stage — when advancing to "confirmed" without an explicit
+  // depositReceivedAt, stamp "now" so the timestamp stays consistent with stage.
+  if (data.stage !== undefined) {
+    updateData.stage = data.stage;
+    if (data.stage === "confirmed" && data.depositReceivedAt === undefined) {
+      updateData.depositReceivedAt = new Date();
+    }
+  }
+  if (data.depositReceivedAt !== undefined) {
+    updateData.depositReceivedAt = data.depositReceivedAt
+      ? new Date(data.depositReceivedAt as string)
+      : null;
+  }
 
   // When linking primary client by ID, populate embedded from Client
   if (data.clientId) {
