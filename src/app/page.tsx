@@ -6,9 +6,11 @@ import { useEffect, useState } from "react";
 import toast from "react-hot-toast";
 import { ConfirmModal } from "@/components/ConfirmModal";
 import { HomeStats, type StatsData } from "@/components/HomeStats";
-import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
+import { ProjectCard, type ProjectCardProject } from "@/components/ProjectCard";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { roleDisplayName } from "@/lib/workflow/nextAction";
 
-type Project = {
+type Project = ProjectCardProject & {
   id: string;
   name: string;
   type: string;
@@ -21,26 +23,14 @@ type Project = {
   costLines: Array<{ amount: number }>;
   subProjects?: Array<{ id: string; name: string; isDone: boolean; isDraft: boolean }>;
   blockedReason?: string | null;
+  stage?: "quote" | "invoiced" | "confirmed" | null;
+  depositReceivedAt?: string | null;
 };
 
 const LOAD_TIMEOUT_MS = 8000;
-type FilterKind = "all" | "drafts" | "saved" | "done" | "estimates";
-
-function formatTypes(typesStr?: string | null, fallbackType?: string | null): string {
-  if (typesStr && typesStr.trim()) {
-    return typesStr
-      .split(",")
-      .map((t) => t.trim().replace("_", " "))
-      .filter(Boolean)
-      .join(", ");
-  }
-  if (fallbackType) return fallbackType.replace("_", " ");
-  return "—";
-}
-
-function estimateTotal(costLines: Array<{ amount: number }>): number {
-  return costLines.reduce((sum, l) => sum + l.amount, 0);
-}
+// "quotes" = quick quotes and invoiced-but-no-deposit — the salesperson's
+// working queue. Everything confirmed falls through to Ongoing/Drafts/Done.
+type FilterKind = "all" | "quotes" | "drafts" | "saved" | "done";
 
 function filterProjects(
   projects: Project[],
@@ -59,12 +49,19 @@ function filterProjects(
   if (filter === "drafts") list = list.filter((p) => p.isDraft);
   else if (filter === "saved") list = list.filter((p) => !p.isDraft && !p.isDone);
   else if (filter === "done") list = list.filter((p) => p.isDone);
-  else if (filter === "estimates") list = list.filter((p) => (p.costLines?.length ?? 0) > 0);
+  else if (filter === "quotes") list = list.filter((p) => !p.isDone && (p.stage === "quote" || p.stage === "invoiced"));
   return list;
+}
+
+/** Pre-deposit work for the salesperson: quotes + issued invoices awaiting deposit. */
+function isQuoteStage(p: Project): boolean {
+  return !p.isDone && (p.stage === "quote" || p.stage === "invoiced");
 }
 
 export default function ProjectsPage() {
   const router = useRouter();
+  const { user } = useCurrentUser();
+  const role = user?.role ?? "admin";
   const [projects, setProjects] = useState<Project[]>([]);
   const [stats, setStats] = useState<StatsData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -133,10 +130,13 @@ export default function ProjectsPage() {
   };
 
   const filtered = filterProjects(projects, search, filter);
-  const drafts = filtered.filter((p) => p.isDraft);
-  const ongoing = filtered.filter((p) => !p.isDraft && !p.isDone);
+  // Quick quotes (and invoiced-but-no-deposit) are shown in their own section
+  // and excluded from Ongoing/Drafts so the salesperson queue is isolated
+  // from the confirmed production pipeline.
+  const quotes = filtered.filter(isQuoteStage);
+  const drafts = filtered.filter((p) => p.isDraft && !isQuoteStage(p));
+  const ongoing = filtered.filter((p) => !p.isDraft && !p.isDone && !isQuoteStage(p));
   const done = filtered.filter((p) => p.isDone);
-  const withEstimates = filtered.filter((p) => (p.costLines?.length ?? 0) > 0);
 
   async function handleDelete(projectId: string) {
     try {
@@ -211,7 +211,14 @@ export default function ProjectsPage() {
       {stats && <HomeStats data={stats} />}
 
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-        <h1 className="text-xl font-semibold text-gray-900">Projects</h1>
+        <div>
+          <h1 className="text-xl font-semibold text-gray-900">Projects</h1>
+          {user && (
+            <p className="mt-0.5 text-xs text-gray-500">
+              Viewing as {roleDisplayName(role)}
+            </p>
+          )}
+        </div>
         <Link
           href="/projects/new"
           className="neo-btn-primary inline-block px-5 py-2.5 text-sm font-medium"
@@ -230,71 +237,67 @@ export default function ProjectsPage() {
           aria-label="Search projects"
         />
         <div className="neo-segment">
-          {(["all", "drafts", "saved", "done", "estimates"] as const).map((f) => (
+          {(["all", "quotes", "drafts", "saved", "done"] as const).map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={filter === f ? "neo-btn-pressed px-4 py-2 text-sm font-medium" : "neo-segment-btn"}
             >
-              {f === "all" ? "All" : f === "drafts" ? "Drafts" : f === "saved" ? "Saved" : f === "done" ? "Done" : "With estimates"}
+              {f === "all" ? "All" : f === "quotes" ? "Quotes" : f === "drafts" ? "Drafts" : f === "saved" ? "Saved" : "Done"}
             </button>
           ))}
         </div>
       </div>
 
+      {/* Salesperson queue — quick quotes + invoiced-awaiting-deposit.
+          Shown above Ongoing because this is where the salesperson lives. */}
+      {(quotes.length > 0 || filter === "quotes") && (
+        <section>
+          <div className="mb-3 flex items-baseline justify-between">
+            <h2 className="text-lg font-medium text-gray-800">Quick quotes & invoices</h2>
+            <span className="text-xs text-gray-500">
+              {quotes.length} pre-deposit
+            </span>
+          </div>
+          {quotes.length === 0 ? (
+            <p className="neo-card p-6 text-sm text-gray-500">
+              No open quotes. Start one from &ldquo;New Project&rdquo; and pick &ldquo;Quick quote&rdquo;.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {quotes.map((p) => (
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  role={role}
+                  onDuplicate={handleDuplicate}
+                  onDelete={setDeleteId}
+                  duplicatingId={duplicateId}
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
+
       <section>
         <h2 className="mb-3 text-lg font-medium text-gray-800">Ongoing projects</h2>
         {ongoing.length === 0 ? (
           <p className="neo-card p-6 text-sm text-gray-500">
-            No saved projects yet. Create a project and click “Save project” to move it here.
+            No saved projects yet. Create a project and click &ldquo;Save project&rdquo; to move it here.
           </p>
         ) : (
           <ul className="space-y-3">
             {ongoing.map((p) => (
-              <li key={p.id} className="neo-card">
-                <div className="flex flex-wrap items-center justify-between gap-2 p-4">
-                  <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
-                    <span className="font-medium text-gray-900">{p.name}</span>
-                    {p.blockedReason && (
-                      <span className="ml-2 align-middle">
-                        <BlockedReasonBadge reason={p.blockedReason} />
-                      </span>
-                    )}
-                    {p.subProjects && p.subProjects.length > 0 && (
-                      <span className="ml-2 text-xs text-gray-500">({p.subProjects.length} tasks)</span>
-                    )}
-                    <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
-                    <span className="ml-2 text-sm text-gray-500">
-                      {[p.clientFirstName, p.clientLastName].filter(Boolean).join(" ") || "—"}
-                      {" · "}
-                      {new Date(p.updatedAt).toLocaleDateString()}
-                    </span>
-                    {p.costLines?.length > 0 && (
-                      <p className="mt-1 text-sm text-gray-600">
-                        Estimate: ${estimateTotal(p.costLines).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
-                      </p>
-                    )}
-                  </Link>
-                  <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
-                    <button
-                      type="button"
-                      onClick={() => handleDuplicate(p.id)}
-                      disabled={duplicateId !== null}
-                      className="neo-btn px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                    >
-                      {duplicateId === p.id ? "…" : "Duplicate"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteId(p.id)}
-                      className="neo-btn px-3 py-1.5 text-xs font-medium text-red-600"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </li>
+              <ProjectCard
+                key={p.id}
+                project={p}
+                role={role}
+                onDuplicate={handleDuplicate}
+                onDelete={setDeleteId}
+                duplicatingId={duplicateId}
+              />
             ))}
           </ul>
         )}
@@ -309,38 +312,14 @@ export default function ProjectsPage() {
         ) : (
           <ul className="space-y-3">
             {drafts.map((p) => (
-              <li key={p.id} className="neo-card">
-                <div className="flex flex-wrap items-center justify-between gap-2 p-4">
-                  <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
-                    <span className="font-medium text-gray-900">{p.name}</span>
-                    {p.blockedReason && (
-                      <span className="ml-2 align-middle">
-                        <BlockedReasonBadge reason={p.blockedReason} />
-                      </span>
-                    )}
-                    <span className="ml-2 neo-btn-pressed inline-block px-2 py-0.5 text-xs text-gray-600 rounded-lg">Draft</span>
-                    <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
-                    <span className="ml-2 text-sm text-gray-500">{new Date(p.updatedAt).toLocaleDateString()}</span>
-                  </Link>
-                  <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
-                    <button
-                      type="button"
-                      onClick={() => handleDuplicate(p.id)}
-                      disabled={duplicateId !== null}
-                      className="neo-btn px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                    >
-                      {duplicateId === p.id ? "…" : "Duplicate"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteId(p.id)}
-                      className="neo-btn px-3 py-1.5 text-xs font-medium text-red-600"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </li>
+              <ProjectCard
+                key={p.id}
+                project={p}
+                role={role}
+                onDuplicate={handleDuplicate}
+                onDelete={setDeleteId}
+                duplicatingId={duplicateId}
+              />
             ))}
           </ul>
         )}
@@ -355,81 +334,15 @@ export default function ProjectsPage() {
         ) : (
           <ul className="space-y-3">
             {done.map((p) => (
-              <li key={p.id} className="neo-card">
-                <div className="flex flex-wrap items-center justify-between gap-2 p-4">
-                  <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
-                    <span className="font-medium text-gray-900">{p.name}</span>
-                    {p.blockedReason && (
-                      <span className="ml-2 align-middle">
-                        <BlockedReasonBadge reason={p.blockedReason} />
-                      </span>
-                    )}
-                    <span className="ml-2 inline-block rounded-lg bg-green-100 px-2 py-0.5 text-xs text-green-800">Done</span>
-                    {p.subProjects && p.subProjects.length > 0 && (
-                      <span className="ml-2 text-xs text-gray-500">({p.subProjects.length} tasks)</span>
-                    )}
-                    <span className="ml-2 text-sm text-gray-500">{formatTypes(p.types, p.type)}</span>
-                    <span className="ml-2 text-sm text-gray-500">{new Date(p.updatedAt).toLocaleDateString()}</span>
-                  </Link>
-                  <div className="flex gap-2" onClick={(e) => e.preventDefault()}>
-                    <button
-                      type="button"
-                      onClick={() => handleDuplicate(p.id)}
-                      disabled={duplicateId !== null}
-                      className="neo-btn px-3 py-1.5 text-xs font-medium disabled:opacity-50"
-                    >
-                      {duplicateId === p.id ? "…" : "Duplicate"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setDeleteId(p.id)}
-                      className="neo-btn px-3 py-1.5 text-xs font-medium text-red-600"
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-
-      <section>
-        <h2 className="mb-3 text-lg font-medium text-gray-800">Estimates</h2>
-        {withEstimates.length === 0 ? (
-          <p className="neo-card p-6 text-sm text-gray-500">
-            No estimates yet. Add cost lines in the Costs tab of a project.
-          </p>
-        ) : (
-          <ul className="space-y-3">
-            {withEstimates.map((p) => (
-              <li key={p.id}>
-                <Link
-                  href={`/projects/${p.id}`}
-                  className="block neo-card p-4 transition-all hover:shadow-[6px_6px_12px_var(--shadow-dark),-6px_-6px_12px_var(--shadow-light)]"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-medium text-gray-900">
-                      {p.name}
-                      {p.blockedReason && (
-                        <span className="ml-2 align-middle">
-                          <BlockedReasonBadge reason={p.blockedReason} />
-                        </span>
-                      )}
-                    </span>
-                    <span className="text-sm font-medium text-gray-700">
-                      ${estimateTotal(p.costLines).toLocaleString("en-CA", { minimumFractionDigits: 2 })}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-gray-500">
-                    {formatTypes(p.types, p.type)}
-                    {p.clientLastName || p.clientFirstName
-                      ? ` · ${[p.clientFirstName, p.clientLastName].filter(Boolean).join(" ")}`
-                      : ""}
-                  </p>
-                </Link>
-              </li>
+              <ProjectCard
+                key={p.id}
+                project={p}
+                role={role}
+                onDuplicate={handleDuplicate}
+                onDelete={setDeleteId}
+                duplicatingId={duplicateId}
+                compact
+              />
             ))}
           </ul>
         )}

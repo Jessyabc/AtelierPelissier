@@ -1,7 +1,15 @@
 # Atelier Pelissier — Master Roadmap
 
 **Single source of truth.** Replaces IMPROVEMENTS.md and PHASE2.md (both archived — their work is either done or superseded by this document).  
-Last updated: 2026-04-09
+Last updated: 2026-04-14
+
+> **What changed since 2026-04-09:**
+> - Configuration-to-material-truth subsystem landed (ingredient engine, material snapshots, construction standards, section configurator).
+> - Role-aware next-action spine (`getNextAction`) now drives project cards and the project detail header.
+> - PDF invoice drop-zone on New Project pre-fills the wizard via `parseInvoiceText` heuristics (pdf-parse → LlamaParse fallback).
+> - Sales lifecycle stage (`Project.stage` = `quote` / `invoiced` / `confirmed`) added with wizard picker, list section, and role-branch routing in `getNextAction`.
+> - VanityTab refactored to section-canonical layout — the old flat doors/drawers inputs are gone and vanity width now rescales sections instead of conflicting with them.
+> - Impact on scorecard: sections 3, 4, 11, 13 moved (details in `docs/OPERATIONS_MATURITY_ROADMAP.md`).
 
 ---
 
@@ -45,20 +53,21 @@ Step 5 is the single biggest gap in the system. Everything else has some impleme
 ## 3. Current state by role
 
 ### SALESPERSON
-**Can do:** Create/view/duplicate projects · Schedule service calls · View calendar · View costing/distributors
+**Can do:** Create/view/duplicate projects · Drop a PDF invoice on New Project to auto-pre-fill the wizard · Pick a sales lifecycle stage (quick quote / invoiced / confirmed) at creation · See role-specific next-action CTAs and a dedicated "Quick quotes & invoices" list section · Schedule service calls · View calendar · View costing/distributors
 
 | Gap | Priority |
 |-----|----------|
 | No PDF quote / printable estimate to send to a client | CRITICAL |
-| No "My Projects" filtered view — sees all projects | HIGH |
+| "My Projects" filter is partial — role-aware list exists but no explicit salesperson filter tab | MEDIUM (was HIGH) |
 | Service call form too complex for field use on a phone | HIGH |
+| VanityTab still desktop-first — mobile step-by-step view not built | MEDIUM |
 | No print-ready service call form for on-site paper copies | MEDIUM |
 | No wizard when duplicating a project to adapt old costs | LOW |
 
 ---
 
 ### PLANNER
-**Can do:** Full project detail · Inventory with shortage alerts · Purchase orders · Deviation dashboard · Process templates · Calendar management
+**Can do:** Full project detail · Inventory with shortage alerts · Purchase orders · Deviation dashboard · Process templates · Calendar management · Live ingredient estimate + saved material snapshot per vanity/side-unit with stale tracking · Stage-aware next-action (quote/invoiced projects are visibly gated as "waiting on sales" / "waiting on deposit")
 
 | Gap | Priority |
 |-----|----------|
@@ -208,6 +217,15 @@ The following Phase 2 features from the old PHASE2.md are **fully implemented**:
 - Error boundaries + toast notifications
 - Delete project (with confirmation)
 - Duplicate project
+
+Added since the 2026-04-09 review:
+
+- **Ingredient engine + material snapshot subsystem** (`src/lib/ingredients/`) — section-canonical layout, construction standards singleton, live estimate vs saved snapshot with stale tracking, panel/hardware/sheet counts, config warnings
+- **Section configurator UI** + SVG wireframe preview for vanity and side-unit tabs
+- **Role-aware next-action spine** (`src/lib/workflow/nextAction.ts`) driving project cards, the project detail header CTA, and role-filtered list copy
+- **PDF invoice intake** — drop-zone on New Project, heuristic field extraction via `parseInvoiceText`, pdf-parse → LlamaParse OCR fallback
+- **Sales lifecycle stage** on `Project` (`quote` / `invoiced` / `confirmed`) with wizard step 0 picker, dedicated list section, planner/salesperson stage gates in `getNextAction`
+- **VanityTab section-canonical refactor** — legacy flat doors/drawers inputs removed, implicit section synthesised for existing projects, vanity width rescales sections, sinks consolidated when a countertop is present, countertop width/depth default to `vanity + 0.5"` overhang with "Match vanity" reset
 
 These are done. The gaps listed in Tier 1–3 above are what remains.
 

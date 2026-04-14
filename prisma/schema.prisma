@@ -84,6 +84,15 @@ model Project {
   /// Ops: why work is blocked (e.g. missing_material). Null = not blocked.
   blockedReason         String?
 
+  // Sales lifecycle stage — drives salesperson next-action and list grouping:
+  //   "quote"     = working estimate, no invoice yet (aka "quick quote")
+  //   "invoiced"  = invoice issued, awaiting deposit
+  //   "confirmed" = deposit received, project is greenlit for production
+  // Default "confirmed" so existing rows keep their current behaviour.
+  stage                 String    @default("confirmed")
+  /// Timestamp the deposit was marked received — used to detect confirmed projects.
+  depositReceivedAt     DateTime?
+
   // Process template — for tasks (sub-projects): which workflow this task follows
   processTemplateId String?
   processTemplate   ProcessTemplate? @relation(fields: [processTemplateId], references: [id], onDelete: SetNull)
@@ -104,6 +113,7 @@ model Project {
   @@index([clientFirstName, clientLastName])
   @@index([createdAt])
   @@index([targetDate])
+  @@index([stage])
 }
 
 // Phase 2: One deliverable within a project (vanity, side unit, kitchen, panel, custom thing)
@@ -887,6 +897,9 @@ model ConstructionStandards {
   thickFrameThickness   Float    @default(0.75)   // 3/4" thick frame
   minSectionWidth       Float    @default(8)      // minimum section width (inches)
   minSectionHeight      Float    @default(5)      // minimum section height (inches)
+  // Sales follow-up thresholds — controls when lifecycle projects flag as stale.
+  quoteFollowUpDays     Int      @default(14)     // days until a quick quote should be revisited
+  invoiceFollowUpDays   Int      @default(7)      // days until an invoice without deposit is chased
   updatedAt             DateTime @updatedAt
 }
 

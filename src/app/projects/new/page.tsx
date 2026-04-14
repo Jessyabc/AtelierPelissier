@@ -28,9 +28,17 @@ type Client = {
 
 type ProcessTemplate = { id: string; name: string };
 
+// Sales lifecycle stage — drives getNextAction, projects-list grouping, and
+// the deposit field. See src/lib/workflow/nextAction.ts for semantics.
+type Stage = "quote" | "invoiced" | "confirmed";
+
 export default function NewProjectPage() {
   const router = useRouter();
-  const [step, setStep] = useState(1);
+  // Step 0 = stage picker, 1 = basics, 2 = rooms, 3 = review.
+  const [step, setStep] = useState(0);
+
+  // Step 0: sales lifecycle stage
+  const [stage, setStage] = useState<Stage>("quote");
 
   // Step 1: basics
   const [invoiceNumber, setInvoiceNumber] = useState("");
@@ -69,6 +77,69 @@ export default function NewProjectPage() {
 
   // Target date
   const [targetDate, setTargetDate] = useState("");
+
+  // File-drop intake (optional) — drop a PDF invoice to pre-fill the wizard
+  const [parsingInvoice, setParsingInvoice] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleInvoiceFile = useCallback(async (file: File) => {
+    if (!file) return;
+    setParsingInvoice(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const res = await fetch("/api/projects/parse-invoice", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error || "Could not parse invoice");
+        return;
+      }
+      const x = data?.extracted as {
+        invoiceNumber?: string;
+        description?: string;
+        client?: { firstName?: string; lastName?: string; email?: string; phone?: string; address?: string };
+      } | undefined;
+      if (!x) {
+        toast.error("Nothing extracted from the file");
+        return;
+      }
+      if (x.invoiceNumber) setInvoiceNumber(x.invoiceNumber);
+      if (x.description) setProjectDescription(x.description);
+      if (x.client) {
+        setClientMode("create");
+        setClientForm((prev) => ({
+          firstName: x.client?.firstName ?? prev.firstName,
+          lastName: x.client?.lastName ?? prev.lastName,
+          email: x.client?.email ?? prev.email,
+          phone: x.client?.phone ?? prev.phone,
+          phone2: prev.phone2,
+          address: x.client?.address ?? prev.address,
+        }));
+      }
+      if (data?.warning) {
+        toast(data.warning, { duration: 5000 });
+      } else {
+        toast.success("Invoice fields pre-filled — review and continue");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setParsingInvoice(false);
+    }
+  }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleInvoiceFile(file);
+    },
+    [handleInvoiceFile]
+  );
 
   const searchClients = useCallback(async (q: string, setResults: (c: Client[]) => void) => {
     if (!q || q.length < 2) { setResults([]); return; }
@@ -156,6 +227,9 @@ export default function NewProjectPage() {
           name,
           jobNumber: jobNum || undefined,
           types,
+          stage,
+          // depositReceivedAt is stamped server-side when stage === "confirmed"
+          // unless the client provides one explicitly.
           processTemplateId: projectProcessId.trim() || undefined,
           clientId: clientId ?? undefined,
           client: client ?? undefined,
@@ -194,7 +268,7 @@ export default function NewProjectPage() {
 
       {/* Progress indicator */}
       <div className="flex items-center gap-2 mb-8">
-        {[1, 2, 3].map((s) => (
+        {[0, 1, 2, 3].map((s) => (
           <div key={s} className="flex items-center gap-2">
             <button
               onClick={() => s < step && setStep(s)}
@@ -204,19 +278,123 @@ export default function NewProjectPage() {
                 "bg-[var(--bg-light)] text-[var(--foreground-muted)]"
               }`}
             >
-              {s < step ? "✓" : s}
+              {s < step ? "✓" : s + 1}
             </button>
             {s < 3 && <div className={`w-12 h-0.5 ${s < step ? "bg-[var(--accent)]" : "bg-[var(--bg-light)]"}`} />}
           </div>
         ))}
         <span className="text-xs text-[var(--foreground-muted)] ml-2">
-          {step === 1 ? "Basics" : step === 2 ? "What does this project include?" : "Review"}
+          {step === 0 ? "Stage" : step === 1 ? "Basics" : step === 2 ? "What does this project include?" : "Review"}
         </span>
       </div>
+
+      {/* Step 0: Sales stage — what kind of project is this right now? */}
+      {step === 0 && (
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">What kind of project is this?</h3>
+            <p className="text-sm text-[var(--foreground-muted)]">
+              This drives the next-step guidance for everyone on the team. You can change it later from the project page.
+            </p>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3">
+            {([
+              {
+                value: "quote" as const,
+                icon: "💬",
+                title: "Quick quote",
+                desc: "Working estimate. No invoice yet.",
+              },
+              {
+                value: "invoiced" as const,
+                icon: "🧾",
+                title: "Invoice issued",
+                desc: "Invoice sent. No deposit yet.",
+              },
+              {
+                value: "confirmed" as const,
+                icon: "✅",
+                title: "Deposit received",
+                desc: "Greenlit for production.",
+              },
+            ]).map((opt) => {
+              const selected = stage === opt.value;
+              return (
+                <button
+                  key={opt.value}
+                  type="button"
+                  onClick={() => setStage(opt.value)}
+                  className={`neo-card p-4 text-left transition-all ${
+                    selected ? "ring-2 ring-[var(--accent)] translate-y-[-2px]" : "opacity-70 hover:opacity-100"
+                  }`}
+                >
+                  <div className="text-2xl mb-1">{opt.icon}</div>
+                  <div className="text-sm font-semibold text-[var(--foreground)]">{opt.title}</div>
+                  <div className="text-xs text-[var(--foreground-muted)] mt-1">{opt.desc}</div>
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex justify-between">
+            <button type="button" onClick={() => router.push("/")} className="neo-btn px-4 py-2.5 text-sm">
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => setStep(1)}
+              className="neo-btn-primary px-6 py-2.5 text-sm font-medium"
+            >
+              Next: Basics
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Step 1: Basics */}
       {step === 1 && (
         <div className="space-y-6">
+          {/* Optional: drop a PDF invoice to pre-fill the wizard */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={onDrop}
+            className={`neo-card flex flex-col items-center justify-center gap-2 border-2 border-dashed px-6 py-5 text-center text-sm transition-colors ${
+              isDragging
+                ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                : "border-[var(--border)] text-[var(--foreground-muted)]"
+            }`}
+          >
+            <span className="text-2xl" aria-hidden>
+              📄
+            </span>
+            <p className="font-medium text-[var(--foreground)]">
+              {parsingInvoice ? "Parsing invoice…" : "Drop a PDF invoice to pre-fill"}
+            </p>
+            <p className="text-xs">
+              or{" "}
+              <label className="cursor-pointer text-[var(--accent-hover)] underline">
+                choose a file
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  disabled={parsingInvoice}
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleInvoiceFile(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              . We&rsquo;ll extract the job number, client, and contact info — review before continuing.
+            </p>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Job / Invoice Number *</label>
@@ -332,8 +510,8 @@ export default function NewProjectPage() {
             </fieldset>
           )}
 
-          <div className="flex justify-end gap-3">
-            <button type="button" onClick={() => router.push("/")} className="neo-btn px-4 py-2.5 text-sm">Cancel</button>
+          <div className="flex justify-between gap-3">
+            <button type="button" onClick={() => setStep(0)} className="neo-btn px-4 py-2.5 text-sm">Back</button>
             <button type="button" onClick={() => { if (!invoiceNumber.trim() && !projectDescription.trim()) { setError("Enter a job number or description."); return; } setError(""); setStep(2); }} className="neo-btn-primary px-6 py-2.5 text-sm font-medium">
               Next: Rooms
             </button>
@@ -395,6 +573,12 @@ export default function NewProjectPage() {
 
           <div className="neo-card p-5 space-y-3">
             <div className="grid grid-cols-2 gap-3 text-sm">
+              <div>
+                <span className="text-[var(--foreground-muted)]">Stage:</span>{" "}
+                <span className="font-medium text-[var(--foreground)]">
+                  {stage === "quote" ? "Quick quote" : stage === "invoiced" ? "Invoice issued" : "Deposit received"}
+                </span>
+              </div>
               <div>
                 <span className="text-[var(--foreground-muted)]">Job #:</span>{" "}
                 <span className="font-medium text-[var(--foreground)]">{invoiceNumber || "—"}</span>
