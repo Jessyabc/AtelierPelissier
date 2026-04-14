@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { NextActionButton } from "@/components/NextActionButton";
 import toast from "react-hot-toast";
 import { VanityTab } from "@/components/VanityTab";
 import { SideUnitTab } from "@/components/SideUnitTab";
@@ -65,13 +66,29 @@ type Project = {
 
 type Tab = "Overview" | "Client & Info" | "Estimates & Costs" | "Production" | "Service Calls" | "History";
 
+const VALID_TABS: readonly Tab[] = ["Overview", "Client & Info", "Estimates & Costs", "Production", "Service Calls", "History"] as const;
+
+function parseTabParam(v: string | null): Tab | null {
+  if (!v) return null;
+  return (VALID_TABS as readonly string[]).includes(v) ? (v as Tab) : null;
+}
+
 export default function ProjectPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<Tab>("Overview");
+  const initialTab = parseTabParam(searchParams?.get("tab") ?? null) ?? "Overview";
+  const [activeTab, setActiveTab] = useState<Tab>(initialTab);
+
+  // Sync activeTab with ?tab= param — lets NextActionButton/links deep-link to a tab.
+  useEffect(() => {
+    const t = parseTabParam(searchParams?.get("tab") ?? null);
+    if (t && t !== activeTab) setActiveTab(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
   const [savingProject, setSavingProject] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -98,6 +115,10 @@ export default function ProjectPage() {
   // Recalculation health
   const [recalcError, setRecalcError] = useState<{ message: string; failedAt: string } | null>(null);
   const [retryingRecalc, setRetryingRecalc] = useState(false);
+
+  // Material snapshot state (used by NextActionButton to suggest "Verify materials" / "Regenerate materials")
+  const [hasMaterialSnapshot, setHasMaterialSnapshot] = useState(false);
+  const [hasStaleMaterialSnapshot, setHasStaleMaterialSnapshot] = useState(false);
 
   const checkRecalcStatus = useCallback(async () => {
     try {
@@ -136,6 +157,21 @@ export default function ProjectPage() {
   }, [id, router]);
 
   useEffect(() => { fetchProject(); checkRecalcStatus(); }, [fetchProject, checkRecalcStatus]);
+
+  // Fetch material snapshot status for both vanity & side_unit in parallel
+  useEffect(() => {
+    let alive = true;
+    Promise.all([
+      fetch(`/api/projects/${id}/material-snapshot?sourceType=vanity`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+      fetch(`/api/projects/${id}/material-snapshot?sourceType=side_unit`).then((r) => (r.ok ? r.json() : null)).catch(() => null),
+    ]).then(([v, s]) => {
+      if (!alive) return;
+      const snaps = [v?.snapshot, s?.snapshot].filter(Boolean);
+      setHasMaterialSnapshot(snaps.length > 0);
+      setHasStaleMaterialSnapshot(snaps.some((x: { isStale?: boolean }) => x?.isStale));
+    });
+    return () => { alive = false; };
+  }, [id]);
   useEffect(() => {
     fetch("/api/process-templates").then((r) => r.ok ? r.json() : []).then((d) => setProcessTemplates(Array.isArray(d) ? d : [])).catch(() => {});
     fetch("/api/admin/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
@@ -352,13 +388,40 @@ export default function ProjectPage() {
           {project.blockedReason && (
             <BlockedReasonBadge reason={project.blockedReason} />
           )}
+          {/* Role-aware next action — the guided-workflow spine */}
+          <NextActionButton
+            project={{
+              id: project.id,
+              isDraft: project.isDraft,
+              isDone: project.isDone,
+              types: project.types,
+              clientId: project.clientId,
+              clientFirstName: project.clientFirstName,
+              clientLastName: project.clientLastName,
+              targetDate: project.targetDate,
+              projectItems: project.projectItems,
+              costLines: project.costLines,
+              sellingPrice: project.sellingPrice,
+              blockedReason: project.blockedReason,
+              hasMaterialSnapshot,
+              hasStaleMaterialSnapshot,
+            }}
+            onClick={(href) => {
+              // If the href targets a tab, switch immediately (URL update still fires via Link)
+              const m = href.match(/[?&]tab=([^&]+)/);
+              if (m) {
+                const t = parseTabParam(decodeURIComponent(m[1]));
+                if (t) setActiveTab(t);
+              }
+            }}
+          />
           {project.isDraft && (
             <button
               type="button"
               onClick={handleSaveProject}
               disabled={savingProject || saveBlockedByReadiness}
               title={saveTitle}
-              className="neo-btn-primary px-4 py-1.5 text-sm disabled:opacity-50"
+              className="neo-btn px-4 py-1.5 text-sm disabled:opacity-50"
             >
               {savingProject ? "Saving..." : "Save Project"}
             </button>

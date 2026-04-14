@@ -70,6 +70,69 @@ export default function NewProjectPage() {
   // Target date
   const [targetDate, setTargetDate] = useState("");
 
+  // File-drop intake (optional) — drop a PDF invoice to pre-fill the wizard
+  const [parsingInvoice, setParsingInvoice] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleInvoiceFile = useCallback(async (file: File) => {
+    if (!file) return;
+    setParsingInvoice(true);
+    try {
+      const form = new FormData();
+      form.set("file", file);
+      const res = await fetch("/api/projects/parse-invoice", {
+        method: "POST",
+        body: form,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data?.error || "Could not parse invoice");
+        return;
+      }
+      const x = data?.extracted as {
+        invoiceNumber?: string;
+        description?: string;
+        client?: { firstName?: string; lastName?: string; email?: string; phone?: string; address?: string };
+      } | undefined;
+      if (!x) {
+        toast.error("Nothing extracted from the file");
+        return;
+      }
+      if (x.invoiceNumber) setInvoiceNumber(x.invoiceNumber);
+      if (x.description) setProjectDescription(x.description);
+      if (x.client) {
+        setClientMode("create");
+        setClientForm((prev) => ({
+          firstName: x.client?.firstName ?? prev.firstName,
+          lastName: x.client?.lastName ?? prev.lastName,
+          email: x.client?.email ?? prev.email,
+          phone: x.client?.phone ?? prev.phone,
+          phone2: prev.phone2,
+          address: x.client?.address ?? prev.address,
+        }));
+      }
+      if (data?.warning) {
+        toast(data.warning, { duration: 5000 });
+      } else {
+        toast.success("Invoice fields pre-filled — review and continue");
+      }
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Upload failed");
+    } finally {
+      setParsingInvoice(false);
+    }
+  }, []);
+
+  const onDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragging(false);
+      const file = e.dataTransfer.files?.[0];
+      if (file) handleInvoiceFile(file);
+    },
+    [handleInvoiceFile]
+  );
+
   const searchClients = useCallback(async (q: string, setResults: (c: Client[]) => void) => {
     if (!q || q.length < 2) { setResults([]); return; }
     try {
@@ -217,6 +280,46 @@ export default function NewProjectPage() {
       {/* Step 1: Basics */}
       {step === 1 && (
         <div className="space-y-6">
+          {/* Optional: drop a PDF invoice to pre-fill the wizard */}
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setIsDragging(true);
+            }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={onDrop}
+            className={`neo-card flex flex-col items-center justify-center gap-2 border-2 border-dashed px-6 py-5 text-center text-sm transition-colors ${
+              isDragging
+                ? "border-[var(--accent)] bg-[var(--accent)]/5"
+                : "border-[var(--border)] text-[var(--foreground-muted)]"
+            }`}
+          >
+            <span className="text-2xl" aria-hidden>
+              📄
+            </span>
+            <p className="font-medium text-[var(--foreground)]">
+              {parsingInvoice ? "Parsing invoice…" : "Drop a PDF invoice to pre-fill"}
+            </p>
+            <p className="text-xs">
+              or{" "}
+              <label className="cursor-pointer text-[var(--accent-hover)] underline">
+                choose a file
+                <input
+                  type="file"
+                  accept="application/pdf"
+                  disabled={parsingInvoice}
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) handleInvoiceFile(f);
+                    e.target.value = "";
+                  }}
+                />
+              </label>
+              . We&rsquo;ll extract the job number, client, and contact info — review before continuing.
+            </p>
+          </div>
+
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Job / Invoice Number *</label>
