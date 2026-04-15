@@ -1,9 +1,15 @@
 # Operations Maturity Roadmap — Scorecard
 
-**Source of truth for maturity scoring.** For the full execution plan and prioritized backlog, see `/ROADMAP.md`.  
-Last updated: 2026-04-15
+**Single source of truth for maturity scoring and the "where are we actually" question.** For the detailed execution backlog, see `/ROADMAP.md`.  
+Last updated: 2026-04-15 (menu / auth audit cycle)
 
-> **Delta since 2026-04-15 review:** normalized kitchen pricing builder foundation landed (schema + APIs + role-aware submit/approve path), Kitchen estimator moved from raw cost-lines to structured builder flow, and admin behavior controls were consolidated into Admin Hub (`/admin?tab=behavior`) with legacy risk page redirected there.
+> **Delta since 2026-04-15 AM review:**
+> - **Single master menu** — `src/config/menu.ts` is now the canonical definition. `AppHeader` and `roles.ts` both delegate to it. Every role sees the same menu *shape* with item-level visibility rules, not a separate menu tree per role.
+> - **Permanent admin guard** — `jessy@evos.ca` is pinned as admin at `resolveDbUser()`. Role drift or invite mix-ups cannot strip ownership. Additional permanent owners can be added via the `APP_OWNER_EMAILS` env var without touching code.
+> - **`withAuth` + `requireProjectAccess`** — new unified API guard in `src/lib/auth/guard.ts`. Replaces the copy-pasted `requireRole(...); if (!ok) return response` pattern and gives us one place to add logging, rate limiting, project-scope checks. Routes will be migrated incrementally; `api/admin/invites` and all `/api/admin/**` already gated.
+> - **Invite flow verified end-to-end** — admin hub → `/admin/invites` → `POST /api/admin/invites` → share link → `login?invite=<token>` → `resolveDbUser` consumes the invite row and sets role. No orphaned code paths.
+>
+> **Delta from earlier 2026-04-15 cycles:** normalized kitchen pricing builder (schema + APIs + role-aware submit/approve path), Kitchen estimator moved from raw cost-lines to structured builder flow, admin behavior controls consolidated into Admin Hub (`/admin?tab=behavior`) with `/settings/risk` redirected there.
 
 ---
 
@@ -235,13 +241,15 @@ Checklist:
 - Sales enters data without breaking production logic — partial
 - Admin can override safely with audit visibility ✓
 
-**Score: 2.5 / 5** (kitchen role-aware pricing and manager approval controls improved enforcement, but woodworker/sales dedicated operational views are still missing)  
+**Score: 3 / 5** (↑ from 2.5 — single master menu in place, permanent admin guard, unified API auth helper; woodworker/sales dedicated operational views still missing)  
 **Owner:** Admin  
 **Actions:**
 - Build woodworker "Today" view (task list + punch-in, mobile-first)
 - Build salesperson "My Projects" view + PDF quote export
-- Role-filter navigation menu by User.role
-- Add role-specific landing page after login (woodworker → Today, planner → Cockpit, sales → My Projects, admin → Dashboard)
+- ~~Role-filter navigation menu by User.role~~ ✓ DONE (`src/config/menu.ts` + `isMenuItemVisibleToRole`)
+- ~~Add role-specific landing page after login~~ ✓ DONE (`getDefaultLandingPage` in `roles.ts`)
+- ~~Lock ownership against accidental downgrade~~ ✓ DONE (`PERMANENT_ADMIN_EMAILS` in `session.ts`)
+- Migrate remaining `/api/projects/**` and `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess` (AUTH_RISK_MAP P1 closure)
 
 ---
 
@@ -376,14 +384,14 @@ Checklist:
 | 8. Standard time baselines | 0 | — |
 | 9. Inventory + purchasing | 4 | — |
 | 10. Cutlist integration | 3 | — |
-| 11. Roles and permissions | 2 | — |
+| 11. Roles and permissions | **3** | ↑ from 2.5 (master menu + permanent admin + withAuth) |
 | 12. AI action system | 3 | — |
 | 13. Dashboard usefulness | 3 | — (stage grouping + role-aware cards) |
 | 14. Exception handling | 2 | — |
 | 15. Training and adoption | 1 | — |
 | 16. Commercialization readiness | 1 | — |
 | 17. Admin customization coherence | 3 | new |
-| **Overall average** | **2.3 / 5** | stable (kitchen + admin consolidation progress, major role/task gaps remain) |
+| **Overall average** | **2.35 / 5** | ↑ 0.05 (role/menu/auth consolidation; major task-distribution gap still dominates) |
 
 **Review date:** 2026-04-15  
 **Top 3 risks this cycle:**
@@ -395,6 +403,92 @@ Checklist:
 1. Add `ProjectProcessStep` schema and assignment UI (unlocks task distribution + calendar integration + time baselines)
 2. Build PDF quote export for salesperson
 3. Build woodworker "Today" mobile view with task list + punch-in
+
+---
+
+## The atomic unit — canonical definition
+
+The app has exactly one atomic unit: **a Project**.
+
+A Project is a single customer job that will be built, delivered, and paid
+for. It is the shared container that sales, planners, woodworkers, and admins
+all touch — every cost, every punch, every service call, every email, every
+deviation attaches to a Project or to one of its sub-entities.
+
+**Lifecycle stages** (`Project.stage`, canonical left-to-right):
+
+```
+  quote  ──▶  invoiced  ──▶  confirmed  ──▶  (production)  ──▶  done
+   │            │              │                │                 │
+   │            │              │                │                 └── service calls hang off here
+   │            │              │                └── ProjectProcessStep runs (assignment gap — not yet built)
+   │            │              └── deposit received, planner takes over
+   │            └── invoice sent, waiting on deposit
+   └── salesperson working with client, no commitment yet
+```
+
+**Sub-entities that hang off a Project** (all defined in `prisma/schema.prisma`):
+
+| Entity | Purpose | Who touches it |
+|---|---|---|
+| `ProjectItem` | One deliverable (vanity / side unit / kitchen / panel) | sales intake, planner review |
+| `VanityInputs` / `KitchenInputs` / `SideUnitInputs` | Structured dimensions + options | sales wizard |
+| `KitchenPricingProject` | Normalized kitchen quote builder | sales → planner approval |
+| `PanelPart` | One line in the cutlist (W × L × qty × material) | cutlist import, planner |
+| `MaterialRequirement` | Aggregated need-per-material derived from cutlist | observability engine |
+| `CostLine` | Estimate + actual cost rows | planner, vendor invoice mapping |
+| `Order` + `OrderLine` | Purchase orders raised against the project | planner, purchasing |
+| `Deviation` | Risks surfaced by the observability engine | anyone (dashboard) |
+| `ProjectProcessStep` | Per-project instance of a template step (assignment TBD) | planner → woodworker |
+| `TimePunch` | Shop-floor time at a station, tied to project | woodworker (QR kiosk) |
+| `ServiceCall` | After-delivery visit (warranty / repair / revisit) | sales, planner, shop |
+| `AuditLog` | Change history for the project | system (automatic) |
+| `MaterialSnapshot` | Saved ingredient state (per vanity / kitchen) | planner |
+
+**The flow one Project experiences, in order, when everything works:**
+
+1. **Sales intake** — salesperson clicks "New Project", fills the wizard (or
+   drops a PDF quote and confirms the parsed values). Project is created with
+   `stage = "quote"`, assigned to that salesperson.
+2. **Quote → Invoice** — salesperson produces the estimate (kitchen pricing
+   builder for kitchens, or the section configurator for vanities). Moves to
+   `stage = "invoiced"` when the invoice is sent.
+3. **Deposit → Confirmed** — `depositReceivedAt` is stamped; stage flips to
+   `confirmed`; the next-action on the project card changes from "waiting on
+   deposit" to "hand off to shop". Ownership effectively transfers from
+   salesperson → planner.
+4. **Planner readiness** — planner reviews intake completeness against the
+   readiness check (`src/lib/readiness.ts`). If fields are missing, the card
+   shows what's missing and who owes it. (Enforcement is advisory today, will
+   become a hard block — see Section 3.)
+5. **Cutlist + materials** — panel parts are ingested (`PanelPart` rows), the
+   observability engine recalculates `MaterialRequirement`s, compares them to
+   live inventory, raises `Deviation`s for any shortage, and the AI suggests a
+   purchase draft.
+6. **Purchasing** — planner/purchasing places orders. When lines are received
+   (`/api/orders/[id]/receive`), inventory increases, deviations resolve, the
+   project is now production-ready.
+7. **Production** — *today, this is the gap.* The intended flow is: planner
+   instantiates the Process Template → `ProjectProcessStep` rows get created
+   → planner assigns each step to an employee and a date → woodworker opens
+   "My Day" → sees today's assigned steps → punches into the station → step
+   flips to `in_progress` → punch-out moves it to `done`.
+8. **Delivery + invoice reconciliation** — project flips to `isDone = true`,
+   vendor invoices are mapped to the project's cost lines, and actual margin
+   settles against estimated.
+9. **Service calls** — any post-delivery issue creates a `ServiceCall` that
+   hangs off the project and appears on Calendar + Service Calls page.
+
+**Everything that breaks in the current tools breaks here:**
+
+- A Monday.com board entry has no cost side, no inventory side, no punches.
+- An email thread has no stage, no blockers, no readiness check.
+- A Google Drive folder has no sense of "this quote became this invoice".
+- A text message is not a thing the system can run an observability engine on.
+
+The whole point of this app is that a **Project is the single row that
+everything attaches to** — and any change to any attached entity
+(`recalculateProjectState`) re-derives the current picture.
 
 ---
 

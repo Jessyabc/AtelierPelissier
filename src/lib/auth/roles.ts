@@ -31,57 +31,22 @@ export function canSeeKitchenCostBreakdown(role: string): boolean {
   return role === "admin" || role === "planner";
 }
 
-// ── Role → page access map ────────────────────────────────────────────
-// Used by middleware (page gating) and AppHeader (menu filtering).
+// ── Role → page access ────────────────────────────────────────────────
+// Delegated to `src/config/menu.ts` — one source of truth for which role
+// sees which page. Middleware and AppHeader both route through these helpers.
 
-const ALL_PAGES = [
-  "/", "/home", "/projects/new", "/assistant", "/dashboard",
-  "/inventory", "/distributors", "/costing", "/processes",
-  "/service-calls", "/calendar", "/settings/risk", "/purchasing",
-  "/admin", "/admin/employees", "/admin/stations", "/admin/punches",
-  "/admin/invites", "/onboarding", "/structure", "/today",
-] as const;
+import { MASTER_MENU, isMenuItemVisibleToRole, isPathAllowedForRole } from "@/config/menu";
 
-const ROLE_PAGE_ACCESS: Record<AppRole, readonly string[]> = {
-  admin: ALL_PAGES,
-  planner: [
-    "/", "/home", "/projects/new", "/assistant", "/dashboard",
-    "/inventory", "/distributors", "/costing", "/processes",
-    "/service-calls", "/calendar", "/onboarding", "/today",
-  ],
-  salesperson: [
-    "/", "/projects/new", "/assistant", "/service-calls",
-    "/calendar", "/distributors", "/costing", "/onboarding", "/today",
-  ],
-  woodworker: [
-    "/assistant", "/calendar", "/onboarding", "/today",
-  ],
-};
-
-/** Menu items (by href) each role is allowed to see. */
+/** True if a role may visit this pathname (middleware + layout guard). */
 export function isPageAllowedForRole(pathname: string, role: string): boolean {
-  const allowed = ROLE_PAGE_ACCESS[role as AppRole];
-  if (!allowed) return false;
-  // Exact match first
-  if (allowed.includes(pathname)) return true;
-  // Dynamic sub-paths: /projects/[id], /processes/[id], /punch/[station] — always allowed if parent is
-  // Projects are accessible either via the Projects list ("/") or via Calendar ("/calendar") links.
-  if (pathname.startsWith("/projects/") && (allowed.includes("/") || allowed.includes("/calendar"))) return true;
-  if (pathname.startsWith("/processes/") && allowed.includes("/processes")) return true;
-  if (pathname.startsWith("/punch/")) return true;
-  if (pathname.startsWith("/admin/") && allowed.some((p) => p.startsWith("/admin"))) return true;
-  return false;
+  return isPathAllowedForRole(pathname, role);
 }
 
-/** Menu href filter: returns true if the menu item should be shown to this role. */
+/** True if a menu entry (by href) should appear for this role. */
 export function isMenuItemAllowedForRole(href: string, role: string): boolean {
-  if (href === "#export") return role === "admin";
-  const allowed = ROLE_PAGE_ACCESS[role as AppRole];
-  if (!allowed) return false;
-  if (allowed.includes(href)) return true;
-  // Admin sub-pages are accessible if /admin is allowed
-  if (href.startsWith("/admin") && allowed.some((p) => p.startsWith("/admin"))) return true;
-  return false;
+  const item = MASTER_MENU.find((m) => m.href === href);
+  if (!item) return false;
+  return isMenuItemVisibleToRole(item, role);
 }
 
 /** Default landing page after login (no ?next= param). */

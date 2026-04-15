@@ -4,46 +4,17 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
-import { isMenuItemAllowedForRole } from "@/lib/auth/roles";
+import { MASTER_MENU, isMenuItemVisibleToRole, type MenuItem } from "@/config/menu";
 
-type MenuItemConfig = {
-  href: string;
-  label: string;
-  visible: boolean;
-  order: number;
-  group?: string;
-  exportData?: boolean;
-};
+type MenuGroup = { label: string; items: MenuItem[] };
 
-type MenuGroup = { label: string; items: MenuItemConfig[] };
-
-const GROUPED_MENU: MenuItemConfig[] = [
-  { href: "/today", label: "My Day", visible: true, order: 0, group: "Work" },
-  { href: "/", label: "Projects", visible: true, order: 1, group: "Work" },
-  { href: "/projects/new", label: "New Project", visible: true, order: 2, group: "Work" },
-  { href: "/service-calls", label: "Service Calls", visible: true, order: 3, group: "Work" },
-  { href: "/calendar", label: "Calendar", visible: true, order: 4, group: "Work" },
-
-  { href: "/home", label: "Cockpit", visible: true, order: 10, group: "Ops" },
-  { href: "/dashboard", label: "Dashboard", visible: true, order: 11, group: "Ops" },
-  { href: "/inventory", label: "Inventory", visible: true, order: 12, group: "Ops" },
-  { href: "/distributors", label: "Purchasing", visible: true, order: 13, group: "Ops" },
-  { href: "/costing", label: "Costing", visible: true, order: 14, group: "Ops" },
-
-  { href: "/assistant", label: "Afaqi", visible: true, order: 20, group: "Tools" },
-  { href: "/processes", label: "Processes", visible: true, order: 21, group: "Tools" },
-
-  { href: "/admin", label: "Admin Hub", visible: true, order: 30, group: "Config" },
-  { href: "#export", label: "Export Backup", visible: true, order: 31, group: "Config", exportData: true },
-];
-
-function buildGroups(items: MenuItemConfig[], role: string): MenuGroup[] {
+function buildGroups(items: readonly MenuItem[], role: string): MenuGroup[] {
   const visible = items
-    .filter((m) => m.visible)
-    .filter((m) => isMenuItemAllowedForRole(m.href, role))
+    .filter((m) => isMenuItemVisibleToRole(m, role))
+    .slice()
     .sort((a, b) => a.order - b.order);
 
-  const map = new Map<string, MenuItemConfig[]>();
+  const map = new Map<string, MenuItem[]>();
   for (const item of visible) {
     const g = item.group || "Other";
     if (!map.has(g)) map.set(g, []);
@@ -57,7 +28,7 @@ export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
-  const [menuItems, setMenuItems] = useState<MenuItemConfig[]>(GROUPED_MENU);
+  const [menuItems, setMenuItems] = useState<readonly MenuItem[]>(MASTER_MENU);
   const [companyName, setCompanyName] = useState("Atelier Pelissier");
   const [logoUrl, setLogoUrl] = useState("/logo.svg");
   const [userRole, setUserRole] = useState<string>("admin");
@@ -74,9 +45,18 @@ export function AppHeader() {
           if (cfg.companyName) setCompanyName(cfg.companyName);
           if (cfg.logoUrl) setLogoUrl(cfg.logoUrl);
           if (Array.isArray(cfg.menuConfig) && cfg.menuConfig.length > 0) {
-            setMenuItems(
-              [...cfg.menuConfig].sort((a: MenuItemConfig, b: MenuItemConfig) => a.order - b.order)
-            );
+            // Admin overrides: merge overrides onto the master menu by href so
+            // an admin can flip `visible` or reorder without losing role
+            // restrictions or introducing unknown items.
+            const overrideByHref = new Map<string, Partial<MenuItem>>();
+            for (const raw of cfg.menuConfig as Partial<MenuItem>[]) {
+              if (raw?.href) overrideByHref.set(raw.href, raw);
+            }
+            const merged = MASTER_MENU.map((base) => {
+              const ov = overrideByHref.get(base.href);
+              return ov ? { ...base, ...ov, roles: base.roles } : base;
+            });
+            setMenuItems(merged);
           }
         }
         if (me?.user?.role) setUserRole(me.user.role);

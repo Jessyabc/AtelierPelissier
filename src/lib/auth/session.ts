@@ -21,6 +21,32 @@ export type SessionResult =
 
 const IMPERSONATION_COOKIE = "apops_view_as_role";
 
+/**
+ * Emails that are *always* admin regardless of DB state or invite flow.
+ *
+ * This is the app owner guard: if the account is ever accidentally downgraded,
+ * invited with a lower role, or recreated, the owner can still log in as admin
+ * and unblock the team. Read from env first, with a hardcoded fallback for the
+ * canonical owner of this deployment (Jessy @ Evos Creations).
+ *
+ * To add more permanent owners, set APP_OWNER_EMAILS="a@x.com,b@y.com".
+ */
+export const PERMANENT_ADMIN_EMAILS: readonly string[] = (() => {
+  const env = (process.env.APP_OWNER_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  // Canonical owner of this deployment. Additional owners should go through
+  // APP_OWNER_EMAILS env var rather than being appended here.
+  const hardcoded = ["jessy@evos.ca"];
+  return Array.from(new Set([...env, ...hardcoded]));
+})();
+
+export function isPermanentAdminEmail(email: string | null | undefined): boolean {
+  if (!email) return false;
+  return PERMANENT_ADMIN_EMAILS.includes(email.toLowerCase().trim());
+}
+
 function resolveImpersonatedRole(dbUser: DbUser): null | AppRole {
   // Only admins can impersonate, and we never allow "impersonate admin" (no-op / confusing).
   if (dbUser.role !== "admin") return null;
@@ -36,16 +62,31 @@ function resolveImpersonatedRole(dbUser: DbUser): null | AppRole {
  * Resolve Neon User row for the current Supabase session, bootstrapping the first admin or a pending invite by email.
  */
 export async function resolveDbUser(supabaseUser: SupabaseAuthUser): Promise<DbUser | null> {
+  const email = supabaseUser.email?.toLowerCase().trim() ?? null;
+  const ownerOverride = isPermanentAdminEmail(email);
+
   const existing = await prisma.user.findUnique({
     where: { supabaseUserId: supabaseUser.id },
   });
-  if (existing) return existing;
+  if (existing) {
+    // Permanent admin guard: if the owner account exists but has drifted to a
+    // lower role (invite mix-up, manual DB edit, seed script), force it back
+    // to admin on every session fetch. Idempotent + audited via updatedAt.
+    if (ownerOverride && existing.role !== "admin") {
+      return prisma.user.update({
+        where: { id: existing.id },
+        data: { role: "admin" },
+      });
+    }
+    return existing;
+  }
 
-  const email = supabaseUser.email?.toLowerCase().trim();
   if (!email) return null;
 
   const userCount = await prisma.user.count();
-  if (userCount === 0) {
+  if (userCount === 0 || ownerOverride) {
+    // First-ever user OR a permanent owner signing in for the first time:
+    // auto-provision as admin without requiring an invite.
     return prisma.user.create({
       data: {
         supabaseUserId: supabaseUser.id,
