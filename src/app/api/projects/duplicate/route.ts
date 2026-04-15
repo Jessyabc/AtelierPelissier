@@ -21,6 +21,19 @@ export async function POST(request: Request) {
       vanityInputs: true,
       sideUnitInputs: true,
       kitchenInputs: true,
+      kitchenPricingProject: {
+        include: {
+          cabinets: {
+            orderBy: { sortOrder: "asc" },
+            include: {
+              doorSpecs: { orderBy: { sortOrder: "asc" } },
+              drawerSpecs: { orderBy: { sortOrder: "asc" } },
+              hardware: true,
+            },
+          },
+          installationItems: true,
+        },
+      },
       panelParts: true,
       prerequisiteLines: true,
       costLines: true,
@@ -124,6 +137,89 @@ export async function POST(request: Request) {
       await prisma.kitchenInputs.create({
         data: { projectId: project.id },
       });
+    }
+    if (source.kitchenPricingProject) {
+      const copiedKitchen = await prisma.kitchenPricingProject.create({
+        data: {
+          projectId: project.id,
+          includeInstallation: source.kitchenPricingProject.includeInstallation,
+          includeDelivery: source.kitchenPricingProject.includeDelivery,
+          deliveryCost: source.kitchenPricingProject.deliveryCost,
+          multiplier: source.kitchenPricingProject.multiplier,
+          discountPercent: source.kitchenPricingProject.discountPercent,
+          discountReason: source.kitchenPricingProject.discountReason,
+          approvalStatus: "not_required",
+          approvalReason: null,
+          approvedByRole: null,
+          submittedByRole: null,
+          submittedAt: null,
+          approvedAt: null,
+        },
+      });
+
+      for (const cabinet of source.kitchenPricingProject.cabinets) {
+        const copiedCabinet = await prisma.kitchenPricingCabinet.create({
+          data: {
+            kitchenPricingProjectId: copiedKitchen.id,
+            sortOrder: cabinet.sortOrder,
+            cabinetType: cabinet.cabinetType,
+            configuration: cabinet.configuration,
+            cabinetBoxMaterialId: cabinet.cabinetBoxMaterialId,
+            cabinetBoxQuantity: cabinet.cabinetBoxQuantity,
+            manualFabricationHours: cabinet.manualFabricationHours,
+          },
+        });
+
+        if (cabinet.doorSpecs.length > 0) {
+          await prisma.kitchenPricingDoorSpec.createMany({
+            data: cabinet.doorSpecs.map((door) => ({
+              kitchenPricingCabinetId: copiedCabinet.id,
+              sortOrder: door.sortOrder,
+              widthInches: door.widthInches,
+              heightInches: door.heightInches,
+              quantity: door.quantity,
+              manufacturerId: door.manufacturerId,
+              styleId: door.styleId,
+            })),
+          });
+        }
+
+        if (cabinet.drawerSpecs.length > 0) {
+          await prisma.kitchenPricingDrawerSpec.createMany({
+            data: cabinet.drawerSpecs.map((drawer) => ({
+              kitchenPricingCabinetId: copiedCabinet.id,
+              sortOrder: drawer.sortOrder,
+              drawerSystemId: drawer.drawerSystemId,
+              quantity: drawer.quantity,
+            })),
+          });
+        }
+
+        if (cabinet.hardware) {
+          await prisma.kitchenPricingHardware.create({
+            data: {
+              kitchenPricingCabinetId: copiedCabinet.id,
+              standardHinges: cabinet.hardware.standardHinges,
+              verticalHinges: cabinet.hardware.verticalHinges,
+              handleTypeId: cabinet.hardware.handleTypeId,
+              handleQuantity: cabinet.hardware.handleQuantity,
+              pattes: cabinet.hardware.pattes,
+              ledQuantity: cabinet.hardware.ledQuantity,
+              wasteBinQuantity: cabinet.hardware.wasteBinQuantity,
+            },
+          });
+        }
+      }
+
+      if (source.kitchenPricingProject.installationItems.length > 0) {
+        await prisma.kitchenPricingInstallationItem.createMany({
+          data: source.kitchenPricingProject.installationItems.map((item) => ({
+            kitchenPricingProjectId: copiedKitchen.id,
+            installTypeId: item.installTypeId,
+            quantity: item.quantity,
+          })),
+        });
+      }
     }
     for (const line of source.costLines) {
       await prisma.costLine.create({
@@ -255,6 +351,19 @@ export async function POST(request: Request) {
         vanityInputs: true,
         sideUnitInputs: true,
         kitchenInputs: true,
+        kitchenPricingProject: {
+          include: {
+            cabinets: {
+              orderBy: { sortOrder: "asc" },
+              include: {
+                doorSpecs: { orderBy: { sortOrder: "asc" } },
+                drawerSpecs: { orderBy: { sortOrder: "asc" } },
+                hardware: true,
+              },
+            },
+            installationItems: true,
+          },
+        },
         panelParts: true,
         costLines: true,
         serviceCalls: { include: { items: true } },

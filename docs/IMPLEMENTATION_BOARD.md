@@ -6,6 +6,13 @@
 
 This board converts the Phase 1 (operational maturity) and Phase 2 (lean refactor) plans into sprint-assignable tickets. There are **42 Phase 1 tickets** across 8 epics and **18 Phase 2 tickets** across 5 epics.
 
+### Implementation delta (2026-04-15)
+
+- Kitchen pricing foundation implemented as normalized persistence (`KitchenPricingProject` + cabinet/door/drawer/hardware/install tables) with role-aware submit/approve APIs.
+- Kitchen estimator UI moved from generic cost-line entry toward structured builder workflow and manager-tier approval path.
+- Admin customization consolidation started: new **App Behavior** tab in Admin Hub and legacy risk settings route redirected to that consolidated surface.
+- New audit reference created: `docs/ADMIN_CUSTOMIZATION_SURFACE.md`.
+
 Phase 1 targets 10 weeks of execution across 5 sprints (2 weeks each). Phase 2 begins only after Phase 1 M1-M5 are validated + 4 weeks of usage data, meaning Phase 2 sprint planning starts no earlier than week 14.
 
 Key constraint: Phase 2 tickets are tagged with explicit evidence gates. No Phase 2 implementation ticket may begin without its gate being satisfied.

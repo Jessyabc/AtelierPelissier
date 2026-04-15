@@ -16,6 +16,7 @@ const TABS = [
   { id: "company", label: "Company" },
   { id: "navigation", label: "Navigation" },
   { id: "rooms", label: "Room Types" },
+  { id: "behavior", label: "App Behavior" },
   { id: "standards", label: "Construction Standards" },
   { id: "ai", label: "AI Intelligence" },
   { id: "email", label: "Email Templates" },
@@ -210,6 +211,7 @@ function AdminPageContent() {
         {tab === "company" && <CompanyTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "navigation" && <NavigationTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "rooms" && <RoomTypesTab config={config} saving={saving} onSave={saveConfig} />}
+        {tab === "behavior" && <AppBehaviorTab />}
         {tab === "standards" && <ConstructionStandardsTab />}
         {tab === "ai" && <AiIntelligenceTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "email" && <EmailTemplatesTab config={config} saving={saving} onSave={saveConfig} />}
@@ -1508,6 +1510,294 @@ function SystemHealthTab() {
             </div>
           </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+type GlobalSettings = {
+  id: string;
+  defaultMarkup: number;
+  targetMarginPct: number;
+  warningMarginPct: number;
+  highRiskMarginPct: number;
+  criticalMarginPct: number;
+  wasteFactor: number;
+  inventoryShortageHigh: number;
+  taxEnabledDefault: boolean;
+  defaultTaxRate: number;
+  defaultSheetFormatId: string | null;
+};
+
+type RiskSettings = {
+  id: string;
+  targetMargin: number;
+  warningMargin: number;
+  highRiskMargin: number;
+  criticalMargin: number;
+  wasteFactor: number;
+  inventoryShortageHigh: number;
+};
+
+function AppBehaviorTab() {
+  const [globalSettings, setGlobalSettings] = useState<GlobalSettings | null>(null);
+  const [riskSettings, setRiskSettings] = useState<RiskSettings | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [savingGlobal, setSavingGlobal] = useState(false);
+  const [savingRisk, setSavingRisk] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [globalRes, riskRes] = await Promise.all([
+        fetch("/api/settings/global", { cache: "no-store" }),
+        fetch("/api/risk-settings", { cache: "no-store" }),
+      ]);
+      if (globalRes.ok) setGlobalSettings(await globalRes.json());
+      if (riskRes.ok) setRiskSettings(await riskRes.json());
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function saveGlobal() {
+    if (!globalSettings) return;
+    setSavingGlobal(true);
+    try {
+      const res = await fetch("/api/settings/global", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          defaultMarkup: globalSettings.defaultMarkup,
+          targetMarginPct: globalSettings.targetMarginPct,
+          warningMarginPct: globalSettings.warningMarginPct,
+          highRiskMarginPct: globalSettings.highRiskMarginPct,
+          criticalMarginPct: globalSettings.criticalMarginPct,
+          wasteFactor: globalSettings.wasteFactor,
+          inventoryShortageHigh: globalSettings.inventoryShortageHigh,
+          taxEnabledDefault: globalSettings.taxEnabledDefault,
+          defaultTaxRate: globalSettings.defaultTaxRate,
+          defaultSheetFormatId: globalSettings.defaultSheetFormatId,
+        }),
+      });
+      if (res.ok) {
+        setGlobalSettings(await res.json());
+        setToast("Global behavior settings saved.");
+        setTimeout(() => setToast(""), 2000);
+      }
+    } finally {
+      setSavingGlobal(false);
+    }
+  }
+
+  async function saveRisk() {
+    if (!riskSettings) return;
+    setSavingRisk(true);
+    try {
+      const res = await fetch("/api/risk-settings", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          targetMargin: riskSettings.targetMargin,
+          warningMargin: riskSettings.warningMargin,
+          highRiskMargin: riskSettings.highRiskMargin,
+          criticalMargin: riskSettings.criticalMargin,
+          wasteFactor: riskSettings.wasteFactor,
+          inventoryShortageHigh: riskSettings.inventoryShortageHigh,
+        }),
+      });
+      if (res.ok) {
+        setRiskSettings(await res.json());
+        setToast("Risk behavior settings saved and recalculation queued.");
+        setTimeout(() => setToast(""), 2500);
+      }
+    } finally {
+      setSavingRisk(false);
+    }
+  }
+
+  if (loading || !globalSettings || !riskSettings) {
+    return <p className="text-sm text-[var(--foreground-muted)]">Loading behavior controls...</p>;
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">
+          App Customization & Behavior
+        </h2>
+        <p className="text-sm text-[var(--foreground-muted)]">
+          Consolidated admin controls for default pricing behavior, tax/risk thresholds, and operational rules.
+          This is the single behavior-control page; older scattered pages should be considered legacy entry points.
+        </p>
+      </div>
+
+      {toast && (
+        <div className="rounded border border-green-200 bg-green-50 px-4 py-2 text-sm text-green-700">
+          {toast}
+        </div>
+      )}
+
+      <div className="neo-panel-inset rounded-lg p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">Global defaults</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Default markup
+            <input
+              type="number"
+              min={1}
+              max={10}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={globalSettings.defaultMarkup}
+              onChange={(e) =>
+                setGlobalSettings({ ...globalSettings, defaultMarkup: Number(e.target.value) || 2.5 })
+              }
+            />
+          </label>
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Default tax rate (0-1)
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.001}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={globalSettings.defaultTaxRate}
+              onChange={(e) =>
+                setGlobalSettings({ ...globalSettings, defaultTaxRate: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+          <label className="inline-flex items-center gap-2 text-sm text-[var(--foreground)]">
+            <input
+              type="checkbox"
+              checked={globalSettings.taxEnabledDefault}
+              onChange={(e) =>
+                setGlobalSettings({ ...globalSettings, taxEnabledDefault: e.target.checked })
+              }
+            />
+            Enable tax by default on new projects
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveGlobal()}
+          disabled={savingGlobal}
+          className="neo-btn-primary px-5 py-2 text-sm disabled:opacity-50"
+        >
+          {savingGlobal ? "Saving..." : "Save global defaults"}
+        </button>
+      </div>
+
+      <div className="neo-panel-inset rounded-lg p-4 space-y-4">
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">Risk and deviation thresholds</h3>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Target margin
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={riskSettings.targetMargin}
+              onChange={(e) => setRiskSettings({ ...riskSettings, targetMargin: Number(e.target.value) || 0 })}
+            />
+          </label>
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Warning margin
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={riskSettings.warningMargin}
+              onChange={(e) =>
+                setRiskSettings({ ...riskSettings, warningMargin: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+          <label className="text-xs text-[var(--foreground-muted)]">
+            High risk margin
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={riskSettings.highRiskMargin}
+              onChange={(e) =>
+                setRiskSettings({ ...riskSettings, highRiskMargin: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Critical margin
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={riskSettings.criticalMargin}
+              onChange={(e) =>
+                setRiskSettings({ ...riskSettings, criticalMargin: Number(e.target.value) || 0 })
+              }
+            />
+          </label>
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Waste factor
+            <input
+              type="number"
+              min={1}
+              max={2}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={riskSettings.wasteFactor}
+              onChange={(e) => setRiskSettings({ ...riskSettings, wasteFactor: Number(e.target.value) || 1 })}
+            />
+          </label>
+          <label className="text-xs text-[var(--foreground-muted)]">
+            Inventory shortage high threshold
+            <input
+              type="number"
+              min={0}
+              max={1}
+              step={0.01}
+              className="neo-input mt-1 w-full px-3 py-2 text-sm"
+              value={riskSettings.inventoryShortageHigh}
+              onChange={(e) =>
+                setRiskSettings({
+                  ...riskSettings,
+                  inventoryShortageHigh: Number(e.target.value) || 0,
+                })
+              }
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveRisk()}
+          disabled={savingRisk}
+          className="neo-btn-primary px-5 py-2 text-sm disabled:opacity-50"
+        >
+          {savingRisk ? "Saving..." : "Save risk behavior"}
+        </button>
+      </div>
+
+      <div className="rounded border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+        <p className="font-semibold">Admin-level customization inventory</p>
+        <p className="mt-1">
+          Also review these admin-only behavior sections in this same page: Company, Navigation, Room Types,
+          Construction Standards, AI Intelligence, Email Templates, Integrations, and System Health.
+        </p>
       </div>
     </div>
   );

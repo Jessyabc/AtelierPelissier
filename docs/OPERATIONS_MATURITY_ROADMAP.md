@@ -1,9 +1,9 @@
 # Operations Maturity Roadmap — Scorecard
 
 **Source of truth for maturity scoring.** For the full execution plan and prioritized backlog, see `/ROADMAP.md`.  
-Last updated: 2026-04-14
+Last updated: 2026-04-15
 
-> **Delta since 2026-04-09 review:** sales lifecycle stage, role-aware next-action spine, PDF invoice intake, ingredient/snapshot subsystem, and VanityTab section-canonical refactor all landed. Sections 1, 3, 4, 11, 13 rescored below.
+> **Delta since 2026-04-15 review:** normalized kitchen pricing builder foundation landed (schema + APIs + role-aware submit/approve path), Kitchen estimator moved from raw cost-lines to structured builder flow, and admin behavior controls were consolidated into Admin Hub (`/admin?tab=behavior`) with legacy risk page redirected there.
 
 ---
 
@@ -228,14 +228,14 @@ Checklist:
 ## 11. Roles and permissions
 
 Checklist:
-- Role-specific interfaces simplified — NOT DONE (same UI for all roles)
+- Role-specific interfaces simplified — partial (kitchen now role-aware with hidden breakdown for sales, manager-tier approvals)
 - Woodworkers see only what they need — NOT DONE (no mobile task view)
 - Planner/ops role manages flow without admin clutter — partial
 - Owner/executive view fast — NOT DONE
 - Sales enters data without breaking production logic — partial
 - Admin can override safely with audit visibility ✓
 
-**Score: 2 / 5** (was 3, downgraded — audit confirmed woodworker has no functional view, salesperson has no quote output)  
+**Score: 2.5 / 5** (kitchen role-aware pricing and manager approval controls improved enforcement, but woodworker/sales dedicated operational views are still missing)  
 **Owner:** Admin  
 **Actions:**
 - Build woodworker "Today" view (task list + punch-in, mobile-first)
@@ -286,6 +286,23 @@ Checklist:
 - Group projects by blocked vs active vs done in default cockpit view
 - Add per-role dashboard presets
 - Add "last updated" timestamp for data freshness
+
+---
+
+## 17. Admin customization coherence
+
+Checklist:
+- Admin-level behavior controls in one canonical place — partial (Admin Hub now includes consolidated App Behavior tab)
+- Legacy scattered settings entry points reduced — partial (`/settings/risk` now redirects to Admin Hub behavior tab)
+- Clear inventory of customizable surfaces — DONE (`docs/ADMIN_CUSTOMIZATION_SURFACE.md`)
+- Kitchen pricing admin controls persisted and editable from UI — NOT DONE (currently code constants; persistence/config editor pending)
+
+**Score: 3 / 5**  
+**Owner:** Admin  
+**Actions:**
+- Persist kitchen pricing coefficients in admin config tables (manufacturer/style/hardware/labor/install/delivery presets)
+- Add behavior-change audit timeline for admin settings updates
+- Keep new customization features routed through `/admin` tabs only
 
 ---
 
@@ -365,9 +382,10 @@ Checklist:
 | 14. Exception handling | 2 | — |
 | 15. Training and adoption | 1 | — |
 | 16. Commercialization readiness | 1 | — |
-| **Overall average** | **2.3 / 5** | ↑ from 2.1 (sales lifecycle work moved the needle) |
+| 17. Admin customization coherence | 3 | new |
+| **Overall average** | **2.3 / 5** | stable (kitchen + admin consolidation progress, major role/task gaps remain) |
 
-**Review date:** 2026-04-14  
+**Review date:** 2026-04-15  
 **Top 3 risks this cycle:**
 1. Task distribution does not exist — woodworkers have no system-driven daily plan
 2. Calendar is entirely disconnected from the project engine — production schedule is invisible on the calendar

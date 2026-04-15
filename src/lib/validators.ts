@@ -90,6 +90,19 @@ export const updateProjectSchema = z
   );
 
 const VANITY_SECTION_LAYOUTS = ["doors", "drawer_over_doors", "doors_over_drawer", "all_drawers", "open"] as const;
+const KITCHEN_CABINET_TYPES = ["base", "wall", "pantry", "corner_base", "corner_wall", "custom"] as const;
+const KITCHEN_CONFIGS = ["doors_only", "doors_and_drawers", "drawers_only", "corner_doors", "custom"] as const;
+const KITCHEN_DOOR_MANUFACTURERS = ["richelieu_agt", "richelieu_panexel"] as const;
+const KITCHEN_DOOR_STYLES = ["shaker_3_4", "slab", "shaker_2_1_4"] as const;
+const KITCHEN_DRAWER_SYSTEMS = [
+  "rocheleau_basic",
+  "blum_merivo_box",
+  "blum_push_slow_close",
+  "rocheleau_light",
+] as const;
+const KITCHEN_HANDLE_TYPES = ["no_handle", "45_degree", "finger_grab", "tip_handle", "standard_handle"] as const;
+const KITCHEN_BOX_MATERIALS = ["melamine_white", "melamine_grey"] as const;
+const KITCHEN_APPROVAL_STATUS = ["not_required", "required", "pending", "approved", "rejected"] as const;
 
 const vanitySectionSchema = z.object({
   id: z.string().min(1),
@@ -133,6 +146,74 @@ export const sideUnitInputsSchema = z.object({
   thickFrame: z.boolean().default(false),
   doorStyle: z.enum(DOOR_STYLE).default("Slab/Flat"),
   sections: z.string().optional().nullable(), // JSON string of SideUnitSection[]
+});
+
+const kitchenDoorSchema = z.object({
+  widthInches: z.number().min(1).max(120),
+  heightInches: z.number().min(1).max(120),
+  quantity: z.number().int().min(1).max(50),
+  manufacturerId: z.enum(KITCHEN_DOOR_MANUFACTURERS),
+  styleId: z.enum(KITCHEN_DOOR_STYLES),
+});
+
+const kitchenDrawerSchema = z.object({
+  drawerSystemId: z.enum(KITCHEN_DRAWER_SYSTEMS),
+  quantity: z.number().int().min(0).max(20),
+});
+
+const kitchenHardwareSchema = z.object({
+  standardHinges: z.number().int().min(0).max(50),
+  verticalHinges: z.number().int().min(0).max(50),
+  handleTypeId: z.enum(KITCHEN_HANDLE_TYPES),
+  handleQuantity: z.number().int().min(0).max(50),
+  pattes: z.number().int().min(0).max(50),
+  ledQuantity: z.number().int().min(0).max(10),
+  wasteBinQuantity: z.number().int().min(0).max(10),
+});
+
+const kitchenCabinetSchema = z
+  .object({
+    id: z.string().cuid().optional(),
+    cabinetType: z.enum(KITCHEN_CABINET_TYPES),
+    configuration: z.enum(KITCHEN_CONFIGS),
+    doors: z.array(kitchenDoorSchema).max(12).default([]),
+    drawers: z.array(kitchenDrawerSchema).max(12).default([]),
+    hardware: kitchenHardwareSchema,
+    cabinetBoxMaterialId: z.enum(KITCHEN_BOX_MATERIALS),
+    cabinetBoxQuantity: z.number().int().min(1).max(20).default(1),
+    manualFabricationHours: z.number().min(0).max(200).optional().nullable(),
+  })
+  .superRefine((value, ctx) => {
+    if (value.doors.length === 0 && value.drawers.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Cabinet must include at least one door or drawer.",
+        path: ["doors"],
+      });
+    }
+  });
+
+const kitchenInstallationSchema = z.object({
+  baseCabinetQty: z.number().int().min(0).max(200).default(0),
+  wallCabinetQty: z.number().int().min(0).max(200).default(0),
+  pantryQty: z.number().int().min(0).max(200).default(0),
+  finishingPanelQty: z.number().int().min(0).max(200).default(0),
+});
+
+export const kitchenBuilderPayloadSchema = z.object({
+  cabinets: z.array(kitchenCabinetSchema).max(150),
+  includeInstallation: z.boolean().default(false),
+  installation: kitchenInstallationSchema,
+  includeDelivery: z.boolean().default(true),
+  deliveryCost: z.number().min(0).max(100000).nullable().optional(),
+  multiplier: z.number().min(1).max(10).default(2.5),
+  discountPercent: z.number().min(0).max(10).default(0),
+  discountReason: z.string().max(1000).trim().nullable().optional(),
+});
+
+export const kitchenBuilderApprovalSchema = z.object({
+  status: z.enum(KITCHEN_APPROVAL_STATUS),
+  reason: z.string().max(1000).trim().nullable().optional(),
 });
 
 export const projectSettingsSchema = z.object({
@@ -265,5 +346,7 @@ export const distributorUpdateSchema = distributorSchema.partial();
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type VanityInputsValidated = z.infer<typeof vanityInputsSchema>;
 export type SideUnitInputsValidated = z.infer<typeof sideUnitInputsSchema>;
+export type KitchenBuilderPayloadValidated = z.infer<typeof kitchenBuilderPayloadSchema>;
+export type KitchenBuilderApprovalValidated = z.infer<typeof kitchenBuilderApprovalSchema>;
 export type ProjectSettingsValidated = z.infer<typeof projectSettingsSchema>;
 export type CostLineValidated = z.infer<typeof costLineSchema>;

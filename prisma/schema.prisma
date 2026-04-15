@@ -60,6 +60,7 @@ model Project {
   vanityInputs       VanityInputs?
   sideUnitInputs    SideUnitInputs?
   kitchenInputs     KitchenInputs?
+  kitchenPricingProject KitchenPricingProject?
   projectSettings   ProjectSettings?
   panelParts        PanelPart[]
   costLines         CostLine[]
@@ -213,6 +214,105 @@ model KitchenInputs {
   projectId String @unique
   project   Project @relation(fields: [projectId], references: [id], onDelete: Cascade)
   // Cost lines stored in CostLine with kind = estimate for kitchen
+}
+
+model KitchenPricingProject {
+  id                  String   @id @default(cuid())
+  projectId           String   @unique
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  includeInstallation Boolean  @default(false)
+  includeDelivery     Boolean  @default(true)
+  deliveryCost        Float?
+  multiplier          Float    @default(2.5)
+  discountPercent     Float    @default(0)
+  discountReason      String?
+  approvalStatus      String   @default("not_required") // not_required | required | pending | approved | rejected
+  approvalReason      String?
+  approvedByRole      String?
+  submittedByRole     String?
+  submittedAt         DateTime?
+  approvedAt          DateTime?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  cabinets            KitchenPricingCabinet[]
+  installationItems   KitchenPricingInstallationItem[]
+}
+
+model KitchenPricingCabinet {
+  id                        String   @id @default(cuid())
+  kitchenPricingProjectId   String
+  kitchenPricingProject     KitchenPricingProject @relation(fields: [kitchenPricingProjectId], references: [id], onDelete: Cascade)
+  sortOrder                 Int      @default(0)
+  cabinetType               String
+  configuration             String
+  cabinetBoxMaterialId      String
+  cabinetBoxQuantity        Int      @default(1)
+  manualFabricationHours    Float?
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  doorSpecs                 KitchenPricingDoorSpec[]
+  drawerSpecs               KitchenPricingDrawerSpec[]
+  hardware                  KitchenPricingHardware?
+
+  @@index([kitchenPricingProjectId, sortOrder])
+}
+
+model KitchenPricingDoorSpec {
+  id                       String   @id @default(cuid())
+  kitchenPricingCabinetId  String
+  kitchenPricingCabinet    KitchenPricingCabinet @relation(fields: [kitchenPricingCabinetId], references: [id], onDelete: Cascade)
+  sortOrder                Int      @default(0)
+  widthInches              Float
+  heightInches             Float
+  quantity                 Int
+  manufacturerId           String
+  styleId                  String
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([kitchenPricingCabinetId, sortOrder])
+}
+
+model KitchenPricingDrawerSpec {
+  id                       String   @id @default(cuid())
+  kitchenPricingCabinetId  String
+  kitchenPricingCabinet    KitchenPricingCabinet @relation(fields: [kitchenPricingCabinetId], references: [id], onDelete: Cascade)
+  sortOrder                Int      @default(0)
+  drawerSystemId           String
+  quantity                 Int
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+
+  @@index([kitchenPricingCabinetId, sortOrder])
+}
+
+model KitchenPricingHardware {
+  id                       String   @id @default(cuid())
+  kitchenPricingCabinetId  String   @unique
+  kitchenPricingCabinet    KitchenPricingCabinet @relation(fields: [kitchenPricingCabinetId], references: [id], onDelete: Cascade)
+  standardHinges           Int      @default(0)
+  verticalHinges           Int      @default(0)
+  handleTypeId             String   @default("standard_handle")
+  handleQuantity           Int      @default(0)
+  pattes                   Int      @default(0)
+  ledQuantity              Int      @default(0)
+  wasteBinQuantity         Int      @default(0)
+  createdAt                DateTime @default(now())
+  updatedAt                DateTime @updatedAt
+}
+
+model KitchenPricingInstallationItem {
+  id                      String   @id @default(cuid())
+  kitchenPricingProjectId String
+  kitchenPricingProject   KitchenPricingProject @relation(fields: [kitchenPricingProjectId], references: [id], onDelete: Cascade)
+  installTypeId           String
+  quantity                Int      @default(0)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@index([kitchenPricingProjectId, installTypeId])
 }
 
 model ProjectSettings {

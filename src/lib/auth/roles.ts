@@ -21,6 +21,16 @@ export function canApproveAiActions(role: string): boolean {
   return role === "admin" || role === "planner";
 }
 
+/** Manager-tier pricing approvals (admin stays unrestricted superuser). */
+export function canApproveKitchenPricing(role: string): boolean {
+  return role === "admin" || role === "planner";
+}
+
+/** Internal kitchen cost breakdown is hidden from sales unless manager-tier. */
+export function canSeeKitchenCostBreakdown(role: string): boolean {
+  return role === "admin" || role === "planner";
+}
+
 // ── Role → page access map ────────────────────────────────────────────
 // Used by middleware (page gating) and AppHeader (menu filtering).
 

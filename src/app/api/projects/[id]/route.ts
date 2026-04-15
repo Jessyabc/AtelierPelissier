@@ -35,6 +35,19 @@ export async function GET(
         vanityInputs: true,
         sideUnitInputs: true,
         kitchenInputs: true,
+        kitchenPricingProject: {
+          include: {
+            cabinets: {
+              orderBy: { sortOrder: "asc" },
+              include: {
+                doorSpecs: { orderBy: { sortOrder: "asc" } },
+                drawerSpecs: { orderBy: { sortOrder: "asc" } },
+                hardware: true,
+              },
+            },
+            installationItems: true,
+          },
+        },
         panelParts: true,
         prerequisiteLines: { orderBy: [{ category: "asc" }, { sortOrder: "asc" }] },
         costLines: true,
@@ -284,6 +297,19 @@ export async function PATCH(
         vanityInputs: true,
         sideUnitInputs: true,
         kitchenInputs: true,
+        kitchenPricingProject: {
+          include: {
+            cabinets: {
+              orderBy: { sortOrder: "asc" },
+              include: {
+                doorSpecs: { orderBy: { sortOrder: "asc" } },
+                drawerSpecs: { orderBy: { sortOrder: "asc" } },
+                hardware: true,
+              },
+            },
+            installationItems: true,
+          },
+        },
         panelParts: true,
         costLines: true,
         taskItems: { select: { id: true, label: true, isDone: true, sortOrder: true }, orderBy: { sortOrder: "asc" } },
@@ -311,6 +337,19 @@ export async function PATCH(
       vanityInputs: true,
       sideUnitInputs: true,
       kitchenInputs: true,
+      kitchenPricingProject: {
+        include: {
+          cabinets: {
+            orderBy: { sortOrder: "asc" },
+            include: {
+              doorSpecs: { orderBy: { sortOrder: "asc" } },
+              drawerSpecs: { orderBy: { sortOrder: "asc" } },
+              hardware: true,
+            },
+          },
+          installationItems: true,
+        },
+      },
       panelParts: true,
       costLines: true,
       taskItems: { select: { id: true, label: true, isDone: true, sortOrder: true }, orderBy: { sortOrder: "asc" } },
@@ -346,6 +385,19 @@ export async function PATCH(
           vanityInputs: true,
           sideUnitInputs: true,
           kitchenInputs: true,
+          kitchenPricingProject: {
+            include: {
+              cabinets: {
+                orderBy: { sortOrder: "asc" },
+                include: {
+                  doorSpecs: { orderBy: { sortOrder: "asc" } },
+                  drawerSpecs: { orderBy: { sortOrder: "asc" } },
+                  hardware: true,
+                },
+              },
+              installationItems: true,
+            },
+          },
           panelParts: true,
           costLines: true,
           taskItems: { select: { id: true, label: true, isDone: true, sortOrder: true }, orderBy: { sortOrder: "asc" } },
