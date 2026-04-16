@@ -1333,13 +1333,14 @@ async function handleListMondayItems(boardId?: string): Promise<string> {
   return sections.join("\n\n");
 }
 
-function handleCreateProjectFromMondayItem(
+async function handleCreateProjectFromMondayItem(
   args: Record<string, unknown>
-): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
-  const boardId = args.boardId as string;
+): Promise<{ result: string; isAction: true; actionPayload: Record<string, unknown> }> {
+  const config = await getAppConfig();
+  const { id: boardId, label: boardLabel } = resolveMondayBoardIdForAction(args.boardId, config);
   const itemId = args.itemId as string;
   return {
-    result: `Proposed creating a draft project from Monday item ${itemId} on board ${boardId}. Awaiting your approval.`,
+    result: `Proposed creating a draft project from Monday item ${itemId} on board ${boardLabel}. Awaiting your approval.`,
     isAction: true,
     actionPayload: {
       action: "createProjectFromMonday",
@@ -1514,10 +1515,49 @@ async function handleGetLaborHours(projectIdOrRef?: string, employeeId?: string)
   return lines.join("\n");
 }
 
-function handleCreateProjectsFromMondayItems(
+function resolveMondayBoardIdForAction(
+  rawBoardId: unknown,
+  config: Awaited<ReturnType<typeof getAppConfig>>
+): { id: string; label: string } {
+  const input = typeof rawBoardId === "string" ? rawBoardId.trim() : "";
+  if (!input) {
+    throw new Error("boardId is required for Monday actions.");
+  }
+
+  // If it already looks like a numeric board ID, use it directly.
+  if (/^\d+$/.test(input)) {
+    return { id: input, label: input };
+  }
+
+  // Otherwise, treat it as a human board name and resolve against configured boards.
+  type BoardRef = { id: string; name?: string };
+  const boardsConfig = (config.integrations?.mondayBoards as BoardRef[] | undefined) ?? [];
+  const legacyId = (config.integrations?.mondayBoardId as string | undefined)?.trim();
+  const allBoards: BoardRef[] =
+    boardsConfig.length > 0
+      ? boardsConfig
+      : legacyId
+        ? [{ id: legacyId, name: undefined }]
+        : [];
+
+  const matches = allBoards.filter((b) => b.name?.toLowerCase().includes(input.toLowerCase()));
+  if (matches.length === 0) {
+    const names = allBoards.map((b) => b.name || b.id).filter(Boolean).join(", ") || "(none — only IDs)";
+    throw new Error(
+      `No Monday board is configured with the name "${input}". Configured board names are: ${names}.`
+    );
+  }
+
+  const chosen = matches[0];
+  const label = chosen.name ? `${chosen.name} (${chosen.id})` : chosen.id;
+  return { id: chosen.id, label };
+}
+
+async function handleCreateProjectsFromMondayItems(
   args: Record<string, unknown>
-): { result: string; isAction: boolean; actionPayload?: Record<string, unknown> } {
-  const boardId = args.boardId as string;
+): Promise<{ result: string; isAction: boolean; actionPayload?: Record<string, unknown> }> {
+  const config = await getAppConfig();
+  const { id: boardId, label: boardLabel } = resolveMondayBoardIdForAction(args.boardId, config);
   const raw = args.itemIds;
   const itemIds = Array.isArray(raw) ? (raw as string[]).filter((id) => typeof id === "string" && id.trim()) : [];
   const items = itemIds.map((itemId) => ({ boardId, itemId }));
@@ -1531,7 +1571,7 @@ function handleCreateProjectsFromMondayItems(
   }
 
   return {
-    result: `Proposed creating ${count} draft project(s) from Monday items on board ${boardId}. Awaiting your approval.`,
+    result: `Proposed creating ${count} draft project(s) from Monday items on board ${boardLabel}. Awaiting your approval.`,
     isAction: true,
     actionPayload:
       count === 1
