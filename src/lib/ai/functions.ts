@@ -44,6 +44,48 @@ export const AI_TOOLS: ChatCompletionTool[] = [
   {
     type: "function",
     function: {
+      name: "listWarehouseSections",
+      description: "List warehouse sections/areas used to track where inventory is stored (e.g. Sheet goods, Hardware wall).",
+      parameters: { type: "object", properties: {} },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "proposeCreateWarehouseSection",
+      description:
+        "Propose creating a new warehouse section/area for inventory locations. QUEUED — requires user approval.",
+      parameters: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "Section name (e.g. 'Sheet goods', 'Quincaillerie')." },
+          description: { type: "string", description: "Optional description (e.g. 'Back wall racks')." },
+          sortOrder: { type: "number", description: "Optional sort order (smaller = earlier)." },
+        },
+        required: ["name"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "proposeSetInventoryLocation",
+      description:
+        "Propose setting the warehouse location for an inventory item by material code. QUEUED — requires user approval.",
+      parameters: {
+        type: "object",
+        properties: {
+          materialCode: { type: "string", description: "Exact material code (e.g. 'MEL-WHT-3/4-4x8')." },
+          section: { type: "string", description: "Warehouse section name or ID. Example: 'Sheet goods'." },
+          locationNote: { type: "string", description: "Optional detail (e.g. 'Aisle 2 / Rack B / Shelf 3')." },
+        },
+        required: ["materialCode", "section"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "getShortages",
       description: "List all material shortages across projects, optionally filtered to a specific project.",
       parameters: {
@@ -482,6 +524,15 @@ export async function executeFunctionCall(
 
     case "getInventoryStatus":
       return { result: await handleGetInventoryStatus(args.materialCode as string | undefined) };
+
+    case "listWarehouseSections":
+      return { result: await handleListWarehouseSections() };
+
+    case "proposeCreateWarehouseSection":
+      return handleProposeCreateWarehouseSection(args);
+
+    case "proposeSetInventoryLocation":
+      return handleProposeSetInventoryLocation(args);
 
     case "getShortages":
       return { result: await handleGetShortages(args.projectId as string | undefined) };
@@ -1471,6 +1522,54 @@ async function handleGetActivePunches(): Promise<string> {
     return `${p.employee.name} @ ${p.station?.name ?? "unknown station"} — ${p.project ? (p.project.jobNumber ?? p.project.name) : "general work"} (${dur})`;
   });
   return `${punches.length} people on the floor:\n${lines.join("\n")}`;
+}
+
+async function handleListWarehouseSections(): Promise<string> {
+  const sections = await prisma.warehouseSection.findMany({
+    orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, description: true },
+  });
+  if (sections.length === 0) return "No warehouse sections configured yet.";
+  return sections
+    .map((s) => `[${s.id}] ${s.name}${s.description ? ` — ${s.description}` : ""}`)
+    .join("\n");
+}
+
+function handleProposeCreateWarehouseSection(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
+  const name = String(args.name ?? "").trim();
+  const description = typeof args.description === "string" ? args.description.trim() : "";
+  const sortOrderRaw = args.sortOrder as number | undefined;
+  const sortOrder = Number.isFinite(Number(sortOrderRaw)) ? Number(sortOrderRaw) : undefined;
+  return {
+    result: `Proposed creating warehouse section "${name}"${description ? ` — ${description}` : ""}. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "createWarehouseSection",
+      name,
+      description: description || null,
+      sortOrder: sortOrder ?? null,
+    },
+  };
+}
+
+function handleProposeSetInventoryLocation(
+  args: Record<string, unknown>
+): { result: string; isAction: true; actionPayload: Record<string, unknown> } {
+  const materialCode = String(args.materialCode ?? "").trim();
+  const section = String(args.section ?? "").trim();
+  const locationNote = typeof args.locationNote === "string" ? args.locationNote.trim() : "";
+  return {
+    result: `Proposed setting inventory location for ${materialCode}: section "${section}"${locationNote ? ` (${locationNote})` : ""}. Awaiting user approval.`,
+    isAction: true,
+    actionPayload: {
+      action: "setInventoryItemLocation",
+      materialCode,
+      section,
+      locationNote: locationNote || null,
+    },
+  };
 }
 
 async function handleGetLaborHours(projectIdOrRef?: string, employeeId?: string): Promise<string> {

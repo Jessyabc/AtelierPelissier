@@ -530,12 +530,32 @@ model InventoryItem {
   defaultSheetFormatId String?
   defaultSheetFormat   SheetFormat? @relation(fields: [defaultSheetFormatId], references: [id])
 
+  // Warehouse location (Phase 2): where this item is stored physically.
+  // sectionId is the structured "zone" (e.g. "Sheet goods", "Hardware wall").
+  // locationNote is a free-form hint (e.g. "Aisle 2 / Rack B / Shelf 3").
+  sectionId    String?
+  section      WarehouseSection? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  locationNote String?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   movements     StockMovement[]
   catalogItems  SupplierCatalogItem[]
   orderLines    OrderLine[]
+}
+
+model WarehouseSection {
+  id          String   @id @default(cuid())
+  name        String   @unique
+  description String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items InventoryItem[]
+
+  @@index([sortOrder, name])
 }
 
 model StockMovement {

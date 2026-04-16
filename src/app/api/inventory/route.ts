@@ -28,7 +28,7 @@ export async function GET() {
   const [items, state] = await Promise.all([
     prisma.inventoryItem.findMany({
       orderBy: { materialCode: "asc" },
-      include: { defaultSheetFormat: true },
+      include: { defaultSheetFormat: true, section: true },
     }),
     computeInventoryState(),
   ]);

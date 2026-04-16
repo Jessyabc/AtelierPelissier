@@ -616,6 +616,94 @@ export async function POST(
         break;
       }
 
+      case "createWarehouseSection": {
+        const { name, description, sortOrder } = payload as {
+          name: string;
+          description?: string | null;
+          sortOrder?: number | null;
+        };
+        const cleanName = (name ?? "").trim();
+        if (!cleanName) {
+          await failAction();
+          return NextResponse.json({ error: "name is required" }, { status: 400 });
+        }
+
+        const existing = await prisma.warehouseSection.findFirst({
+          where: { name: { equals: cleanName, mode: "insensitive" } },
+          select: { id: true, name: true, description: true, sortOrder: true },
+        });
+        const section = existing ?? (await prisma.warehouseSection.create({
+          data: {
+            name: cleanName,
+            description: description?.trim() || null,
+            sortOrder: Number.isFinite(Number(sortOrder)) ? Number(sortOrder) : 0,
+          },
+          select: { id: true, name: true, description: true, sortOrder: true },
+        }));
+
+        result = { status: existing ? "warehouse_section_exists" : "warehouse_section_created", section };
+        break;
+      }
+
+      case "setInventoryItemLocation": {
+        const { materialCode, section, locationNote } = payload as {
+          materialCode: string;
+          section: string;
+          locationNote?: string | null;
+        };
+        const code = (materialCode ?? "").trim();
+        const sectionRef = (section ?? "").trim();
+        if (!code || !sectionRef) {
+          await failAction();
+          return NextResponse.json({ error: "materialCode and section are required" }, { status: 400 });
+        }
+
+        const item = await prisma.inventoryItem.findUnique({
+          where: { materialCode: code },
+          select: { id: true, materialCode: true },
+        });
+        if (!item) {
+          await failAction();
+          return NextResponse.json({ error: `Inventory item not found: ${code}` }, { status: 404 });
+        }
+
+        const byId = await prisma.warehouseSection.findUnique({
+          where: { id: sectionRef },
+          select: { id: true, name: true },
+        });
+        const byName = byId
+          ? null
+          : await prisma.warehouseSection.findFirst({
+              where: { name: { equals: sectionRef, mode: "insensitive" } },
+              select: { id: true, name: true },
+            });
+        const resolved = byId ?? byName;
+        if (!resolved) {
+          await failAction();
+          return NextResponse.json(
+            { error: `Warehouse section not found: ${sectionRef}. Create it first, then try again.` },
+            { status: 404 }
+          );
+        }
+
+        const updated = await prisma.inventoryItem.update({
+          where: { id: item.id },
+          data: {
+            sectionId: resolved.id,
+            locationNote: locationNote?.trim() || null,
+          },
+          select: {
+            id: true,
+            materialCode: true,
+            section: { select: { id: true, name: true } },
+            locationNote: true,
+          },
+        });
+
+        result = { status: "inventory_location_set", item: updated };
+        break;
+      }
+
       case "createInventoryItem": {
         const { materialCode, description, unit, onHand: rawOnHand, category, minThreshold: rawThreshold } = payload as {
           materialCode: string;

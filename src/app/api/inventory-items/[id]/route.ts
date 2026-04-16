@@ -16,6 +16,8 @@ const updateSchema = z.object({
   costDefault: z.number().min(0).optional(),
   category: z.string().max(50).trim().optional(),
   defaultSheetFormatId: z.string().optional().nullable(),
+  sectionId: z.string().min(1).optional().nullable(),
+  locationNote: z.string().max(200).trim().optional().nullable(),
 });
 
 export async function PATCH(
