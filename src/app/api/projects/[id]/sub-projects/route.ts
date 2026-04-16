@@ -13,7 +13,7 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: parentId } = await params;
-  const access = await requireProjectAccess(projectId);
+  const access = await requireProjectAccess(parentId);
   if (!access.ok) return access.response;
   let body: unknown;
   try {

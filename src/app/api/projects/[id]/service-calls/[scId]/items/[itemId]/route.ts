@@ -7,7 +7,7 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string; scId: string; itemId: string }> }
 ) {
-  const { scId, itemId } = await params;
+  const { id: projectId, scId, itemId } = await params;
   const access = await requireProjectAccess(projectId);
   if (!access.ok) return access.response;
 
