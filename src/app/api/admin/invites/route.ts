@@ -48,9 +48,9 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  const base =
-    process.env.NEXT_PUBLIC_APP_URL ??
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+  // Prefer a canonical public URL so invite links never point at a Vercel preview domain.
+  // Fallback to the request origin (custom domain in production when configured).
+  const base = process.env.NEXT_PUBLIC_APP_URL?.trim() || req.nextUrl.origin;
   const inviteUrl = base
     ? `${base}/login?invite=${encodeURIComponent(token)}`
     : `/login?invite=${encodeURIComponent(token)}`;

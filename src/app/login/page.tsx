@@ -7,7 +7,11 @@ import { getDefaultLandingPage } from "@/lib/auth/roles";
 
 function LoginForm() {
   const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const [signInPassword, setSignInPassword] = useState("");
+  const [signInShowPassword, setSignInShowPassword] = useState(false);
+  const [signUpPassword, setSignUpPassword] = useState("");
+  const [signUpConfirmPassword, setSignUpConfirmPassword] = useState("");
+  const [signUpShowPassword, setSignUpShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const router = useRouter();
@@ -15,13 +19,17 @@ function LoginForm() {
   const next = searchParams.get("next") ?? "/";
   const invite = searchParams.get("invite");
 
+  const appOrigin =
+    (process.env.NEXT_PUBLIC_APP_URL?.trim() as string | undefined) ||
+    (typeof window !== "undefined" ? window.location.origin : "");
+
   async function signIn(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
     try {
       const supabase = getBrowserSupabaseClient();
-      const { error: err } = await supabase.auth.signInWithPassword({ email, password });
+      const { error: err } = await supabase.auth.signInWithPassword({ email, password: signInPassword });
       if (err) {
         setError(err.message);
         return;
@@ -53,14 +61,22 @@ function LoginForm() {
       setError("Sign up requires an invite link from an admin.");
       return;
     }
+    if (!signUpPassword) {
+      setError("Password is required.");
+      return;
+    }
+    if (signUpPassword !== signUpConfirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
     setError(null);
     setLoading(true);
     try {
       const supabase = getBrowserSupabaseClient();
-      const redirectTo = `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+      const redirectTo = `${appOrigin}/auth/callback?next=${encodeURIComponent(next)}`;
       const { error: err } = await supabase.auth.signUp({
         email,
-        password,
+        password: signUpPassword,
         options: { emailRedirectTo: redirectTo },
       });
       if (err) {
@@ -141,15 +157,24 @@ function LoginForm() {
             </div>
             <div>
               <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Password</label>
-              <input
-                type="password"
-                autoComplete="current-password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="neo-input w-full px-4 py-2.5 text-sm"
-                placeholder="••••••••"
-              />
+              <div className="flex gap-2">
+                <input
+                  type={signInShowPassword ? "text" : "password"}
+                  autoComplete="current-password"
+                  required
+                  value={signInPassword}
+                  onChange={(e) => setSignInPassword(e.target.value)}
+                  className="neo-input w-full px-4 py-2.5 text-sm"
+                  placeholder="••••••••"
+                />
+                <button
+                  type="button"
+                  onClick={() => setSignInShowPassword((v) => !v)}
+                  className="neo-btn px-3 py-2.5 text-sm"
+                >
+                  {signInShowPassword ? "Hide" : "Show"}
+                </button>
+              </div>
             </div>
 
             {error && (
@@ -176,6 +201,40 @@ function LoginForm() {
               <p className="mb-3 text-sm text-[var(--foreground-muted)]">
                 First time here with this invite?
               </p>
+              <div className="space-y-3">
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Set password</label>
+                  <div className="flex gap-2">
+                    <input
+                      type={signUpShowPassword ? "text" : "password"}
+                      autoComplete="new-password"
+                      value={signUpPassword}
+                      onChange={(e) => setSignUpPassword(e.target.value)}
+                      className="neo-input w-full px-4 py-2.5 text-sm"
+                      placeholder="Create a password"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setSignUpShowPassword((v) => !v)}
+                      className="neo-btn px-3 py-2.5 text-sm"
+                    >
+                      {signUpShowPassword ? "Hide" : "Show"}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-medium text-[var(--foreground)]">Confirm password</label>
+                  <input
+                    type={signUpShowPassword ? "text" : "password"}
+                    autoComplete="new-password"
+                    value={signUpConfirmPassword}
+                    onChange={(e) => setSignUpConfirmPassword(e.target.value)}
+                    className="neo-input w-full px-4 py-2.5 text-sm"
+                    placeholder="Repeat password"
+                  />
+                </div>
+              </div>
               <button
                 type="button"
                 onClick={signUp}
