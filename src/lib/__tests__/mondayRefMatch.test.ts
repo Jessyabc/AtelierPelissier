@@ -72,19 +72,34 @@ describe("guessRoomType", () => {
   it("detects kitchen", () => {
     expect(guessRoomType("Cuisine")).toBe("kitchen");
     expect(guessRoomType("cuisine")).toBe("kitchen");
+    expect(guessRoomType("Kitchen")).toBe("kitchen");
+    expect(guessRoomType("Îlot central")).toBe("kitchen");
   });
 
   it("detects vanity", () => {
     expect(guessRoomType("Vanité")).toBe("vanity");
     expect(guessRoomType("vanité produite sur mesure")).toBe("vanity");
+    expect(guessRoomType("Vanite sur mesure")).toBe("vanity");
+    expect(guessRoomType("Salle de bain - meuble lavabo")).toBe("vanity");
+    expect(guessRoomType("Bathroom vanity")).toBe("vanity");
   });
 
   it("detects side unit", () => {
     expect(guessRoomType("Unité de rangement sur vanité GAUCHE")).toBe("side_unit");
+    expect(guessRoomType("Unite de rangement sur vanite DROITE")).toBe("side_unit");
+    expect(guessRoomType("Unité au dessus de la laveuse sécheuse")).toBe("side_unit");
+    expect(guessRoomType("Storage unit")).toBe("side_unit");
+  });
+
+  it("detects closet", () => {
+    expect(guessRoomType("Garde-robe")).toBe("closet");
+    expect(guessRoomType("Walk-in master")).toBe("closet");
+    expect(guessRoomType("Closet organizers")).toBe("closet");
   });
 
   it("defaults to custom", () => {
     expect(guessRoomType("Retombée plafond")).toBe("custom");
     expect(guessRoomType("Pharmacie de 34,5 pouces")).toBe("custom");
+    expect(guessRoomType("Comptoir Dekton (Shawn)")).toBe("custom");
   });
 });

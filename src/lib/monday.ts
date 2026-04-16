@@ -91,15 +91,44 @@ export function parseMondayItemName(raw: string): {
 
 // Guess ProjectItem type from a subitem label (room/deliverable name)
 export function guessRoomType(label: string): string {
-  const l = label.toLowerCase();
-  // More specific patterns first (e.g. "unité de rangement sur vanité" is a side_unit, not vanity)
-  if (/unit[ée].*rangement|storage|rangement|meuble/i.test(l)) return "side_unit";
-  if (/garde.?robe|closet|walk.?in/i.test(l)) return "closet";
-  if (/cuisine|kitchen/i.test(l)) return "kitchen";
-  if (/vanit[ée]|vanity/i.test(l)) return "vanity";
-  if (/comptoir|counter/i.test(l)) return "custom";
-  if (/pharmacie|medicine/i.test(l)) return "custom";
+  const l = normalizeLooseText(label);
+
+  // More specific patterns first (e.g. "unite de rangement sur vanite" is a side_unit, not vanity)
+  if (
+    /(unite)\s+de\s+rangement/.test(l) ||
+    /(storage\s+unit|rangement\s+(sur|de)|unite\s+de\s+rangement)/.test(l) ||
+    /au\s+dessus\s+de\s+la\s+(laveuse|secheuse|secheuse)/.test(l)
+  ) {
+    return "side_unit";
+  }
+
+  // Closet / wardrobe (FR + EN)
+  if (/(garde\s*-?\s*robe|penderie|walk\s*-?\s*in|closet)/.test(l)) return "closet";
+
+  // Kitchen (FR + EN)
+  if (/(cuisine|kitchen|ilot|îlot|pantry)/.test(l)) return "kitchen";
+
+  // Vanity / bathroom (FR + EN)
+  if (/(vanite|vanity|salle\s+de\s+bain|bath(room)?|lavabo)/.test(l)) return "vanity";
+
+  // Non-room deliverables still map to "custom" today
+  if (/(comptoir|counter(top)?|dekton)/.test(l)) return "custom";
+  if (/(pharmacie|medicine\s+cabinet)/.test(l)) return "custom";
+
   return "custom";
+}
+
+function normalizeLooseText(input: string): string {
+  // Normalization makes matching robust for accents (vanité/vanite), casing, and weird punctuation.
+  // This is intentionally lossy: it's for inference, not display.
+  return (input ?? "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // strip diacritics
+    .replace(/[’'"]/g, " ")
+    .replace(/[^a-z0-9\s-]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
