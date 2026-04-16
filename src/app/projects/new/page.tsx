@@ -32,6 +32,11 @@ type ProcessTemplate = { id: string; name: string };
 // the deposit field. See src/lib/workflow/nextAction.ts for semantics.
 type Stage = "quote" | "invoiced" | "confirmed";
 
+// Where we autosave wizard progress so a sales user can close the tab and
+// pick up later without losing the half-entered info. Bumped `v2` because
+// we added `roomCounts` to the schema.
+const WIZARD_DRAFT_KEY = "atelier.newProjectWizard.v2";
+
 export default function NewProjectPage() {
   const router = useRouter();
   // Step 0 = stage picker, 1 = basics, 2 = rooms, 3 = review.
@@ -61,15 +66,22 @@ export default function NewProjectPage() {
   const search2TimeoutRef = useRef<ReturnType<typeof setTimeout>>();
 
   // Step 2: rooms
+  // `selectedRooms` is the list of room-type keys the user picked.
+  // `roomLabels` holds the human label per type, and `roomCounts` holds how
+  // many of that room the project contains (e.g. "2 bathrooms" -> vanity=2).
+  // The server receives one ProjectItem per unit, each with its own process.
   const [selectedRooms, setSelectedRooms] = useState<string[]>([]);
   const [roomLabels, setRoomLabels] = useState<Record<string, string>>({});
+  const [roomCounts, setRoomCounts] = useState<Record<string, number>>({});
 
   // Room types (loaded from config, with built-in fallback)
   const [roomTypes, setRoomTypes] = useState<RoomType[]>(FALLBACK_ROOM_TYPES);
 
-  // Process templates
-  const [processTemplates, setProcessTemplates] = useState<ProcessTemplate[]>([]);
-  const [projectProcessId, setProjectProcessId] = useState("");
+  // NOTE: process templates are no longer picked here — the server resolves
+  // the right process per room type (vanity → Vanity, side_unit → Side Unit,
+  // kitchen → Kitchen, else → Kitchen) at project-item creation. Admins
+  // override the mapping from AppConfig.processDefaults.
+  const [, setProcessTemplates] = useState<ProcessTemplate[]>([]);
 
   // Submission
   const [loading, setLoading] = useState(false);
@@ -167,8 +179,6 @@ export default function NewProjectPage() {
     fetch("/api/process-templates").then((r) => r.ok ? r.json() : []).then((data) => {
       const t = Array.isArray(data) ? data : [];
       setProcessTemplates(t);
-      const conception = t.find((x: ProcessTemplate) => x.name === "Conception");
-      if (conception) setProjectProcessId(conception.id);
     }).catch(() => {});
 
     fetch("/api/admin/config").then((r) => r.ok ? r.json() : null).then((cfg) => {
@@ -179,8 +189,75 @@ export default function NewProjectPage() {
     }).catch(() => {});
   }, []);
 
+  // ── Wizard draft autosave ────────────────────────────────────────────────
+  // We keep this entirely client-side for now so the UX works instantly
+  // without a DB round-trip. The draft is cleared when the project is created.
+  // Rehydrate on mount.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const raw = window.localStorage.getItem(WIZARD_DRAFT_KEY);
+      if (!raw) return;
+      const d = JSON.parse(raw) as Record<string, unknown>;
+      if (typeof d.step === "number") setStep(d.step);
+      if (typeof d.stage === "string") setStage(d.stage as Stage);
+      if (typeof d.invoiceNumber === "string") setInvoiceNumber(d.invoiceNumber);
+      if (typeof d.projectDescription === "string") setProjectDescription(d.projectDescription);
+      if (typeof d.targetDate === "string") setTargetDate(d.targetDate);
+      if (Array.isArray(d.selectedRooms)) setSelectedRooms(d.selectedRooms as string[]);
+      if (d.roomLabels && typeof d.roomLabels === "object") setRoomLabels(d.roomLabels as Record<string, string>);
+      if (d.roomCounts && typeof d.roomCounts === "object") setRoomCounts(d.roomCounts as Record<string, number>);
+      if (d.clientForm && typeof d.clientForm === "object") {
+        setClientForm((prev) => ({ ...prev, ...(d.clientForm as typeof prev) }));
+        setClientMode("create");
+      }
+      if (typeof d.hasClient2 === "boolean") setHasClient2(d.hasClient2);
+      if (d.client2Form && typeof d.client2Form === "object") {
+        setClient2Form((prev) => ({ ...prev, ...(d.client2Form as typeof prev) }));
+      }
+    } catch {
+      /* corrupt draft — ignore */
+    }
+    // Only rehydrate once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Persist on every meaningful change. Writes are cheap; localStorage is
+  // synchronous but small so this is fine for the wizard's scale.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const snapshot = {
+      step,
+      stage,
+      invoiceNumber,
+      projectDescription,
+      targetDate,
+      selectedRooms,
+      roomLabels,
+      roomCounts,
+      clientForm,
+      hasClient2,
+      client2Form,
+    };
+    try {
+      window.localStorage.setItem(WIZARD_DRAFT_KEY, JSON.stringify(snapshot));
+    } catch {
+      /* quota exhausted — non-critical */
+    }
+  }, [step, stage, invoiceNumber, projectDescription, targetDate, selectedRooms, roomLabels, roomCounts, clientForm, hasClient2, client2Form]);
+
   function toggleRoom(value: string) {
-    setSelectedRooms((prev) => prev.includes(value) ? prev.filter((r) => r !== value) : [...prev, value]);
+    setSelectedRooms((prev) => {
+      if (prev.includes(value)) return prev.filter((r) => r !== value);
+      // New selection defaults to a count of 1; keep previous counts otherwise.
+      setRoomCounts((rc) => ({ ...rc, [value]: rc[value] ?? 1 }));
+      return [...prev, value];
+    });
+  }
+
+  function setRoomCount(value: string, next: number) {
+    const safe = Math.min(Math.max(Math.round(next || 1), 1), 20);
+    setRoomCounts((prev) => ({ ...prev, [value]: safe }));
   }
 
   async function handleCreate() {
@@ -230,7 +307,6 @@ export default function NewProjectPage() {
           stage,
           // depositReceivedAt is stamped server-side when stage === "confirmed"
           // unless the client provides one explicitly.
-          processTemplateId: projectProcessId.trim() || undefined,
           clientId: clientId ?? undefined,
           client: client ?? undefined,
           client2Id: client2Id ?? undefined,
@@ -242,14 +318,29 @@ export default function NewProjectPage() {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || "Failed to create project");
 
-      // Auto-create rooms (ProjectItems) for each selected type
+      // Auto-create rooms (ProjectItems) for each selected type, honoring the
+      // per-room count. The API will pick the default process template per
+      // room type (vanity → Vanity, side_unit → Side Unit, kitchen → Kitchen,
+      // else → Kitchen) unless the admin has overridden it in AppConfig.
       for (const roomType of selectedRooms) {
-        const label = roomLabels[roomType]?.trim() || roomTypes.find((r) => r.value === roomType)?.label || roomType;
-        await fetch(`/api/projects/${data.id}/project-items`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: roomType, label }),
-        });
+        const baseLabel =
+          roomLabels[roomType]?.trim() ||
+          roomTypes.find((r) => r.value === roomType)?.label ||
+          roomType;
+        const count = roomCounts[roomType] ?? 1;
+        for (let i = 0; i < count; i++) {
+          const label = count > 1 ? `${baseLabel} #${i + 1}` : baseLabel;
+          await fetch(`/api/projects/${data.id}/project-items`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ type: roomType, label, useDefaultProcess: true }),
+          });
+        }
+      }
+
+      // Clear the autosaved draft — the project is now the source of truth.
+      if (typeof window !== "undefined") {
+        try { window.localStorage.removeItem(WIZARD_DRAFT_KEY); } catch { /* noop */ }
       }
 
       router.push(`/projects/${data.id}`);
@@ -262,9 +353,54 @@ export default function NewProjectPage() {
     }
   }
 
+  function handleDiscardDraft() {
+    if (typeof window !== "undefined") {
+      try { window.localStorage.removeItem(WIZARD_DRAFT_KEY); } catch { /* noop */ }
+    }
+    setStep(0);
+    setStage("quote");
+    setInvoiceNumber("");
+    setProjectDescription("");
+    setTargetDate("");
+    setSelectedRooms([]);
+    setRoomLabels({});
+    setRoomCounts({});
+    setClientMode("search");
+    setClientSearch("");
+    setClientSelected(null);
+    setClientForm({ firstName: "", lastName: "", email: "", phone: "", phone2: "", address: "" });
+    setHasClient2(false);
+    setClient2Mode("search");
+    setClient2Search("");
+    setClient2Selected(null);
+    setClient2Form({ firstName: "", lastName: "", email: "", phone: "", phone2: "", address: "" });
+    toast.success("Draft cleared");
+  }
+
+  const hasDraftState =
+    !!invoiceNumber ||
+    !!projectDescription ||
+    !!targetDate ||
+    selectedRooms.length > 0 ||
+    !!clientForm.firstName ||
+    !!clientForm.lastName ||
+    !!clientSelected;
+
   return (
     <div className="max-w-2xl mx-auto">
-      <h2 className="text-xl font-semibold text-[var(--foreground)] mb-6">New Project</h2>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-xl font-semibold text-[var(--foreground)]">New Project</h2>
+        {hasDraftState && (
+          <button
+            type="button"
+            onClick={handleDiscardDraft}
+            className="text-xs text-[var(--foreground-muted)] underline-offset-2 hover:underline"
+            title="Clear the saved draft and start from scratch"
+          >
+            Start over
+          </button>
+        )}
+      </div>
 
       {/* Progress indicator */}
       <div className="flex items-center gap-2 mb-8">
@@ -410,13 +546,15 @@ export default function NewProjectPage() {
             <div>
               <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Target Date</label>
               <input type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="neo-input w-full px-4 py-2.5 text-sm" />
+              <p className="mt-1 text-[11px] text-[var(--foreground-muted)]">
+                Drives the shop timeline and salesperson follow-ups.
+              </p>
             </div>
-            <div>
-              <label className="block text-sm font-medium text-[var(--foreground)] mb-1">Process Template</label>
-              <select value={projectProcessId} onChange={(e) => setProjectProcessId(e.target.value)} className="neo-select w-full px-4 py-2.5 text-sm">
-                <option value="">None</option>
-                {processTemplates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-              </select>
+            <div className="neo-panel-inset px-3 py-2 text-xs text-[var(--foreground-muted)] self-center">
+              Each room type gets its matching production process automatically
+              (Vanity → Vanity process, Side unit → Side unit process,
+              Kitchen/everything else → Kitchen process). Admins can override
+              this mapping in the admin panel.
             </div>
           </div>
 
@@ -524,12 +662,17 @@ export default function NewProjectPage() {
         <div className="space-y-6">
           <div>
             <h3 className="text-lg font-semibold text-[var(--foreground)] mb-1">What does this project include?</h3>
-            <p className="text-sm text-[var(--foreground-muted)]">Select the rooms or pieces involved. Each will get its own process checklist and material tracking.</p>
+            <p className="text-sm text-[var(--foreground-muted)]">
+              Select the rooms. For each room, tell us how many units are in the
+              project (e.g. two bathrooms = <span className="font-semibold">Vanity × 2</span>).
+              Each unit gets its own process checklist and builder.
+            </p>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
             {roomTypes.map((room) => {
               const selected = selectedRooms.includes(room.value);
+              const count = roomCounts[room.value] ?? 1;
               return (
                 <button
                   key={room.value}
@@ -537,18 +680,57 @@ export default function NewProjectPage() {
                   onClick={() => toggleRoom(room.value)}
                   className={`neo-card p-4 text-left transition-all ${selected ? "ring-2 ring-[var(--accent)] translate-y-[-2px]" : "opacity-70 hover:opacity-100"}`}
                 >
-                  <div className="text-xl mb-1">{room.icon}</div>
-                  <div className="text-sm font-semibold text-[var(--foreground)]">{room.label}</div>
-                  <div className="text-[10px] text-[var(--foreground-muted)] mt-0.5">{room.desc}</div>
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <div className="text-xl mb-1">{room.icon}</div>
+                      <div className="text-sm font-semibold text-[var(--foreground)]">{room.label}</div>
+                      <div className="text-[10px] text-[var(--foreground-muted)] mt-0.5">{room.desc}</div>
+                    </div>
+                    {selected && (
+                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)]">
+                        ×{count}
+                      </span>
+                    )}
+                  </div>
+
                   {selected && (
-                    <input
-                      type="text"
-                      value={roomLabels[room.value] ?? ""}
-                      onChange={(e) => { e.stopPropagation(); setRoomLabels((l) => ({ ...l, [room.value]: e.target.value })); }}
-                      onClick={(e) => e.stopPropagation()}
-                      placeholder={`Label (e.g. ${room.label})`}
-                      className="neo-input w-full px-2 py-1 text-xs mt-2"
-                    />
+                    <div className="mt-3 space-y-2" onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="text"
+                        value={roomLabels[room.value] ?? ""}
+                        onChange={(e) => { e.stopPropagation(); setRoomLabels((l) => ({ ...l, [room.value]: e.target.value })); }}
+                        placeholder={`Label (e.g. ${room.label})`}
+                        className="neo-input w-full px-2 py-1 text-xs"
+                      />
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] text-[var(--foreground-muted)]">How many?</span>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setRoomCount(room.value, count - 1); }}
+                          className="neo-btn w-7 h-7 text-sm flex items-center justify-center"
+                          aria-label="Decrease count"
+                          disabled={count <= 1}
+                        >
+                          −
+                        </button>
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={count}
+                          onChange={(e) => { e.stopPropagation(); setRoomCount(room.value, parseInt(e.target.value || "1", 10)); }}
+                          className="neo-input w-14 px-2 py-1 text-xs text-center"
+                        />
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); setRoomCount(room.value, count + 1); }}
+                          className="neo-btn w-7 h-7 text-sm flex items-center justify-center"
+                          aria-label="Increase count"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
                   )}
                 </button>
               );
@@ -556,7 +738,12 @@ export default function NewProjectPage() {
           </div>
 
           <p className="text-xs text-[var(--foreground-muted)]">
-            {selectedRooms.length === 0 ? "Skip this step if unsure — you can add rooms later." : `${selectedRooms.length} room${selectedRooms.length > 1 ? "s" : ""} selected`}
+            {selectedRooms.length === 0
+              ? "Skip this step if unsure — you can add rooms later."
+              : (() => {
+                  const units = selectedRooms.reduce((s, r) => s + (roomCounts[r] ?? 1), 0);
+                  return `${selectedRooms.length} room type${selectedRooms.length > 1 ? "s" : ""} · ${units} unit${units > 1 ? "s" : ""} total`;
+                })()}
           </p>
 
           <div className="flex justify-between">
@@ -606,9 +793,10 @@ export default function NewProjectPage() {
                   {selectedRooms.map((r) => {
                     const room = roomTypes.find((rt) => rt.value === r);
                     const label = roomLabels[r]?.trim() || room?.label || r;
+                    const count = roomCounts[r] ?? 1;
                     return (
                       <span key={r} className="text-xs px-2 py-1 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-medium">
-                        {room?.icon} {label}
+                        {room?.icon} {label}{count > 1 ? ` ×${count}` : ""}
                       </span>
                     );
                   })}

@@ -4,10 +4,17 @@ import { getOpenAIClient } from "@/lib/ai/openai";
 
 export const dynamic = "force-dynamic";
 
+// Suggestion shape — intentionally rooms-only.
+//
+// Process steps belong to the `ProcessTemplate` layer which admins curate;
+// the AI should not invent per-room step lists. Keeping this small also
+// reduces hallucination and makes it trivial for the wizard to map
+// suggestions → default process templates via `resolveDefaultProcessTemplateId`.
 type SuggestedRoom = {
   label: string;
   type: "vanity" | "kitchen" | "side_unit" | "closet" | "commercial" | "laundry" | "entertainment" | "custom";
-  tasks?: string[];
+  /** Optional integer: how many of this room/deliverable the scope implies. */
+  count?: number;
 };
 
 /**
@@ -37,13 +44,18 @@ export async function POST(req: NextRequest) {
 
   const prompt = [
     "You are helping a cabinetry shop turn messy scope notes into structured project rooms (deliverables).",
-    "Extract rooms/deliverables with short labels and optional task checklist per room.",
+    "Return ONLY the room definitions. Do NOT invent process steps or task lists — ",
+    "process assignment is handled downstream by the app.",
     "",
     "Rules:",
-    "- Return ONLY JSON (no markdown).",
+    "- Return ONLY JSON (no markdown) of shape { rooms: Room[] }.",
     "- rooms[].label: short human label (e.g. 'Master bath vanity', 'Kitchen base cabinets').",
     "- rooms[].type: one of vanity|kitchen|side_unit|closet|commercial|laundry|entertainment|custom.",
-    "- rooms[].tasks: optional list of short tasks (max 8) relevant to that room.",
+    "- rooms[].count: integer >= 1 when the note clearly implies repetition",
+    "  (e.g. 'two vanities' -> count: 2). Omit or set to 1 when unclear.",
+    "- Detect synonyms in French + English (vanité=vanity, cuisine=kitchen, îlot=kitchen,",
+    "  salle de bain / meuble lavabo => vanity, penderie / walk-in => closet,",
+    "  unité de rangement / storage unit => side_unit, etc.).",
     "- If the note is ambiguous, still propose best-effort rooms; do not ask questions in JSON.",
     "",
     "Input note:",
@@ -80,16 +92,17 @@ export async function POST(req: NextRequest) {
     const cleaned: SuggestedRoom[] = rooms
       .filter((r) => r && typeof r.label === "string" && r.label.trim())
       .slice(0, 30)
-      .map((r) => ({
-        label: r.label.trim().slice(0, 120),
-        type: r.type ?? "custom",
-        tasks: Array.isArray(r.tasks)
-          ? r.tasks
-              .filter((t) => typeof t === "string" && t.trim())
-              .map((t) => t.trim().slice(0, 160))
-              .slice(0, 8)
-          : undefined,
-      }));
+      .map((r) => {
+        const rawCount = typeof r.count === "number" ? r.count : 1;
+        const count = Number.isFinite(rawCount)
+          ? Math.min(Math.max(Math.round(rawCount), 1), 20)
+          : 1;
+        return {
+          label: r.label.trim().slice(0, 120),
+          type: r.type ?? "custom",
+          count,
+        };
+      });
 
     return NextResponse.json({ rooms: cleaned });
   } catch (e) {

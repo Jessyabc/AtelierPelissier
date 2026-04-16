@@ -18,10 +18,12 @@ type ProjectLike = {
   projectItems?: unknown[] | null;
 };
 
+// Suggestions are intentionally rooms-only — process steps come from the
+// curated `ProcessTemplate` that the server maps by room type.
 type SuggestedRoom = {
   label: string;
   type: string;
-  tasks?: string[];
+  count?: number;
 };
 
 export function DraftIntakePanel({
@@ -55,10 +57,11 @@ export function DraftIntakePanel({
   const [parsing, setParsing] = useState(false);
   const [suggested, setSuggested] = useState<SuggestedRoom[]>([]);
   const [suggestError, setSuggestError] = useState<string | null>(null);
+  // Process template overrides are optional here — the server will pick a
+  // sensible default for each room type (vanity → Vanity, side_unit → Side
+  // Unit, kitchen → Kitchen, else → Kitchen) unless the user overrides it.
   const [selectedProcessByIdx, setSelectedProcessByIdx] = useState<Record<number, string>>({});
   const [addingIdx, setAddingIdx] = useState<number | null>(null);
-
-  const defaultProcessId = processTemplates[0]?.id ?? "";
 
   async function saveCore() {
     setSaving(true);
@@ -117,29 +120,34 @@ export function DraftIntakePanel({
   async function addRoom(idx: number) {
     const room = suggested[idx];
     if (!room) return;
-    const processTemplateId = (selectedProcessByIdx[idx] ?? defaultProcessId).trim();
-    if (!processTemplateId) {
-      toast.error("Select a process template first");
-      return;
-    }
+    const processOverride = (selectedProcessByIdx[idx] ?? "").trim();
+    const count = Math.min(Math.max(room.count ?? 1, 1), 20);
     setAddingIdx(idx);
     try {
-      const res = await fetch(`/api/projects/${project.id}/project-items`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: room.type || "custom",
-          label: room.label,
-          processTemplateId,
-          extraTaskLabels: Array.isArray(room.tasks) ? room.tasks : [],
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        toast.error(data?.error ?? "Failed to add room");
-        return;
+      // Create N copies when the suggestion implies repetition
+      // (e.g. "two vanities" → count 2). Each room gets its own process
+      // checklist seeded server-side.
+      for (let i = 0; i < count; i++) {
+        const suffix = count > 1 ? ` #${i + 1}` : "";
+        const res = await fetch(`/api/projects/${project.id}/project-items`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            type: room.type || "custom",
+            label: room.label + suffix,
+            // If the user picked an explicit template, pass it. Otherwise we
+            // rely on the server's room-type → template resolver.
+            processTemplateId: processOverride || undefined,
+            useDefaultProcess: true,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          toast.error(data?.error ?? "Failed to add room");
+          return;
+        }
       }
-      toast.success("Room added");
+      toast.success(count > 1 ? `${count} rooms added` : "Room added");
       await onApplied();
     } catch {
       toast.error("Failed to add room");
@@ -217,41 +225,47 @@ export function DraftIntakePanel({
           <div className="text-xs font-medium text-[var(--foreground-muted)] uppercase tracking-wide">
             Suggested rooms (review & apply)
           </div>
-          {suggested.map((r, idx) => (
-            <div key={`${idx}-${r.label}`} className="neo-panel-inset p-3 rounded-lg space-y-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-medium text-[var(--foreground)]">{r.label}</div>
-                <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-light)] text-[var(--foreground-muted)]">
-                  {(r.type || "custom").replace("_", " ")}
-                </span>
+          {suggested.map((r, idx) => {
+            const count = Math.min(Math.max(r.count ?? 1, 1), 20);
+            return (
+              <div key={`${idx}-${r.label}`} className="neo-panel-inset p-3 rounded-lg space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-[var(--foreground)]">{r.label}</span>
+                    {count > 1 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent)]/10 text-[var(--accent)] font-semibold">
+                        ×{count}
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--bg-light)] text-[var(--foreground-muted)]">
+                    {(r.type || "custom").replace("_", " ")}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    value={selectedProcessByIdx[idx] ?? ""}
+                    onChange={(e) => setSelectedProcessByIdx((prev) => ({ ...prev, [idx]: e.target.value }))}
+                    className="neo-select px-3 py-2 text-xs"
+                    title="Override the default process (optional)"
+                  >
+                    <option value="">Use default for this room type</option>
+                    {processTemplates.map((p) => (
+                      <option key={p.id} value={p.id}>{p.name}</option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => addRoom(idx)}
+                    disabled={addingIdx === idx}
+                    className="neo-btn-primary px-3 py-2 text-xs disabled:opacity-50"
+                  >
+                    {addingIdx === idx ? "Adding…" : count > 1 ? `Add ${count} rooms` : "Add room"}
+                  </button>
+                </div>
               </div>
-              {Array.isArray(r.tasks) && r.tasks.length > 0 && (
-                <ul className="text-xs text-[var(--foreground-muted)] list-disc pl-5 space-y-0.5">
-                  {r.tasks.slice(0, 6).map((t) => <li key={t}>{t}</li>)}
-                </ul>
-              )}
-              <div className="flex flex-wrap items-center gap-2">
-                <select
-                  value={selectedProcessByIdx[idx] ?? defaultProcessId}
-                  onChange={(e) => setSelectedProcessByIdx((prev) => ({ ...prev, [idx]: e.target.value }))}
-                  className="neo-select px-3 py-2 text-xs"
-                >
-                  <option value="">Select process</option>
-                  {processTemplates.map((p) => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
-                <button
-                  type="button"
-                  onClick={() => addRoom(idx)}
-                  disabled={addingIdx === idx}
-                  className="neo-btn-primary px-3 py-2 text-xs disabled:opacity-50"
-                >
-                  {addingIdx === idx ? "Adding…" : "Add room"}
-                </button>
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

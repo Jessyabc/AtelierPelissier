@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
+import { resolveDefaultProcessTemplateId } from "@/lib/processDefaults";
 import { requireProjectAccess } from "@/lib/auth/guard";
 
 /**
@@ -46,13 +47,32 @@ export async function POST(
     } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
-    const data = body as { type?: string; label?: string; processTemplateId?: string; extraTaskLabels?: string[] };
+    const data = body as {
+      type?: string;
+      label?: string;
+      processTemplateId?: string;
+      extraTaskLabels?: string[];
+      // When true and `processTemplateId` is empty, resolve a default template
+      // based on the room type (vanity → Vanity, side_unit → Side Unit, etc.).
+      // This lets sales callers skip picking a process in the wizard.
+      useDefaultProcess?: boolean;
+    };
     const type = (data?.type as string)?.trim() || "custom";
     const label = (data?.label as string)?.trim() || "New item";
-    const processTemplateId = (data?.processTemplateId as string)?.trim() || null;
+    let processTemplateId = (data?.processTemplateId as string)?.trim() || null;
+    const useDefaultProcess = data?.useDefaultProcess !== false; // default on
     const extraTaskLabels = Array.isArray(data?.extraTaskLabels)
       ? data.extraTaskLabels.filter((x) => typeof x === "string").map((x) => x.trim()).filter(Boolean).slice(0, 30)
       : [];
+
+    // Auto-resolve a default process template when the caller didn't pick one.
+    // Keeps sales-facing flows simple — the process is implied by the room type.
+    if (!processTemplateId && useDefaultProcess) {
+      const resolved = await resolveDefaultProcessTemplateId(type);
+      if (resolved.processTemplateId) {
+        processTemplateId = resolved.processTemplateId;
+      }
+    }
 
     const project = await prisma.project.findUnique({
       where: { id: projectId },
