@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 /** GET /api/clients?q=search — search clients by name, email, or phone */
 export async function GET(request: Request) {
@@ -41,6 +42,8 @@ export async function GET(request: Request) {
 
 /** POST /api/clients — create a new client */
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

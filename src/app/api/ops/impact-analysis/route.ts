@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { computeInventoryState } from "@/lib/observability/recalculateInventoryState";
+import { getSessionWithUser } from "@/lib/auth/session";
 
 /**
  * GET /api/ops/impact-analysis?materialCode=XXX&shortfall=N
@@ -10,6 +11,8 @@ import { computeInventoryState } from "@/lib/observability/recalculateInventoryS
  * - Should we reorder
  */
 export async function GET(req: NextRequest) {
+  const auth = await getSessionWithUser();
+  if (!auth.ok) return auth.response;
   const materialCode = req.nextUrl.searchParams.get("materialCode");
   const shortfallParam = req.nextUrl.searchParams.get("shortfall");
 

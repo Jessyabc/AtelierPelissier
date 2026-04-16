@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /**
  * POST: Create a sub-project under this project (e.g. B/O return visit).
@@ -12,6 +13,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: parentId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();

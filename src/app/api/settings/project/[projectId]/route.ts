@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { triggerSettingsRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 const updateSchema = z.object({
   targetMarginOverride: z.number().min(0).max(1).optional().nullable(),
@@ -33,6 +34,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ projectId: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { projectId } = await params;
   let body: unknown;
   try {

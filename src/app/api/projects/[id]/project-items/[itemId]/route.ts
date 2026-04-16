@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /**
  * GET: Get a single project item
@@ -30,6 +31,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ) {
   const { id: projectId, itemId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();
@@ -80,6 +83,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; itemId: string }> }
 ) {
   const { id: projectId, itemId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   const item = await prisma.projectItem.findFirst({
     where: { id: itemId, projectId },
   });

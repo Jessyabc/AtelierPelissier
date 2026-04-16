@@ -142,18 +142,18 @@ Checklist:
 - Workflow reflects real shop stages ✓ (process templates exist)
 - Projects can move forward/backward — forward only, no structured backward
 - Holds/blocks are explicit — `blockedReason` field exists on Project ✓
-- Active vs blocked vs completed distinction — partial (isDraft/isDone + blockedReason exist, but not surfaced as first-class dashboard filters)
-- **Task assignment to employees per step — DOES NOT EXIST**
-- **Step duration estimates — DOES NOT EXIST**
-- **Daily task list per employee — DOES NOT EXIST**
+- Active vs blocked vs completed distinction — partial (isDraft/isDone + blockedReason exist, not yet surfaced as first-class dashboard filters)
+- **Task assignment to employees per step ✓** (`ProjectProcessStep` model + `ProductionTab.tsx` inline editor to set `assignedEmployeeId` and `scheduledDate` per row)
+- **Step duration estimates ✓** (`estimatedMinutes` on both `ProcessStep` and `ProjectProcessStep`)
+- **Daily task list per employee ✓** (`/today` page + `/api/today` return today / week / overdue buckets)
+- **Calendar renders assigned steps ✓** (`/api/calendar` merges `serviceCall + manualEvent + projectProcessStep`, `calendar/page.tsx` renders type="process_step")
 
-**Score: 2 / 5** (was 3, downgraded — audit revealed task distribution is entirely missing)  
+**Score: 3.5 / 5** (↑ from 2 — the previous audit was wrong: the full `ProjectProcessStep` pipeline is built from schema → API → planner assignment UI → woodworker Today view → calendar. Remaining gap is reporting: active vs blocked vs completed dashboard grouping, and backwards step moves.)  
 **Owner:** Planner  
 **Actions:**
-- Add `estimatedMinutes` and `defaultEmployeeRole` to `ProcessStep` schema
-- Add `ProjectProcessStep` model (project-specific step instance with assignedEmployeeId, scheduledDate, status)
-- Add assignment UI in Planner view (drag step onto employee/date)
-- Surface blocked vs active as first-class dashboard grouping
+- Surface blocked vs active vs done as first-class dashboard grouping
+- Add "revert to pending" for woodworkers marking a step done by mistake
+- Add on-schedule / late indicator derived from `estimatedMinutes` vs actual punch duration
 
 ---
 
@@ -184,10 +184,10 @@ Checklist:
 - Standard jobs separated from custom exceptions — NOT DONE
 - Task templates from historical timing — NOT DONE
 
-**Score: 0 / 5** (was 1, downgraded — task taxonomy doesn't exist and punch data isn't task-tagged)  
+**Score: 1 / 5** (↑ from 0 — `ProjectProcessStep` is built so punch data CAN now be task-tagged; next step is actually wiring the punch kiosk to the assigned step)  
 **Owner:** Planner + Admin  
 **Actions:**
-- First: build `ProjectProcessStep` (Section 6 actions above) — punch data must be task-tagged to be useful
+- Wire `/punch/[station]` to auto-pick the currently-in-progress `ProjectProcessStep` for the scanning employee (so punches tag a task, not just a station)
 - Define first 10 repeatable tasks and map to stations/project types
 - Add `/api/reports/time-baselines` endpoint (avg/p50/p90/outlier per task per project type)
 - Tag custom exception jobs so they don't pollute baselines
@@ -374,14 +374,14 @@ Checklist:
 
 | Section | Score | Delta vs last |
 |---------|-------|--------------|
-| 1. Core operational foundation | **2.5** | ↑ from 2 (sales stage lifecycle) |
+| 1. Core operational foundation | **3** | ↑ from 2.5 (`estimatedMinutes` on steps confirmed) |
 | 2. Project intake | 3 | — |
 | 3. Sales-to-production handoff | **3** | ↑ from 2 (stage handoff + planner gating) |
 | 4. Email/document ingestion | **2** | ↑ from 1 (PDF drop-zone + heuristic pre-fill) |
 | 5. Project matching | 2 | — |
-| 6. Production workflow + task distribution | 2 | — |
+| 6. Production workflow + task distribution | **3.5** | ↑ from 2 (task distribution built end-to-end; prior audit was incorrect) |
 | 7. QR station timing | 3 | — |
-| 8. Standard time baselines | 0 | — |
+| 8. Standard time baselines | **1** | ↑ from 0 (step assignment unlocks tagging; now a wiring job) |
 | 9. Inventory + purchasing | 4 | — |
 | 10. Cutlist integration | 3 | — |
 | 11. Roles and permissions | **3** | ↑ from 2.5 (master menu + permanent admin + withAuth) |
@@ -391,12 +391,13 @@ Checklist:
 | 15. Training and adoption | 1 | — |
 | 16. Commercialization readiness | 1 | — |
 | 17. Admin customization coherence | 3 | new |
-| **Overall average** | **2.35 / 5** | ↑ 0.05 (role/menu/auth consolidation; major task-distribution gap still dominates) |
+| **Overall average** | **2.6 / 5** | ↑ 0.3 (task-distribution re-audit + API auth pass + menu consolidation) |
 
 **Review date:** 2026-04-15  
 **Top 3 risks this cycle:**
-1. Task distribution does not exist — woodworkers have no system-driven daily plan
-2. Calendar is entirely disconnected from the project engine — production schedule is invisible on the calendar
+1. API role enforcement is partial — ~60 routes trust middleware session but don't check role or project ownership (batch migration to `requireRole` + `requireProjectAccess` in progress)
+2. `/today` and calendar are built but won't light up for a woodworker until their `User.employeeId` is linked — onboarding must enforce that link or route them to ask admin
+3. No task-level time reporting yet — punches aren't tagged to the `ProjectProcessStep` the employee is actually working on
 3. Role-specific UX is incomplete — salesperson can't produce a quote, woodworker has no usable mobile view
 
 **Top 3 actions before next review:**

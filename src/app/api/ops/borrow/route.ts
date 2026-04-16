@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { executeBorrow, findBorrowCandidates } from "@/lib/purchasing/borrowAnalysis";
 import { triggerInventoryRecalcForMaterial } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 /**
  * GET /api/ops/borrow?materialCode=XXX&excludeProjectId=YYY
@@ -24,6 +25,8 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
     const { materialCode, quantity, lenderProjectId, borrowerProjectId } = body;

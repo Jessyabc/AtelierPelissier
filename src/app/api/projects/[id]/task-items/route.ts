@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /**
  * GET: List task items for a project (or sub-project)
@@ -24,6 +25,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();

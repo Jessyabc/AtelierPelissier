@@ -1,12 +1,15 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { distributorUpdateSchema } from "@/lib/validators";
+import { requireRole } from "@/lib/auth/session";
 
 /** PATCH: Update a distributor */
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
   let body: unknown;
   try {
@@ -44,6 +47,8 @@ export async function DELETE(
   _request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id } = await params;
   await prisma.distributor.delete({ where: { id } });
   return NextResponse.json({ ok: true });

@@ -12,6 +12,7 @@ import { computeSideUnitIngredients } from "@/lib/ingredients/sideUnit";
 import { computeConfigHash } from "@/lib/ingredients/types";
 import { saveSnapshot, getActiveSnapshot } from "@/lib/ingredients/snapshot";
 import type { VanitySection, SideUnitSection } from "@/lib/ingredients/types";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 export async function GET(
   request: Request,
@@ -38,6 +39,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: { sourceType: string; userId?: string };
   try {
     body = await request.json();

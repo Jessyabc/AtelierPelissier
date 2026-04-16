@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { distributorSchema } from "@/lib/validators";
+import { requireRole } from "@/lib/auth/session";
 
 /** GET: List all distributors, ordered by reference name */
 export async function GET() {
@@ -12,6 +13,8 @@ export async function GET() {
 
 /** POST: Create a new distributor */
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

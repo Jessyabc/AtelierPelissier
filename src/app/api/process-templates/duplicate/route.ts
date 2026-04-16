@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 // Generate unique id for duplicated steps/edges
 function makeId(): string {
@@ -7,6 +8,8 @@ function makeId(): string {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

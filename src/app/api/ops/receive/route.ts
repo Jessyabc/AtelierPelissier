@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { triggerInventoryRecalcForMaterial, triggerOrderInventoryRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 /**
  * POST /api/ops/receive
@@ -16,6 +17,8 @@ import { triggerInventoryRecalcForMaterial, triggerOrderInventoryRecalc } from "
  * }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
     const { orderId, lines } = body;

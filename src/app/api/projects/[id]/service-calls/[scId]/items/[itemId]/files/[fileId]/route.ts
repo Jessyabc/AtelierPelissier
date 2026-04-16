@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { unlink } from "fs/promises";
 import path from "path";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /** DELETE: Remove a file from a materials item */
 export async function DELETE(
@@ -9,6 +10,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; scId: string; itemId: string; fileId: string }> }
 ) {
   const { scId, itemId, fileId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
 
   const fileRecord = await prisma.serviceCallItemFile.findFirst({
     where: {

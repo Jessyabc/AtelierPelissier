@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { serviceCallSchema } from "@/lib/validators";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /** GET: Fetch a single service call by ID (must belong to the project). */
 export async function GET(
@@ -26,6 +27,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; scId: string }> }
 ) {
   const { id: projectId, scId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
 
   let body: unknown;
   try {

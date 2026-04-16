@@ -2,12 +2,15 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { prerequisiteLineUpdateSchema } from "@/lib/validators";
 import { triggerMaterialInventoryOrderRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
   const { id: projectId, lineId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   const line = await prisma.prerequisiteLine.findFirst({
     where: { id: lineId, projectId },
   });
@@ -47,6 +50,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
   const { id: projectId, lineId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   const line = await prisma.prerequisiteLine.findFirst({
     where: { id: lineId, projectId },
   });

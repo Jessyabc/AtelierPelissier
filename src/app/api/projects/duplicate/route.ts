@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
+import { requireRole } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

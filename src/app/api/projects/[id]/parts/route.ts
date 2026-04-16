@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { panelPartSchema } from "@/lib/validators";
 import { triggerMaterialInventoryOrderRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 export async function GET(
   request: Request,
@@ -32,6 +33,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   const { searchParams } = new URL(request.url);
   const cutlistIdParam = searchParams.get("cutlistId");
   const where: { projectId: string; cutlistId?: string | null } = { projectId };
@@ -48,6 +51,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();

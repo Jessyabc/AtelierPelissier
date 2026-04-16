@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
 import { prisma } from "@/lib/db";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
@@ -23,6 +24,8 @@ export async function GET(_req: NextRequest, { params }: RouteParams) {
 // - type: reservation | supplier_invoice | estimate | sage_invoice | other
 export async function POST(req: NextRequest, { params }: RouteParams) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
 
   const contentType = req.headers.get("content-type") || "";
   if (!contentType.includes("multipart/form-data")) {

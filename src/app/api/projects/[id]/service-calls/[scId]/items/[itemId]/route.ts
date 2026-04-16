@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /** DELETE: Remove an item from the service call. */
 export async function DELETE(
@@ -7,6 +8,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; scId: string; itemId: string }> }
 ) {
   const { scId, itemId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
 
   const serviceCall = await prisma.serviceCall.findUnique({
     where: { id: scId },

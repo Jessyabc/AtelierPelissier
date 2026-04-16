@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 export const dynamic = "force-dynamic";
 
@@ -15,6 +16,8 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
     const { supplierId, supplierSku, inventoryItemId, unitCost, leadTimeDays, isDefault } = body;

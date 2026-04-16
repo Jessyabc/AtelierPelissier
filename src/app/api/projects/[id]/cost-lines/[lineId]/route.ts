@@ -3,12 +3,15 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { costLineUpdateSchema } from "@/lib/validators";
 import { triggerFinancialRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
   const { id: projectId, lineId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();
@@ -42,6 +45,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
   const { id: projectId, lineId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   await prisma.costLine.delete({ where: { id: lineId } });
   await logAudit(projectId, "cost_deleted");
   triggerFinancialRecalc(projectId);

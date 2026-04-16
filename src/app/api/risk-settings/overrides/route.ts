@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { recalculateProjectState } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 const createSchema = z.object({
   projectType: z.string().min(1).max(50).trim(),
@@ -21,6 +22,8 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
   let body: unknown;
   try {
     body = await request.json();

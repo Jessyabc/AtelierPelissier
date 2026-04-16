@@ -4,12 +4,15 @@ import { logAudit } from "@/lib/audit";
 import { vanityInputsSchema } from "@/lib/validators";
 import { computeConfigHash } from "@/lib/ingredients/types";
 import { markSnapshotStale } from "@/lib/ingredients/snapshot";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();

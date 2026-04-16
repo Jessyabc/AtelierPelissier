@@ -5,6 +5,7 @@ import {
   triggerOrderInventoryRecalc,
   triggerInventoryRecalcForMaterial,
 } from "@/lib/observability/recalculateProjectState";
+import { requireRole } from "@/lib/auth/session";
 
 const updateSchema = z.object({
   receivedQty: z.number().min(0).optional(),
@@ -15,6 +16,8 @@ export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; lineId: string }> }
 ) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   const { id: orderId, lineId } = await params;
   let body: unknown;
   try {

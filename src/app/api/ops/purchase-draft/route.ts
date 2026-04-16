@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
+import { requireRole } from "@/lib/auth/session";
 
 /**
  * POST /api/ops/purchase-draft
@@ -14,6 +15,8 @@ import { prisma } from "@/lib/db";
  * }
  */
 export async function POST(req: NextRequest) {
+  const auth = await requireRole(["admin", "planner"]);
+  if (!auth.ok) return auth.response;
   try {
     const body = await req.json();
     const { supplierId, orderType, projectId, expectedDeliveryDate, items } = body;

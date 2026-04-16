@@ -3,12 +3,15 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { projectSettingsSchema } from "@/lib/validators";
 import { triggerSettingsRecalc } from "@/lib/observability/recalculateProjectState";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: projectId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   let body: unknown;
   try {
     body = await request.json();

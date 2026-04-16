@@ -9,6 +9,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { CABINET_DEFAULTS } from "@/lib/ingredients/types";
+import { requireRole } from "@/lib/auth/session";
 
 export async function GET() {
   const row = await prisma.constructionStandards.findFirst();
@@ -16,6 +17,8 @@ export async function GET() {
 }
 
 export async function PATCH(request: Request) {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return auth.response;
   let body: Record<string, unknown>;
   try {
     body = await request.json();

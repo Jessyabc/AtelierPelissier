@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { parsePdfWithLlamaParse } from "@/lib/llamaparse";
 import { parseInvoiceText } from "@/lib/invoice/parseInvoiceText";
+import { requireRole } from "@/lib/auth/session";
 
 /**
  * POST /api/projects/parse-invoice
@@ -13,6 +14,8 @@ import { parseInvoiceText } from "@/lib/invoice/parseInvoiceText";
  * completes them manually. It never fails hard on extraction gaps.
  */
 export async function POST(request: Request) {
+  const auth = await requireRole(["admin", "planner", "salesperson"]);
+  if (!auth.ok) return auth.response;
   const contentType = request.headers.get("content-type") || "";
   if (!contentType.includes("multipart/form-data")) {
     return NextResponse.json(

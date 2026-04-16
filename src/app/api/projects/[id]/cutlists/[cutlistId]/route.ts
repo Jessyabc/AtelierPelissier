@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 const updateCutlistSchema = z.object({
   name: z.string().min(1).max(100).trim().optional(),
@@ -12,6 +13,8 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; cutlistId: string }> }
 ) {
   const { id: projectId, cutlistId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   const cutlist = await prisma.cutlist.findFirst({
     where: { id: cutlistId },
     include: { projectItem: { select: { projectId: true } } },
@@ -49,6 +52,8 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string; cutlistId: string }> }
 ) {
   const { id: projectId, cutlistId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
   const cutlist = await prisma.cutlist.findFirst({
     where: { id: cutlistId },
     include: { projectItem: { select: { projectId: true } } },

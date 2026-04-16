@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { requireProjectAccess } from "@/lib/auth/guard";
 
 /** POST: Upload a file for a materials item */
 export async function POST(
@@ -9,6 +10,8 @@ export async function POST(
   { params }: { params: Promise<{ id: string; scId: string; itemId: string }> }
 ) {
   const { id: projectId, scId, itemId } = await params;
+  const access = await requireProjectAccess(projectId);
+  if (!access.ok) return access.response;
 
   const item = await prisma.serviceCallItem.findFirst({
     where: {
