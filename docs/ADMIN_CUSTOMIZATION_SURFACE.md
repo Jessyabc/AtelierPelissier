@@ -1,6 +1,14 @@
 # Admin Customization Surface (Consolidation Audit)
 
-Last updated: 2026-04-15
+Last updated: 2026-04-16
+
+> **2026-04-16 delta:** Room-type → process-template mapping is now fully
+> admin-editable under `/admin?tab=roomTypes`. The resolver
+> (`src/lib/processDefaults.ts`) reads `AppConfig.processDefaults` first,
+> then falls back to the built-in names (`vanity → Vanity`,
+> `side_unit → Side Unit`, `kitchen → Kitchen`), then to the Kitchen
+> template for anything else. The admin UI surfaces the fallback name
+> per row so admins can predict behaviour when the override is empty.
 
 ## Goal
 

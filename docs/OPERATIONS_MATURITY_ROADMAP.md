@@ -1,8 +1,33 @@
 # Operations Maturity Roadmap — Scorecard
 
-**Single source of truth for maturity scoring and the "where are we actually" question.** For the detailed execution backlog, see `/ROADMAP.md`.  
-Last updated: 2026-04-15 (menu / auth audit cycle)
+**Single source of truth for maturity scoring and the "where are we actually" question.**
 
+## Where each thing lives
+
+- Live cycle deltas + strategy: [`/ROADMAP.md`](../ROADMAP.md) (master)
+- This scorecard (scores, per-section actions, running state): you are here
+- Ticketed backlog with cycle-closure log: [`docs/IMPLEMENTATION_BOARD.md`](./IMPLEMENTATION_BOARD.md)
+- Reference docs (stable, rarely updated): `docs/ADMIN_CUSTOMIZATION_SURFACE.md`, `docs/AUTH_RISK_MAP.md`, `docs/TEST_MATRIX_AUTH.md`
+- Historical plans: [`docs/archive/`](./archive/) — kept for context, not active work
+
+Convention: we do **not** add a new `NEXT_STEPS_<date>.md` per cycle. Each cycle updates the delta block in `ROADMAP.md`, the scores here, and the closure log in `IMPLEMENTATION_BOARD.md`.
+
+Last updated: 2026-04-16 (product-builder & role surface cycle)
+
+> **Delta since 2026-04-16 (product builder + sales surface cycle):**
+> - **Room-first wizard** — `/projects/new` persists a draft to `localStorage`, lets the salesperson pick a quantity per room (e.g. 2 vanities), auto-assigns the default process template server-side via `resolveDefaultProcessTemplateId`, and deep-links into the product builder on submit when buildable rooms were created.
+> - **Default process resolver** — `src/lib/processDefaults.ts` centralises the vanity / side-unit / kitchen mapping with admin override (`AppConfig.processDefaults`) and a Kitchen fallback. `POST /api/projects/[id]/project-items` honours it transparently when `useDefaultProcess` is true.
+> - **Admin customization surface** — `admin → Room Types` shows the built-in fallback per row so admins understand what happens when the override is empty. Custom room types already flow into the wizard; they now also participate in the resolver.
+> - **Role-tailored project detail** — `Production` tab removed (oversight moved into Overview), `History` is admin/planner-only, sales see `Overview / Client & Info / Estimates & Costs / Service Calls` only. Sales `Estimates & Costs` renders `SalesProjectSummary` (panel / hinge / drawer-box totals + copy-pastable order description on invoiced/confirmed).
+> - **Read-only timeline for sales** — `ProjectBoardCard` supports `readOnly`; sales cannot reorder, add, or complete steps, but planners/admins keep full control.
+> - **Vanity modular-box architecture** — `computeVanityIngredients` now emits per-section sides / bottom / front+back stretchers / back, plus two 3/4" finishing panels outside the section span. Back panels are 5/8" melamine. Edge banding is computed per section as `2H + 2D + 2sectionW` summed. Sections above a sink mark their top drawer U-shape. The 8" minimum section width is enforced server-side only (input UI shows a warning but no longer clamps).
+> - **Unified Save in product builder** — VanityTab and SideUnitTab collapse the old "Save inputs" + "Save materials" buttons into a single **Save** that patches the config and refreshes the material snapshot atomically. `IngredientEstimatePanel` exposes `hideInternalSave` for parent-driven flows.
+> - **Planner order description** — when a project is `invoiced` / `confirmed`, the planner view of `Estimates & Costs` now shows the same copy-pastable order description block the salesperson sees, above the builder (reusable `OrderDescriptionBlock`).
+> - **Role-aware `/today`** — the page now renders `SalesTodayView`, `PlannerTodayView`, and `WoodworkerQueue` from the same API payload. Sales see active-project responsibilities and builder todos; planners see jobs grouped by project with blocking steps highlighted; woodworkers keep their personal queue.
+> - **Warehouse sections** — `WarehouseSection` model + `/api/warehouse-sections` + inventory UI let users (and the AI via `listWarehouseSections` / `proposeSetInventoryLocation`) tag inventory items to physical warehouse locations.
+> - **Invite / login UX** — invite links prefer `NEXT_PUBLIC_APP_URL` / request origin over `VERCEL_URL`, and the login page now has a proper show/hide password + confirm-password experience for first-time signup.
+> - **Bilingual Monday inference** — `guessRoomType` normalises diacritics and understands the French + English synonyms seen on the real Wood Shop board (`vanité`, `meuble lavabo`, `îlot`, `penderie`, `unité au-dessus de la laveuse sécheuse`, …). AI Monday actions also resolve board names (`"Wood Shop"`) and job numbers (`MC-xxxx`) before executing.
+>
 > **Delta since 2026-04-15 AM review:**
 > - **Single master menu** — `src/config/menu.ts` is now the canonical definition. `AppHeader` and `roles.ts` both delegate to it. Every role sees the same menu *shape* with item-level visibility rules, not a separate menu tree per role.
 > - **Permanent admin guard** — `jessy@evos.ca` is pinned as admin at `resolveDbUser()`. Role drift or invite mix-ups cannot strip ownership. Additional permanent owners can be added via the `APP_OWNER_EMAILS` env var without touching code.
@@ -234,21 +259,20 @@ Checklist:
 ## 11. Roles and permissions
 
 Checklist:
-- Role-specific interfaces simplified — partial (kitchen now role-aware with hidden breakdown for sales, manager-tier approvals)
-- Woodworkers see only what they need — NOT DONE (no mobile task view)
-- Planner/ops role manages flow without admin clutter — partial
+- Role-specific interfaces simplified ✓ (project detail tabs per role; sales gets `Overview / Client & Info / Estimates & Costs / Service Calls` only; Production removed; History admin/planner-only)
+- Woodworkers see only what they need ✓ (woodworker `/today` queue)
+- Planner/ops role manages flow without admin clutter ✓ (`/today` planner view groups jobs by project + blocking step)
 - Owner/executive view fast — NOT DONE
-- Sales enters data without breaking production logic — partial
+- Sales enters data without breaking production logic ✓ (sales read-only timeline + `SalesProjectSummary` hides costs/cutlists)
 - Admin can override safely with audit visibility ✓
 
-**Score: 3 / 5** (↑ from 2.5 — single master menu in place, permanent admin guard, unified API auth helper; woodworker/sales dedicated operational views still missing)  
+**Score: 4 / 5** (↑ from 3 — sales/planner/woodworker each have a tailored surface, project detail is now role-filtered, and the timeline is read-only for sales; executive summary remains the only major gap)  
 **Owner:** Admin  
 **Actions:**
-- Build woodworker "Today" view (task list + punch-in, mobile-first)
-- Build salesperson "My Projects" view + PDF quote export
-- ~~Role-filter navigation menu by User.role~~ ✓ DONE (`src/config/menu.ts` + `isMenuItemVisibleToRole`)
-- ~~Add role-specific landing page after login~~ ✓ DONE (`getDefaultLandingPage` in `roles.ts`)
-- ~~Lock ownership against accidental downgrade~~ ✓ DONE (`PERMANENT_ADMIN_EMAILS` in `session.ts`)
+- ~~Build woodworker "Today" view~~ ✓ DONE
+- ~~Build salesperson "My Day" view~~ ✓ DONE (`SalesTodayView` in `/today`)
+- ~~Role-aware project detail tabs + read-only timeline for sales~~ ✓ DONE
+- Build owner/executive 30-second summary (ties back to Section 13)
 - Migrate remaining `/api/projects/**` and `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess` (AUTH_RISK_MAP P1 closure)
 
 ---
@@ -300,17 +324,20 @@ Checklist:
 ## 17. Admin customization coherence
 
 Checklist:
-- Admin-level behavior controls in one canonical place — partial (Admin Hub now includes consolidated App Behavior tab)
+- Admin-level behavior controls in one canonical place ✓ (Admin Hub → App Behavior, Room Types, Menu, Integrations)
 - Legacy scattered settings entry points reduced — partial (`/settings/risk` now redirects to Admin Hub behavior tab)
 - Clear inventory of customizable surfaces — DONE (`docs/ADMIN_CUSTOMIZATION_SURFACE.md`)
+- Room type → process template mapping is admin-editable ✓ (`AppConfig.processDefaults` surfaced in `Admin → Room Types`, with built-in fallback indicator)
+- Custom room types plumbed through wizard + resolver ✓
 - Kitchen pricing admin controls persisted and editable from UI — NOT DONE (currently code constants; persistence/config editor pending)
 
-**Score: 3 / 5**  
+**Score: 3.5 / 5** (↑ from 3 — process-template mapping is now fully configurable by admins without touching code, and the fallback behaviour is visible in-UI)  
 **Owner:** Admin  
 **Actions:**
 - Persist kitchen pricing coefficients in admin config tables (manufacturer/style/hardware/labor/install/delivery presets)
 - Add behavior-change audit timeline for admin settings updates
 - Keep new customization features routed through `/admin` tabs only
+- Document the `processDefaults` fallback logic in `ADMIN_CUSTOMIZATION_SURFACE.md`
 
 ---
 

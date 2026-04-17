@@ -6,11 +6,30 @@
 
 This board converts the Phase 1 (operational maturity) and Phase 2 (lean refactor) plans into sprint-assignable tickets. There are **42 Phase 1 tickets** across 8 epics and **18 Phase 2 tickets** across 5 epics.
 
-### Implementation delta (2026-04-15)
+### Cycle closure log
+
+Rather than rewrite 60 tickets individually, each cycle records what closed below. Tickets not listed here are still open and remain the active backlog.
+
+#### 2026-04-16 cycle (product builder + sales surface)
+
+Shipped in this cycle and therefore **closed** on the board:
+
+| Ticket | How it closed |
+|--------|----------------|
+| **P1-003** Readiness checklist UI | Covered by the sales-facing draft intake panel + the role-aware "next action" card; readiness indicators surface on every project card. |
+| **P1-010 / P1-011 / P1-012 / P1-013** Role-to-route map, menu filter, landing redirect, middleware gating | Fully landed in `src/config/menu.ts`, `src/lib/auth/roles.ts` (`isPathAllowedForRole`, `isMenuItemVisibleToRole`, `getDefaultLandingPage`) and the middleware. Sales / planner / woodworker each land on the right surface and see only their menu items. |
+| **P1-030** "What needs attention today" widget | Delivered as the role-aware `/today` (`SalesTodayView`, `PlannerTodayView`, `WoodworkerQueue`). |
+| **P2-006** Hide admin-only menu items | Closed as part of the role-aware menu refactor — hiding is now the default. |
+| **P2-013** Project creation wizard simplification | Room-first wizard with counts, `localStorage` persistence, default-process auto-assignment, deep-link-to-builder. |
+| **P2-016** Room-type form consolidation | `Admin → Room Types` now handles built-in + custom + default-process mapping in one place. |
+
+Still open at top of backlog: **P1-001/002/004** (hard readiness enforcement + audit), **P1-005→009** (blocked-vs-active as a first-class concept beyond today's `blockedReason`), **P1-014→019** (backup / health / monitoring / ingestion plumbing), **P1-020→027** (ingestion pipeline + exception queue), **P1-028/029** (executive 30-second dashboard), **P1-031→034** (task taxonomy + punch anomaly), and the P2 evidence-gated consolidation tickets.
+
+#### Prior delta (2026-04-15)
 
 - Kitchen pricing foundation implemented as normalized persistence (`KitchenPricingProject` + cabinet/door/drawer/hardware/install tables) with role-aware submit/approve APIs.
 - Kitchen estimator UI moved from generic cost-line entry toward structured builder workflow and manager-tier approval path.
-- Admin customization consolidation started: new **App Behavior** tab in Admin Hub and legacy risk settings route redirected to that consolidated surface.
+- Admin customization consolidation started: **App Behavior** tab in Admin Hub and legacy risk settings route redirected there.
 - New audit reference created: `docs/ADMIN_CUSTOMIZATION_SURFACE.md`.
 
 Phase 1 targets 10 weeks of execution across 5 sprints (2 weeks each). Phase 2 begins only after Phase 1 M1-M5 are validated + 4 weeks of usage data, meaning Phase 2 sprint planning starts no earlier than week 14.

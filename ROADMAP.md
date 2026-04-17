@@ -1,15 +1,31 @@
 # Atelier Pelissier — Master Roadmap
 
-**Single source of truth.** Replaces IMPROVEMENTS.md and PHASE2.md (both archived — their work is either done or superseded by this document).  
-Last updated: 2026-04-14
+**Single source of truth.** Replaces `IMPROVEMENTS.md` and `PHASE2.md` (both archived).  
+Companion docs: `docs/OPERATIONS_MATURITY_ROADMAP.md` (scorecard), `docs/IMPLEMENTATION_BOARD.md` (ticket backlog), `docs/ADMIN_CUSTOMIZATION_SURFACE.md`, `docs/AUTH_RISK_MAP.md`, `docs/TEST_MATRIX_AUTH.md`. Anything under `docs/archive/` is history, not active work.
 
-> **What changed since 2026-04-09:**
+Last updated: 2026-04-16
+
+> **What changed since 2026-04-14 (the "product builder + sales surface" cycle, phases 1-7):**
+> - **Monday ingestion reliability** — board-name + job-number resolution (`resolveMondayBoardIdForAction`, `findMondayItemByRefInTree`), bilingual room inference in `guessRoomType` with diacritic normalisation.
+> - **Warehouse sections** — new `WarehouseSection` model, `/api/warehouse-sections` CRUD, inventory UI with section filter + per-item location picker, AI tools (`listWarehouseSections`, `proposeCreateWarehouseSection`, `proposeSetInventoryLocation`).
+> - **Invite / login UX** — invite links prefer `NEXT_PUBLIC_APP_URL`/request origin over `VERCEL_URL`, login page has show/hide + confirm-password for first-time signup.
+> - **Room-first project wizard** — `/projects/new` persists a draft to `localStorage`, supports a quantity per room type (2 vanities → 2 `ProjectItem`s), auto-assigns the default process template via `resolveDefaultProcessTemplateId`, and deep-links into the product builder when buildable rooms were created. `targetDate` flows into `Project.targetDate` on create.
+> - **Default process resolver** — `src/lib/processDefaults.ts` centralises vanity→Vanity, side_unit→Side Unit, kitchen→Kitchen with admin override (`AppConfig.processDefaults`) and a Kitchen fallback. Admin UI (`Admin → Room Types`) shows the effective fallback per row.
+> - **Role-aware project detail** — Production tab removed, History admin/planner-only, sales get `Overview / Client & Info / Estimates & Costs / Service Calls` only. Sales `Estimates & Costs` renders `SalesProjectSummary` (panel / hinge / drawer-box totals + copy-pastable order description on invoiced/confirmed). Timeline is read-only for sales via `ProjectBoardCard.readOnly`.
+> - **Vanity modular-box architecture** — per-section sides / bottom / front+back stretchers / back, plus two 3/4" outer finishing panels. Section backs and drawer-box bottoms now 5/8" melamine (no more 1/4" hardboard in vanity or side-unit builds). Edge banding computed per section as `2H + 2D + 2sectionW` summed. Sink sections mark their top drawer as U-shape and add cutout edge banding. 8" minimum section width is server-enforced only — the UI warns in amber but never clamps.
+> - **Unified Save in product builder** — VanityTab and SideUnitTab collapse "Save inputs" + "Save materials" into a single Save that patches config and refreshes the material snapshot atomically. Shared `saveMaterialSnapshot` client helper; `IngredientEstimatePanel.hideInternalSave` lets parents drive the save.
+> - **Planner order description** — when a project is `invoiced`/`confirmed`, the planner view of `Estimates & Costs` now shows the same copy-pastable `OrderDescriptionBlock` the salesperson sees, above the builder (builder itself stays fully editable).
+> - **Role-aware `/today`** — `SalesTodayView` (active-project responsibilities + builder todos), `PlannerTodayView` (jobs grouped by project with blocking steps), `WoodworkerQueue` (existing per-employee queue) served from one `/api/today` payload.
+> - **Process step durations** — `ProcessStep.estimatedMinutes` is now editable from the process builder UI (`/processes/[id]`), seeds `ProjectProcessStep.estimatedMinutes` at seeding time, and renders on the canvas node for a quick visual.
+>
+> **Scorecard impact:** §11 Roles and permissions 3 → 4/5 · §17 Admin customization coherence 3 → 3.5/5. Full detail in `docs/OPERATIONS_MATURITY_ROADMAP.md`.
+>
+> **Previous delta (2026-04-09 → 2026-04-14):**
 > - Configuration-to-material-truth subsystem landed (ingredient engine, material snapshots, construction standards, section configurator).
-> - Role-aware next-action spine (`getNextAction`) now drives project cards and the project detail header.
+> - Role-aware next-action spine (`getNextAction`) drives project cards and the project detail header.
 > - PDF invoice drop-zone on New Project pre-fills the wizard via `parseInvoiceText` heuristics (pdf-parse → LlamaParse fallback).
 > - Sales lifecycle stage (`Project.stage` = `quote` / `invoiced` / `confirmed`) added with wizard picker, list section, and role-branch routing in `getNextAction`.
-> - VanityTab refactored to section-canonical layout — the old flat doors/drawers inputs are gone and vanity width now rescales sections instead of conflicting with them.
-> - Impact on scorecard: sections 3, 4, 11, 13 moved (details in `docs/OPERATIONS_MATURITY_ROADMAP.md`).
+> - VanityTab refactored to section-canonical layout.
 
 ---
 

@@ -1,5 +1,6 @@
-# Phase 2: Lean Refactor Plan (after Phase 1)
-> **This is a supporting detail document.** The master backlog and priorities live in [`/ROADMAP.md`](../ROADMAP.md). Do not begin executing this plan until sections 1, 3, 6, and 11 of the maturity scorecard all reach 4+ AND 4 weeks of Phase 1 usage data have been collected.
+# Phase 2: Lean Refactor Plan (after Phase 1) — ARCHIVED
+
+> **Archived 2026-04-16.** Kept for historical reference; the refactor ideas here still inform the live P2-xxx tickets in [`docs/IMPLEMENTATION_BOARD.md`](../IMPLEMENTATION_BOARD.md). "Phase 2" as used in this file pre-dates the 2026-04-16 phase cycle and is unrelated to it. The live backlog is in [`/ROADMAP.md`](../../ROADMAP.md) and the ticket board; the scorecard is in [`docs/OPERATIONS_MATURITY_ROADMAP.md`](../OPERATIONS_MATURITY_ROADMAP.md).
 
 ## 1. Executive judgment
 
