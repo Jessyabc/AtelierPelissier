@@ -36,6 +36,8 @@ type StepPayload = {
   isOptional?: boolean;
   positionX: number;
   positionY: number;
+  /** Default duration hint in minutes; null clears a previously set value. */
+  estimatedMinutes?: number | null;
 };
 
 type EdgePayload = {
@@ -109,6 +111,17 @@ export async function PUT(
 
       // Upsert steps
       for (const s of incomingSteps) {
+        // Normalise the duration hint: accept a finite non-negative
+        // number (rounded to whole minutes) or null. Anything else is
+        // coerced to null so the DB never stores NaN / garbage.
+        const rawMinutes = s.estimatedMinutes;
+        const estimatedMinutes =
+          typeof rawMinutes === "number" && Number.isFinite(rawMinutes) && rawMinutes >= 0
+            ? Math.round(rawMinutes)
+            : rawMinutes === null
+              ? null
+              : null;
+
         const data = {
           templateId: id,
           label: String(s.label || "Step").trim(),
@@ -117,6 +130,7 @@ export async function PUT(
           isOptional: Boolean(s.isOptional),
           positionX: Number(s.positionX) || 0,
           positionY: Number(s.positionY) || 0,
+          estimatedMinutes,
         };
         const existingStep = existing.steps.find((x) => x.id === s.id);
         if (existingStep) {

@@ -29,6 +29,12 @@ export type ProcessNodeData = {
   description?: string | null;
   type?: string;
   isOptional?: boolean;
+  /**
+   * Default duration hint (minutes) used when seeding a project's
+   * `ProjectProcessStep` rows from this template. Nullable because old
+   * templates pre-date the field; planners fill it in gradually.
+   */
+  estimatedMinutes?: number | null;
 };
 
 const nodeTypes: NodeTypes = {

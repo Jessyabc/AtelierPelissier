@@ -28,13 +28,28 @@ export function NodeFormPanel({
   const [description, setDescription] = useState(node?.data?.description ?? "");
   const [type, setType] = useState(node?.data?.type ?? "step");
   const [isOptional, setIsOptional] = useState(node?.data?.isOptional ?? false);
+  // Stored as a string so the user can clear the field. Converted to
+  // a number (or null) when the API payload is built.
+  const [estimatedMinutes, setEstimatedMinutes] = useState<string>(
+    node?.data?.estimatedMinutes != null ? String(node.data.estimatedMinutes) : ""
+  );
 
   useEffect(() => {
     setLabel(node?.data?.label ?? "");
     setDescription(node?.data?.description ?? "");
     setType(node?.data?.type ?? "step");
     setIsOptional(node?.data?.isOptional ?? false);
-  }, [node?.id, node?.data?.label, node?.data?.description, node?.data?.type, node?.data?.isOptional]);
+    setEstimatedMinutes(
+      node?.data?.estimatedMinutes != null ? String(node.data.estimatedMinutes) : ""
+    );
+  }, [
+    node?.id,
+    node?.data?.label,
+    node?.data?.description,
+    node?.data?.type,
+    node?.data?.isOptional,
+    node?.data?.estimatedMinutes,
+  ]);
 
   const apply = useCallback(
     (updates: Partial<ProcessNodeData> & { type?: string }) => {
@@ -69,6 +84,40 @@ export function NodeFormPanel({
     },
     [apply]
   );
+
+  const handleMinutesBlur = useCallback(() => {
+    const trimmed = estimatedMinutes.trim();
+    if (trimmed === "") {
+      apply({ estimatedMinutes: null });
+      return;
+    }
+    const parsed = Number(trimmed);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      // Reject silently — revert to the stored value so users see the
+      // correction rather than getting an alert.
+      setEstimatedMinutes(
+        node?.data?.estimatedMinutes != null ? String(node.data.estimatedMinutes) : ""
+      );
+      return;
+    }
+    const rounded = Math.round(parsed);
+    setEstimatedMinutes(String(rounded));
+    apply({ estimatedMinutes: rounded });
+  }, [estimatedMinutes, apply, node?.data?.estimatedMinutes]);
+
+  /**
+   * Human-readable preview under the input: "90 min" renders as
+   * "1 h 30 min", "45" stays "45 min". Purely visual.
+   */
+  const minutesPreview = (() => {
+    const parsed = Number(estimatedMinutes);
+    if (!Number.isFinite(parsed) || parsed <= 0) return null;
+    const hours = Math.floor(parsed / 60);
+    const mins = parsed % 60;
+    if (hours === 0) return `${mins} min`;
+    if (mins === 0) return `${hours} h`;
+    return `${hours} h ${mins} min`;
+  })();
 
   if (!node) {
     return (
@@ -133,6 +182,34 @@ export function NodeFormPanel({
           Optional step
         </label>
       </div>
+
+      {/* Duration hint — seeds `ProjectProcessStep.estimatedMinutes` when a
+          project is created from this template. Planners can still override
+          per-project from the production view. Only makes sense on real
+          work steps, not on start/end/decision markers. */}
+      {type !== "start" && type !== "end" && (
+        <div>
+          <label className="block text-xs font-medium text-gray-600 mb-1">
+            Estimated duration (minutes)
+          </label>
+          <input
+            type="number"
+            min={0}
+            step={5}
+            inputMode="numeric"
+            value={estimatedMinutes}
+            onChange={(e) => setEstimatedMinutes(e.target.value)}
+            onBlur={handleMinutesBlur}
+            className="neo-input w-full px-3 py-2 text-sm"
+            placeholder="e.g. 45"
+          />
+          <p className="mt-1 text-[11px] text-gray-500">
+            {minutesPreview
+              ? `~${minutesPreview} per occurrence. Seeds the project step duration; planners can override.`
+              : "Leave blank if you don't have a standard time yet — planners can still set it per project."}
+          </p>
+        </div>
+      )}
 
       {type === "decision" && outgoingEdges.length > 0 && (
         <div>

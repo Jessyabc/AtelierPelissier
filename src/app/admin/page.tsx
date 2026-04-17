@@ -539,34 +539,63 @@ function RoomTypesTab({ config, saving, onSave }: {
       <div>
         <h2 className="text-lg font-semibold text-[var(--foreground)] mb-1">Room Types</h2>
         <p className="text-sm text-[var(--foreground-muted)]">
-          Manage built-in room types and add custom ones. Assign default process templates per room type.
+          Manage built-in room types and add custom ones. Assign default
+          process templates per room type — this is what the project
+          wizard picks up automatically when a salesperson adds a room.
+        </p>
+        <p className="text-xs text-[var(--foreground-muted)] mt-2">
+          When a row is left at <em>No default process</em>, the system
+          falls back to the built-in mapping (vanity → Vanity, side unit →
+          Side Unit, kitchen → Kitchen) and to the Kitchen process for
+          everything else. Your override wins whenever it&apos;s set.
         </p>
       </div>
 
       {/* Existing rooms */}
       <div className="space-y-2">
-        {allRooms.map((room) => (
-          <div key={room.value} className="neo-panel-inset flex items-center gap-3 px-4 py-3 rounded-lg">
-            <span className="text-xl w-8 text-center">{room.icon || "📦"}</span>
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium text-[var(--foreground)]">{room.label}</div>
-              <div className="text-[10px] text-[var(--foreground-muted)]">{room.desc}</div>
+        {allRooms.map((room) => {
+          // Built-in resolver behaviour — mirrors
+          // `resolveDefaultProcessTemplateId` so admins see the exact
+          // fallback that will apply if they leave the dropdown unset.
+          const builtInFallbackName =
+            room.value === "vanity"
+              ? "Vanity"
+              : room.value === "side_unit"
+                ? "Side Unit"
+                : room.value === "kitchen"
+                  ? "Kitchen"
+                  : "Kitchen (fallback)";
+          const hasOverride = Boolean(processDefaults[room.value]);
+          return (
+            <div key={room.value} className="neo-panel-inset flex items-center gap-3 px-4 py-3 rounded-lg">
+              <span className="text-xl w-8 text-center">{room.icon || "📦"}</span>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-[var(--foreground)]">{room.label}</div>
+                <div className="text-[10px] text-[var(--foreground-muted)]">
+                  {room.desc}
+                  {!hasOverride && (
+                    <span className="ml-2 text-[var(--foreground-muted)]">
+                      · falls back to <em>{builtInFallbackName}</em>
+                    </span>
+                  )}
+                </div>
+              </div>
+              <select
+                value={processDefaults[room.value] ?? ""}
+                onChange={(e) => setProcessDefaults((prev) => ({ ...prev, [room.value]: e.target.value }))}
+                className="neo-select px-3 py-1.5 text-xs w-40"
+              >
+                <option value="">No default process</option>
+                {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+              </select>
+              {room.builtIn ? (
+                <span className="text-[10px] text-[var(--foreground-muted)] px-2">Built-in</span>
+              ) : (
+                <button onClick={() => removeCustomRoom(room.value)} className="text-xs text-red-500 hover:text-red-700 px-2">Remove</button>
+              )}
             </div>
-            <select
-              value={processDefaults[room.value] ?? ""}
-              onChange={(e) => setProcessDefaults((prev) => ({ ...prev, [room.value]: e.target.value }))}
-              className="neo-select px-3 py-1.5 text-xs w-40"
-            >
-              <option value="">No default process</option>
-              {templates.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-            </select>
-            {room.builtIn ? (
-              <span className="text-[10px] text-[var(--foreground-muted)] px-2">Built-in</span>
-            ) : (
-              <button onClick={() => removeCustomRoom(room.value)} className="text-xs text-red-500 hover:text-red-700 px-2">Remove</button>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Add custom room */}

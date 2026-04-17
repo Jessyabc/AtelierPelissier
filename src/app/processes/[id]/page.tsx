@@ -17,6 +17,7 @@ type ProcessStep = {
   isOptional: boolean;
   positionX: number;
   positionY: number;
+  estimatedMinutes: number | null;
 };
 
 type ProcessStepEdge = {
@@ -47,6 +48,7 @@ function stepsToFlowNodes(steps: ProcessStep[]): Node<ProcessNodeData>[] {
       description: s.description,
       type: s.type,
       isOptional: s.isOptional,
+      estimatedMinutes: s.estimatedMinutes,
     },
   }));
 }
@@ -61,16 +63,27 @@ function edgesToFlowEdges(edges: ProcessStepEdge[]): Edge[] {
 }
 
 function flowNodesToSteps(nodes: Node<ProcessNodeData>[], templateId: string): ProcessStep[] {
-  return nodes.map((n) => ({
-    id: n.id,
-    templateId,
-    label: (n.data as { label?: string })?.label ?? "Step",
-    description: (n.data as { description?: string | null })?.description ?? null,
-    type: (n.data as { type?: string })?.type ?? "step",
-    isOptional: (n.data as { isOptional?: boolean })?.isOptional ?? false,
-    positionX: n.position.x,
-    positionY: n.position.y,
-  }));
+  return nodes.map((n) => {
+    const data = n.data as Partial<ProcessNodeData> | undefined;
+    const rawMinutes = data?.estimatedMinutes;
+    // Accept null/undefined/number — coerce anything non-numeric to null
+    // so we never send NaN or strings to the API.
+    const estimatedMinutes =
+      typeof rawMinutes === "number" && Number.isFinite(rawMinutes) && rawMinutes >= 0
+        ? Math.round(rawMinutes)
+        : null;
+    return {
+      id: n.id,
+      templateId,
+      label: data?.label ?? "Step",
+      description: data?.description ?? null,
+      type: data?.type ?? "step",
+      isOptional: data?.isOptional ?? false,
+      positionX: n.position.x,
+      positionY: n.position.y,
+      estimatedMinutes,
+    };
+  });
 }
 
 function flowEdgesToEdges(edges: Edge[], templateId: string): ProcessStepEdge[] {
@@ -140,7 +153,16 @@ export default function ProcessBuilderPage() {
   }, [edges, selectedNodeId]);
 
   const handleUpdateNode = useCallback(
-    (nodeId: string, data: Partial<{ label: string; description?: string | null; type?: string; isOptional?: boolean }>) => {
+    (
+      nodeId: string,
+      data: Partial<{
+        label: string;
+        description?: string | null;
+        type?: string;
+        isOptional?: boolean;
+        estimatedMinutes?: number | null;
+      }>
+    ) => {
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id !== nodeId) return n;
@@ -150,6 +172,10 @@ export default function ProcessBuilderPage() {
             description: data.description !== undefined ? data.description : existing.description,
             type: data.type ?? existing.type,
             isOptional: data.isOptional ?? existing.isOptional,
+            estimatedMinutes:
+              data.estimatedMinutes !== undefined
+                ? data.estimatedMinutes
+                : existing.estimatedMinutes,
           };
           return { ...n, data: merged };
         })
@@ -192,7 +218,16 @@ export default function ProcessBuilderPage() {
     try {
       const stepsPayload = flowNodesToSteps(nodes, template.id).map(
         (s) =>
-          ({ id: s.id, label: s.label, description: s.description, type: s.type, isOptional: s.isOptional, positionX: s.positionX, positionY: s.positionY }) as const
+          ({
+            id: s.id,
+            label: s.label,
+            description: s.description,
+            type: s.type,
+            isOptional: s.isOptional,
+            positionX: s.positionX,
+            positionY: s.positionY,
+            estimatedMinutes: s.estimatedMinutes,
+          }) as const
       );
       const edgesPayload = flowEdgesToEdges(edges, template.id).map(
         (e) =>
