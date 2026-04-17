@@ -24,6 +24,9 @@ type Props = {
   onCancelAddStep: () => void;
   onStartAddStep: () => void;
   onDelete?: () => void;
+  /** When true the card shows tasks but hides every mutation control
+   *  (add step, remove, toggle). Used for the salesperson Overview. */
+  readOnly?: boolean;
 };
 
 export function ProjectBoardCard({
@@ -46,6 +49,7 @@ export function ProjectBoardCard({
   onCancelAddStep,
   onStartAddStep,
   onDelete,
+  readOnly = false,
 }: Props) {
   const badgeClass =
     badgeVariant === "accent"
@@ -86,7 +90,8 @@ export function ProjectBoardCard({
                   type="checkbox"
                   checked={task.isDone}
                   onChange={() => onToggleTask(task.id)}
-                  className="rounded border-gray-300"
+                  disabled={readOnly}
+                  className="rounded border-gray-300 disabled:opacity-60"
                 />
                 <span
                   className={
@@ -98,7 +103,7 @@ export function ProjectBoardCard({
               </li>
             ))}
           </ul>
-          {addingStep ? (
+          {readOnly ? null : addingStep ? (
             <div className="flex gap-2 mt-2">
               <input
                 type="text"

@@ -33,5 +33,9 @@ export async function getConstructionStandards(): Promise<ConstructionStandardsD
     thickFrameThickness: row.thickFrameThickness,
     minSectionWidth: row.minSectionWidth,
     minSectionHeight: row.minSectionHeight,
+    // Not yet persisted on the ConstructionStandards row — fall back to the
+    // hardcoded default. When the admin UI gets a field for this we can
+    // plumb it through the Prisma model.
+    finishPanelThickness: CABINET_DEFAULTS.finishPanelThickness,
   };
 }

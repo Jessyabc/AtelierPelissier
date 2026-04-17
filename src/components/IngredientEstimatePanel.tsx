@@ -5,6 +5,7 @@ import type {
   IngredientEstimate,
   ConfigWarning,
 } from "@/lib/ingredients/types";
+import { saveMaterialSnapshot } from "@/lib/ingredients/saveSnapshotClient";
 
 type SnapshotInfo = {
   id: string;
@@ -26,6 +27,13 @@ type Props = {
   sourceType: "vanity" | "side_unit";
   /** Called after save to refresh parent data */
   onSaved?: () => void;
+  /**
+   * When true, the panel does not render its own save button — the parent
+   * (VanityTab / SideUnitTab) owns the unified Save action and will call
+   * `saveMaterialSnapshot` itself after persisting inputs. We still render
+   * the snapshot status line so the user sees staleness/freshness.
+   */
+  hideInternalSave?: boolean;
 };
 
 /**
@@ -44,6 +52,7 @@ export function IngredientEstimatePanel({
   projectId,
   sourceType,
   onSaved,
+  hideInternalSave = false,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -64,19 +73,10 @@ export function IngredientEstimatePanel({
   const handleSave = useCallback(async () => {
     setSaving(true);
     try {
-      const res = await fetch(
-        `/api/projects/${projectId}/material-snapshot`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ sourceType }),
-        }
-      );
-      if (res.ok) {
-        const data = await res.json();
-        // Refresh snapshot state
+      const result = await saveMaterialSnapshot(projectId, sourceType);
+      if (result.ok) {
         setSnapshot({
-          id: data.snapshotId,
+          id: result.snapshotId ?? "",
           isStale: false,
           isActive: true,
           savedAt: new Date().toISOString(),
@@ -242,16 +242,20 @@ export function IngredientEstimatePanel({
         </div>
       )}
 
-      {/* Snapshot status + Save button */}
+      {/* Snapshot status + optional internal Save button. When the parent
+          tab is driving a unified Save (Phase 5) we hide the button here
+          but keep the status line so the user still sees stale/fresh. */}
       <div className="flex items-center gap-3">
-        <button
-          type="button"
-          onClick={handleSave}
-          disabled={saving}
-          className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-        >
-          {saving ? "Saving materials..." : "Save materials to project"}
-        </button>
+        {!hideInternalSave && (
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving}
+            className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+          >
+            {saving ? "Saving materials..." : "Save materials to project"}
+          </button>
+        )}
         {snapshotLoaded && snapshot && !snapshot.isStale && (
           <span className="text-xs text-green-600">
             Saved {new Date(snapshot.savedAt).toLocaleDateString()}

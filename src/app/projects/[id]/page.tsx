@@ -21,7 +21,9 @@ import { ReadinessChecklistCard } from "@/components/ReadinessChecklistCard";
 import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 import { computeReadinessCheck } from "@/lib/readiness";
 import { DraftIntakePanel } from "@/components/DraftIntakePanel";
-import { ProductionTab } from "@/components/ProductionTab";
+import { SalesProjectSummary } from "@/components/SalesProjectSummary";
+import { OrderDescriptionBlock } from "@/components/OrderDescriptionBlock";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 type TaskItem = { id: string; label: string; isDone: boolean; sortOrder: number };
 type ProjItem = {
@@ -40,6 +42,8 @@ type SubProject = {
 
 type Project = {
   id: string; name: string; type: string; types: string;
+  /** Pipeline stage: "quote" | "confirmed" | "invoiced" | "in_production" | "done" | ... */
+  stage?: string | null;
   isDraft: boolean; isDone: boolean;
   parentProject?: { id: string; name: string; jobNumber: string | null } | null;
   processTemplate?: { id: string; name: string } | null;
@@ -64,13 +68,32 @@ type Project = {
   blockedReason?: string | null;
 };
 
-type Tab = "Overview" | "Client & Info" | "Estimates & Costs" | "Production" | "Service Calls" | "History";
+// ── Tabs ─────────────────────────────────────────────────────────────────
+// "Production" was removed per product direction — production oversight now
+// lives inside Overview's timeline. History is admin-only. Sales see a
+// simplified tab set: Overview, Client, Estimates, Service Calls.
+type Tab = "Overview" | "Client & Info" | "Estimates & Costs" | "Service Calls" | "History";
 
-const VALID_TABS: readonly Tab[] = ["Overview", "Client & Info", "Estimates & Costs", "Production", "Service Calls", "History"] as const;
+const VALID_TABS: readonly Tab[] = [
+  "Overview",
+  "Client & Info",
+  "Estimates & Costs",
+  "Service Calls",
+  "History",
+] as const;
 
 function parseTabParam(v: string | null): Tab | null {
   if (!v) return null;
   return (VALID_TABS as readonly string[]).includes(v) ? (v as Tab) : null;
+}
+
+/** Tabs a given role is allowed to see on the project page. */
+function tabsForRole(role: string): Tab[] {
+  if (role === "salesperson") {
+    return ["Overview", "Client & Info", "Estimates & Costs", "Service Calls"];
+  }
+  // admin + planner + fallback see the full set (History is admin+planner).
+  return ["Overview", "Client & Info", "Estimates & Costs", "Service Calls", "History"];
 }
 
 export default function ProjectPage() {
@@ -78,6 +101,14 @@ export default function ProjectPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = params.id as string;
+  const { user: currentUser } = useCurrentUser();
+  // Role gates — salespeople don't see cost breakdowns, timeline editing,
+  // or the history log. Planner/admin see everything. The check defaults to
+  // the restrictive "sales" view while the session is loading so we never
+  // flash privileged data.
+  const role = (currentUser?.role ?? "salesperson") as string;
+  const isSales = role === "salesperson";
+  const isAdminOrPlanner = role === "admin" || role === "planner";
   const [project, setProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(true);
   const initialTab = parseTabParam(searchParams?.get("tab") ?? null) ?? "Overview";
@@ -89,6 +120,15 @@ export default function ProjectPage() {
     if (t && t !== activeTab) setActiveTab(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
+  // If the current role isn't allowed to see the active tab, snap back to
+  // Overview. Runs when the user's role loads (or the tab changes via URL).
+  useEffect(() => {
+    const allowed = tabsForRole(role);
+    if (!allowed.includes(activeTab)) {
+      setActiveTab("Overview");
+    }
+  }, [role, activeTab]);
   const [savingProject, setSavingProject] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -333,7 +373,7 @@ export default function ProjectPage() {
   const variance = estimatedCost - realCost;
 
   const types = project.types.split(",").map((t) => t.trim());
-  const tabs: Tab[] = ["Overview", "Client & Info", "Estimates & Costs", "Production", "Service Calls", "History"];
+  const tabs: Tab[] = tabsForRole(role);
 
   // Total task progress (per-room tasks only)
   const allItems = project.projectItems ?? [];
@@ -507,13 +547,22 @@ export default function ProjectPage() {
             </div>
           </div>
 
-          {/* Timeline / Process Board */}
+          {/* Timeline / Process Board
+              Salespeople see this read-only (no add/delete/reorder), admin
+              and planner can edit freely. */}
           {!project.parentProject && (
             <div className="neo-card p-5">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="text-sm font-semibold text-[var(--foreground)]">Timeline & Rooms</h3>
+                <h3 className="text-sm font-semibold text-[var(--foreground)]">
+                  Timeline &amp; Rooms
+                  {isSales && (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide text-[var(--foreground-muted)]">
+                      (read only)
+                    </span>
+                  )}
+                </h3>
                 <div className="flex gap-2">
-                  {!addingProjectItem && (
+                  {!addingProjectItem && !isSales && (
                     <button onClick={() => setAddingProjectItem(true)} className="neo-btn px-3 py-1 text-xs">+ Add Room</button>
                   )}
                 </div>
@@ -548,6 +597,7 @@ export default function ProjectPage() {
                       onCancelAddStep={() => { setAddingTaskForItemId(null); setNewItemTaskLabel(""); }}
                       onStartAddStep={() => setAddingTaskForItemId(item.id)}
                       onDelete={() => handleDeleteProjectItem(item.id)}
+                      readOnly={isSales}
                     />
                   );
                 })}
@@ -642,24 +692,44 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* Estimates & Costs — type inputs + prerequisites + costs + quote */}
-      {activeTab === "Estimates & Costs" && (
+      {/* Estimates & Costs — sales get a condensed view, planner/admin see
+          the full builder/costing stack. The division is intentional:
+          salespeople should not see internal material cost lines. */}
+      {activeTab === "Estimates & Costs" && isSales && (
+        <div className="neo-card p-6 sm:p-8">
+          <SalesProjectSummary project={project} />
+        </div>
+      )}
+      {activeTab === "Estimates & Costs" && !isSales && (
         <div className="space-y-6">
+          {/* Once the project is invoiced / confirmed, mirror the
+              client-facing order description up-top so the planner can
+              copy it into the accounting invoice without leaving the
+              builder surface. The builder itself stays fully editable. */}
+          {(project.stage === "invoiced" || project.stage === "confirmed") && (
+            <div className="neo-card p-6 sm:p-8">
+              <OrderDescriptionBlock
+                project={project}
+                title="Order description"
+                subtitle={`Shown because this project is ${project.stage}. Copy into the accounting invoice.`}
+              />
+            </div>
+          )}
           {types.includes("vanity") && (
             <div className="neo-card p-6 sm:p-8">
-              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Vanity Estimator</h3>
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Vanity product builder</h3>
               <VanityTab projectId={id} project={project} onUpdate={fetchProject} />
             </div>
           )}
           {types.includes("side_unit") && (
             <div className="neo-card p-6 sm:p-8">
-              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Side Unit Estimator</h3>
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Side unit product builder</h3>
               <SideUnitTab projectId={id} project={project} onUpdate={fetchProject} />
             </div>
           )}
           {types.includes("kitchen") && (
             <div className="neo-card p-6 sm:p-8">
-              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Kitchen Estimator</h3>
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Kitchen product builder</h3>
               <KitchenTab projectId={id} project={project} onUpdate={fetchProject} />
             </div>
           )}
@@ -678,16 +748,6 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* Production */}
-      {activeTab === "Production" && (
-        <div className="neo-card p-6 sm:p-8">
-          <ProductionTab
-            projectId={id}
-            processTemplateId={project.processTemplate?.id ?? null}
-          />
-        </div>
-      )}
-
       {/* Service Calls */}
       {activeTab === "Service Calls" && (
         <div className="neo-card p-6 sm:p-8">
@@ -695,8 +755,8 @@ export default function ProjectPage() {
         </div>
       )}
 
-      {/* History */}
-      {activeTab === "History" && (
+      {/* History — admin & planner only */}
+      {activeTab === "History" && isAdminOrPlanner && (
         <div className="neo-card p-6 sm:p-8">
           <AuditTab projectId={id} />
         </div>

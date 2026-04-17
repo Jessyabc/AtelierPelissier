@@ -29,9 +29,21 @@ export type VanitySection = {
   id: string;
   sortOrder: number; // 0 = leftmost
   layoutType: VanitySectionLayout;
-  width: number; // inches, min 8"
+  /**
+   * Section width in inches. Represents the exterior slice of the overall
+   * vanity that this section occupies (including its own 5/8" side walls
+   * but NOT the outer 3/4" finishing panels). Minimum 8" is enforced at
+   * save-time in the API, not in the UI, so users can type freely.
+   */
+  width: number;
   doors: number; // 0–4
   drawers: number; // 0–4
+  /**
+   * When true, the top drawer in this section is built as a U-shape so it
+   * wraps around the sink plumbing. Only meaningful for sections with a
+   * top drawer (drawer_over_doors / all_drawers).
+   */
+  hasSink?: boolean;
 };
 
 export type SideUnitSection = {
@@ -140,6 +152,13 @@ export type ConstructionStandardsData = {
   thickFrameThickness: number;
   minSectionWidth: number;
   minSectionHeight: number;
+  /**
+   * Thickness of the two outer finishing panels (left + right) that wrap a
+   * vanity. Always added regardless of framing style — the total vanity
+   * width the shop buys material for is
+   *   sum(section.width) + 2 × finishPanelThickness.
+   */
+  finishPanelThickness: number;
 };
 
 /** Hardcoded fallback defaults — used only if no ConstructionStandards row exists in DB */
@@ -159,6 +178,7 @@ export const CABINET_DEFAULTS: ConstructionStandardsData = {
   thickFrameThickness: 0.75,
   minSectionWidth: 8,
   minSectionHeight: 5,
+  finishPanelThickness: 0.75,
 };
 
 // ---------------------------------------------------------------------------

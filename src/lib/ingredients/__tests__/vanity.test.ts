@@ -22,46 +22,57 @@ function baseInputs(overrides: Partial<VanityIngredientInputs> = {}): VanityIngr
   };
 }
 
-describe("computeVanityIngredients", () => {
+describe("computeVanityIngredients (modular-box model)", () => {
   describe("legacy mode (no sections)", () => {
-    it("produces carcass panels for base vanity with no doors/drawers", () => {
+    it("emits the two outer finishing panels + one implicit section carcass", () => {
       const result = computeVanityIngredients(baseInputs(), opts);
-
       const labels = result.panels.map((p) => p.label);
-      expect(labels).toContain("Left side");
-      expect(labels).toContain("Right side");
-      expect(labels).toContain("Bottom");
-      expect(labels).toContain("Back panel");
-      expect(labels).toContain("Top stretcher");
 
-      // No doors or drawers → no section dividers, no fronts
-      expect(labels.filter((l) => l.includes("Door front"))).toHaveLength(0);
-      expect(labels.filter((l) => l.includes("Drawer front"))).toHaveLength(0);
-      expect(result.hardware).toHaveLength(0);
+      expect(labels).toContain("Left finishing panel");
+      expect(labels).toContain("Right finishing panel");
+
+      // Modular box panels for the implicit section are tagged with the
+      // legacy section id.
+      expect(labels.some((l) => l.startsWith("Sides ("))).toBe(true);
+      expect(labels.some((l) => l.startsWith("Bottom ("))).toBe(true);
+      expect(labels.some((l) => l.startsWith("Top front stretcher ("))).toBe(true);
+      expect(labels.some((l) => l.startsWith("Top back stretcher ("))).toBe(true);
+      expect(labels.some((l) => l.startsWith("Back ("))).toBe(true);
     });
 
-    it("generates door fronts + hinges + handles for 2-door vanity", () => {
-      const result = computeVanityIngredients(
-        baseInputs({ doors: 2 }),
-        opts
-      );
+    it("back panels now use the 5/8\" carcass material, not 1/4\" hardboard", () => {
+      const result = computeVanityIngredients(baseInputs(), opts);
+      const back = result.panels.find((p) => p.label.startsWith("Back ("));
+      expect(back).toBeDefined();
+      expect(back?.materialCode).toBe(MATERIAL_CODES.carcass);
+      expect(back?.thicknessIn).toBe(defaults.panelThickness);
+    });
+
+    it("left + right finishing panels are 3/4\" thick", () => {
+      const result = computeVanityIngredients(baseInputs(), opts);
+      const left = result.panels.find((p) => p.label === "Left finishing panel");
+      const right = result.panels.find((p) => p.label === "Right finishing panel");
+      expect(left?.thicknessIn).toBe(defaults.finishPanelThickness);
+      expect(right?.thicknessIn).toBe(defaults.finishPanelThickness);
+    });
+
+    it("still produces door fronts + hinges + handles for a 2-door vanity", () => {
+      const result = computeVanityIngredients(baseInputs({ doors: 2 }), opts);
 
       const doorPanels = result.panels.filter((p) => p.category === "door");
       expect(doorPanels.length).toBeGreaterThan(0);
       expect(doorPanels[0].qty).toBe(2);
 
-      // Hinges: 2 per door (< 36" tall) = 4
       const hinges = result.hardware.filter((h) => h.category === "hinges");
       expect(hinges.reduce((sum, h) => sum + h.quantity, 0)).toBe(4);
 
-      // Handles: 1 per door = 2
       const handles = result.hardware.filter(
         (h) => h.materialCode === MATERIAL_CODES.handle
       );
       expect(handles.reduce((sum, h) => sum + h.quantity, 0)).toBe(2);
     });
 
-    it("generates drawer box panels + kits for 1-drawer + 1-door vanity", () => {
+    it("still emits drawer boxes + kits for drawer-over-doors", () => {
       const result = computeVanityIngredients(
         baseInputs({ drawers: 1, doors: 1 }),
         opts
@@ -70,48 +81,102 @@ describe("computeVanityIngredients", () => {
       const drawerPanels = result.panels.filter((p) => p.category === "drawer");
       expect(drawerPanels.length).toBeGreaterThan(0);
 
-      // Drawer box: sides(2) + F/B(2) + bottom(1) = 3 panel entries per drawer
-      // Plus the drawer front itself = 4 entries
       const drawerLabels = drawerPanels.map((p) => p.label);
-      expect(drawerLabels.some((l) => l.includes("Drawer front"))).toBe(true);
-      expect(drawerLabels.some((l) => l.includes("Drawer box sides"))).toBe(true);
-      expect(drawerLabels.some((l) => l.includes("Drawer box F/B"))).toBe(true);
-      expect(drawerLabels.some((l) => l.includes("Drawer box bottom"))).toBe(true);
+      expect(drawerLabels.some((l) => l.startsWith("Drawer front"))).toBe(true);
+      expect(drawerLabels.some((l) => l.startsWith("Drawer box sides"))).toBe(true);
+      expect(drawerLabels.some((l) => l.startsWith("Drawer box F/B"))).toBe(true);
+      expect(drawerLabels.some((l) => l.startsWith("Drawer box bottom"))).toBe(true);
 
-      // Drawer kit
       const kits = result.hardware.filter((h) => h.category === "drawer_boxes");
       expect(kits.reduce((sum, h) => sum + h.quantity, 0)).toBe(1);
     });
   });
 
+  describe("modular-box counts for 2 sections", () => {
+    it("a 2-section vanity has 4 sides, 2 bottoms, 2 top-front, 2 top-back and 2 backs", () => {
+      const sections: VanitySection[] = [
+        { id: "s1", sortOrder: 0, layoutType: "doors", width: 12, doors: 1, drawers: 0 },
+        { id: "s2", sortOrder: 1, layoutType: "all_drawers", width: 12, doors: 0, drawers: 2 },
+      ];
+      const result = computeVanityIngredients(baseInputs({ sections }), opts);
+
+      const sidesQty = result.panels
+        .filter((p) => p.label.startsWith("Sides ("))
+        .reduce((sum, p) => sum + p.qty, 0);
+      expect(sidesQty).toBe(4);
+
+      const bottomsQty = result.panels
+        .filter((p) => p.label.startsWith("Bottom ("))
+        .reduce((sum, p) => sum + p.qty, 0);
+      expect(bottomsQty).toBe(2);
+
+      const topFrontQty = result.panels
+        .filter((p) => p.label.startsWith("Top front stretcher ("))
+        .reduce((sum, p) => sum + p.qty, 0);
+      expect(topFrontQty).toBe(2);
+
+      const topBackQty = result.panels
+        .filter((p) => p.label.startsWith("Top back stretcher ("))
+        .reduce((sum, p) => sum + p.qty, 0);
+      expect(topBackQty).toBe(2);
+
+      const backsQty = result.panels
+        .filter((p) => p.label.startsWith("Back ("))
+        .reduce((sum, p) => sum + p.qty, 0);
+      expect(backsQty).toBe(2);
+
+      // Still wrapped by two finishing panels.
+      expect(
+        result.panels.find((p) => p.label === "Left finishing panel")?.qty
+      ).toBe(1);
+      expect(
+        result.panels.find((p) => p.label === "Right finishing panel")?.qty
+      ).toBe(1);
+    });
+
+    it("per-section edge banding = 2*height + 2*depth + 2*sectionWidth, summed", () => {
+      const sections: VanitySection[] = [
+        { id: "s1", sortOrder: 0, layoutType: "doors", width: 12, doors: 1, drawers: 0 },
+        { id: "s2", sortOrder: 1, layoutType: "doors", width: 10, doors: 1, drawers: 0 },
+      ];
+      const result = computeVanityIngredients(
+        baseInputs({ sections, height: 30 }),
+        opts
+      );
+
+      // 2*30 + 2*22 + 2*12  +  2*30 + 2*22 + 2*10 = 128 + 124 = 252
+      expect(result.edgeBandingTotalIn).toBe(252);
+    });
+  });
+
   describe("framing styles", () => {
-    it("adds bottom frame for 'Sides and bottom'", () => {
+    it("adds bottom face frame for 'Sides and bottom'", () => {
       const result = computeVanityIngredients(
         baseInputs({ framingStyle: "Sides and bottom" }),
         opts
       );
-      expect(result.panels.some((p) => p.label === "Bottom frame")).toBe(true);
-      expect(result.panels.some((p) => p.label === "Top frame")).toBe(false);
+      expect(result.panels.some((p) => p.label === "Bottom face frame")).toBe(true);
+      expect(result.panels.some((p) => p.label === "Top face frame")).toBe(false);
     });
 
-    it("adds bottom + top frame for 'Around'", () => {
+    it("adds bottom + top face frame for 'Around'", () => {
       const result = computeVanityIngredients(
         baseInputs({ framingStyle: "Around" }),
         opts
       );
-      expect(result.panels.some((p) => p.label === "Bottom frame")).toBe(true);
-      expect(result.panels.some((p) => p.label === "Top frame")).toBe(true);
-      expect(result.panels.some((p) => p.label === "Side frames")).toBe(false);
+      expect(result.panels.some((p) => p.label === "Bottom face frame")).toBe(true);
+      expect(result.panels.some((p) => p.label === "Top face frame")).toBe(true);
+      expect(result.panels.some((p) => p.label === "Side face frames")).toBe(false);
     });
 
-    it("adds all framing for 'Frame everything'", () => {
+    it("adds all face frames for 'Frame everything'", () => {
       const result = computeVanityIngredients(
         baseInputs({ framingStyle: "Frame everything" }),
         opts
       );
-      expect(result.panels.some((p) => p.label === "Bottom frame")).toBe(true);
-      expect(result.panels.some((p) => p.label === "Top frame")).toBe(true);
-      expect(result.panels.some((p) => p.label === "Side frames")).toBe(true);
+      expect(result.panels.some((p) => p.label === "Bottom face frame")).toBe(true);
+      expect(result.panels.some((p) => p.label === "Top face frame")).toBe(true);
+      expect(result.panels.some((p) => p.label === "Side face frames")).toBe(true);
     });
   });
 
@@ -137,8 +202,8 @@ describe("computeVanityIngredients", () => {
         baseInputs({ mountingStyle: "Wall-hung" }),
         opts
       );
-      const leftSide = result.panels.find((p) => p.label === "Left side");
-      expect(leftSide?.lengthIn).toBe(24);
+      const left = result.panels.find((p) => p.label === "Left finishing panel");
+      expect(left?.lengthIn).toBe(24);
     });
 
     it("adds hanging rail hardware for wall-hung", () => {
@@ -161,58 +226,54 @@ describe("computeVanityIngredients", () => {
     });
   });
 
-  describe("section mode", () => {
-    it("generates section divider for 2 sections", () => {
+  describe("U-shape drawer for top drawer under sink", () => {
+    it("labels the top drawer as U-shape when the section hasSink", () => {
       const sections: VanitySection[] = [
-        { id: "s1", sortOrder: 0, layoutType: "doors", width: 12, doors: 1, drawers: 0 },
-        { id: "s2", sortOrder: 1, layoutType: "all_drawers", width: 12, doors: 0, drawers: 2 },
+        {
+          id: "s1",
+          sortOrder: 0,
+          layoutType: "drawer_over_doors",
+          width: 24,
+          doors: 2,
+          drawers: 1,
+          hasSink: true,
+        },
       ];
-      const result = computeVanityIngredients(
-        baseInputs({ sections }),
-        opts
-      );
-
-      expect(result.panels.some((p) => p.label === "Section dividers")).toBe(true);
-      const divider = result.panels.find((p) => p.label === "Section dividers");
-      expect(divider?.qty).toBe(1);
+      const result = computeVanityIngredients(baseInputs({ sections }), opts);
+      const labels = result.panels.map((p) => p.label);
+      expect(labels.some((l) => l.includes("U-shape"))).toBe(true);
     });
 
-    it("generates per-section door fronts and drawer fronts", () => {
+    it("does not label as U-shape when hasSink is false", () => {
       const sections: VanitySection[] = [
-        { id: "s1", sortOrder: 0, layoutType: "doors", width: 12, doors: 2, drawers: 0 },
-        { id: "s2", sortOrder: 1, layoutType: "all_drawers", width: 12, doors: 0, drawers: 3 },
+        {
+          id: "s1",
+          sortOrder: 0,
+          layoutType: "drawer_over_doors",
+          width: 24,
+          doors: 2,
+          drawers: 1,
+          hasSink: false,
+        },
       ];
-      const result = computeVanityIngredients(
-        baseInputs({ sections }),
-        opts
-      );
-
-      const s1Doors = result.panels.filter(
-        (p) => p.sectionId === "s1" && p.category === "door"
-      );
-      expect(s1Doors.length).toBe(1);
-      expect(s1Doors[0].qty).toBe(2);
-
-      const s2Drawers = result.panels.filter(
-        (p) => p.sectionId === "s2" && p.category === "drawer"
-      );
-      expect(s2Drawers.length).toBeGreaterThan(0);
+      const result = computeVanityIngredients(baseInputs({ sections }), opts);
+      const labels = result.panels.map((p) => p.label);
+      expect(labels.some((l) => l.includes("U-shape"))).toBe(false);
     });
+  });
 
-    it("computes metrics correctly", () => {
+  describe("metrics", () => {
+    it("dividerCount stays (sections-1) for continuity with old dashboards", () => {
       const sections: VanitySection[] = [
         { id: "s1", sortOrder: 0, layoutType: "doors", width: 12, doors: 2, drawers: 0 },
         { id: "s2", sortOrder: 1, layoutType: "all_drawers", width: 12, doors: 0, drawers: 2 },
       ];
-      const result = computeVanityIngredients(
-        baseInputs({ sections }),
-        opts
-      );
+      const result = computeVanityIngredients(baseInputs({ sections }), opts);
 
-      expect(result.metrics.frontCount).toBe(4); // 2 doors + 2 drawers
+      expect(result.metrics.frontCount).toBe(4);
       expect(result.metrics.drawerCount).toBe(2);
       expect(result.metrics.dividerCount).toBe(1);
-      expect(result.metrics.hingeCount).toBe(4); // 2 doors × 2 hinges
+      expect(result.metrics.hingeCount).toBe(4);
       expect(result.metrics.complexityScore).toBeGreaterThan(0);
     });
   });
@@ -225,13 +286,11 @@ describe("computeVanityIngredients", () => {
       );
 
       expect(result.sheetEstimates.length).toBeGreaterThan(0);
-      // Should have at least carcass material
       expect(
         result.sheetEstimates.some(
           (s) => s.materialCode === MATERIAL_CODES.carcass
         )
       ).toBe(true);
-      // Sheet count should be at least 1
       for (const sheet of result.sheetEstimates) {
         expect(sheet.sheetsNeeded).toBeGreaterThanOrEqual(1);
       }
@@ -244,8 +303,8 @@ describe("computeVanityIngredients", () => {
         baseInputs({ height: 36 }),
         opts
       );
-      const leftSide = result.panels.find((p) => p.label === "Left side");
-      expect(leftSide?.lengthIn).toBe(36);
+      const left = result.panels.find((p) => p.label === "Left finishing panel");
+      expect(left?.lengthIn).toBe(36);
     });
   });
 });

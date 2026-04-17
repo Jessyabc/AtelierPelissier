@@ -2,9 +2,44 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { vanityInputsSchema } from "@/lib/validators";
-import { computeConfigHash } from "@/lib/ingredients/types";
+import { computeConfigHash, type VanitySection } from "@/lib/ingredients/types";
+import { getConstructionStandards } from "@/lib/ingredients/getConstructionStandards";
 import { markSnapshotStale } from "@/lib/ingredients/snapshot";
 import { requireProjectAccess } from "@/lib/auth/guard";
+
+/**
+ * Validate section widths against the configured minimum. We parse the
+ * JSON-encoded sections string at the API boundary — the UI form is
+ * allowed to hold transitory invalid states, but we refuse to persist
+ * them so the cutlist math never sees widths narrower than the standard.
+ */
+function validateSectionWidths(
+  sectionsJson: string | null | undefined,
+  minSectionWidth: number
+): { ok: true } | { ok: false; error: string } {
+  if (!sectionsJson) return { ok: true };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(sectionsJson);
+  } catch {
+    return { ok: false, error: "Sections JSON is malformed." };
+  }
+  if (!Array.isArray(parsed)) return { ok: true };
+  const offenders: string[] = [];
+  for (const raw of parsed as Partial<VanitySection>[]) {
+    const width = typeof raw?.width === "number" ? raw.width : NaN;
+    if (!Number.isFinite(width) || width < minSectionWidth) {
+      offenders.push(
+        `Section ${raw?.id ?? "?"} is ${Number.isFinite(width) ? `${width}"` : "missing a width"}`
+      );
+    }
+  }
+  if (offenders.length === 0) return { ok: true };
+  return {
+    ok: false,
+    error: `Section width must be at least ${minSectionWidth}" — ${offenders.join("; ")}.`,
+  };
+}
 
 export async function PATCH(
   request: Request,
@@ -27,6 +62,21 @@ export async function PATCH(
     );
   }
   const data = parsed.data;
+
+  // Section width minimum is soft in the UI but strict here. Reject
+  // payloads where any section is narrower than the configured minimum
+  // and explain to the user which section(s) failed.
+  const standards = await getConstructionStandards();
+  const minCheck = validateSectionWidths(
+    data.sections ?? null,
+    standards.minSectionWidth
+  );
+  if (!minCheck.ok) {
+    return NextResponse.json(
+      { error: minCheck.error, field: "sections" },
+      { status: 400 }
+    );
+  }
 
   await prisma.vanityInputs.upsert({
     where: { projectId },

@@ -279,25 +279,38 @@ export function SectionConfigurator(props: Props) {
               </div>
             </div>
 
-            {/* Dimension (width for vanity, height for side unit) */}
+            {/* Dimension (width for vanity, height for side unit).
+                The input does NOT clamp to minSection — users can type
+                any value. The minimum is enforced on save by the API so
+                the user sees a clear refusal message instead of having
+                their keystrokes rewritten. */}
             <div>
               <label className="mb-1 block text-xs font-medium text-gray-600">
                 {dimensionLabel} (in)
               </label>
               <input
                 type="number"
-                min={minSection}
-                max={totalDimension}
                 step={0.5}
                 value={activeDimension}
                 onChange={(e) => {
                   const key = isHorizontal ? "width" : "height";
+                  const raw = e.target.value;
+                  const parsed = raw === "" ? 0 : Number(raw);
                   updateSection(activeIndex, {
-                    [key]: Math.max(minSection, Number(e.target.value) || minSection),
+                    [key]: Number.isFinite(parsed) ? parsed : 0,
                   });
                 }}
-                className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
+                className={`w-full rounded border px-3 py-1.5 text-sm ${
+                  activeDimension < minSection
+                    ? "border-amber-500 bg-amber-50"
+                    : "border-gray-300"
+                }`}
               />
+              {activeDimension < minSection && (
+                <p className="mt-1 text-xs text-amber-700">
+                  Minimum {minSection}&quot; — save will be blocked below this.
+                </p>
+              )}
             </div>
 
             {/* Doors count */}
@@ -343,6 +356,30 @@ export function SectionConfigurator(props: Props) {
                     className="w-full rounded border border-gray-300 px-3 py-1.5 text-sm"
                   />
                 </div>
+              )}
+
+            {/* Sink flag — only on horizontal (vanity) sections with a
+                top-drawer layout. Drives U-shape drawer-box cutout. */}
+            {isHorizontal &&
+              (activeSection.layoutType === "drawer_over_doors" ||
+                activeSection.layoutType === "all_drawers") && (
+                <label className="col-span-2 flex cursor-pointer items-center gap-2 text-xs font-medium text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={
+                      "hasSink" in activeSection
+                        ? Boolean(
+                            (activeSection as VanitySection).hasSink
+                          )
+                        : false
+                    }
+                    onChange={(e) =>
+                      updateSection(activeIndex, { hasSink: e.target.checked })
+                    }
+                    className="rounded border-gray-300"
+                  />
+                  Sink in this section (builds U-shape drawer)
+                </label>
               )}
           </div>
         )}

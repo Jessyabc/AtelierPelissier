@@ -338,12 +338,21 @@ export default function NewProjectPage() {
         }
       }
 
-      // Clear the autosaved draft — the project is now the source of truth.
       if (typeof window !== "undefined") {
         try { window.localStorage.removeItem(WIZARD_DRAFT_KEY); } catch { /* noop */ }
       }
 
-      router.push(`/projects/${data.id}`);
+      // If the salesperson added any vanities / side units / kitchens, drop
+      // them straight into the product-builder tab so they can start
+      // configuring the first one. Rooms without a builder (closet, custom,
+      // other) simply land on Overview.
+      const hasBuildableRoom = selectedRooms.some(
+        (r) => r === "vanity" || r === "side_unit" || r === "kitchen"
+      );
+      const dest = hasBuildableRoom
+        ? `/projects/${data.id}?tab=${encodeURIComponent("Estimates & Costs")}`
+        : `/projects/${data.id}`;
+      router.push(dest);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed";
       setError(msg);

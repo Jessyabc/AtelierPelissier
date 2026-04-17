@@ -119,14 +119,15 @@ export function computeSideUnitIngredients(
     edgeBandedEdges: 1,
   });
 
-  // Back panel
+  // Back panel — 5/8" melamine, same rule that governs vanity section
+  // backs (shop standard: everything structural is 5/8").
   panels.push({
     label: "Back panel",
     lengthIn: height,
     widthIn: inputs.width - 2 * T,
     qty: 1,
-    materialCode: MATERIAL_CODES.back,
-    thicknessIn: s.backThickness,
+    materialCode: MATERIAL_CODES.carcass,
+    thicknessIn: T,
     category: "carcass",
     edgeBandedEdges: 0,
   });
@@ -361,13 +362,15 @@ export function computeSideUnitIngredients(
         sectionId: section.id,
       });
 
+      // Drawer box bottoms cut from 5/8" melamine — shop no longer
+      // stocks 1/4" hardboard for cabinetry.
       panels.push({
         label: `Drawer box bottom (${section.id})`,
         lengthIn: boxWidth,
         widthIn: boxDepth,
         qty: drawerCount,
-        materialCode: MATERIAL_CODES.back,
-        thicknessIn: s.backThickness,
+        materialCode: MATERIAL_CODES.carcass,
+        thicknessIn: T,
         category: "drawer",
         edgeBandedEdges: 0,
         sectionId: section.id,

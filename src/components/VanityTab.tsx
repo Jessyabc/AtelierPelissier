@@ -7,12 +7,14 @@ import { formatCurrency } from "@/lib/format";
 import { computeVanityIngredients } from "@/lib/ingredients/vanity";
 import { computeConfigWarnings } from "@/lib/ingredients/warnings";
 import { CABINET_DEFAULTS } from "@/lib/ingredients/types";
+import { saveMaterialSnapshot } from "@/lib/ingredients/saveSnapshotClient";
 import type { VanityInputs } from "@/lib/pricing/vanity";
 import type { CountertopInputs } from "@/lib/pricing/countertop";
 import type { VanitySection, VanitySectionLayout } from "@/lib/ingredients/types";
 import { SectionConfigurator } from "./SectionConfigurator";
 import { CabinetWireframe } from "./CabinetWireframe";
 import { IngredientEstimatePanel } from "./IngredientEstimatePanel";
+import toast from "react-hot-toast";
 
 /**
  * Countertop overhang default (inches). Countertops traditionally overhang the
@@ -164,12 +166,19 @@ export function VanityTab({
   const [saving, setSaving] = useState(false);
 
   // Width is source-of-truth; when it changes, the sections rescale to match.
-  // This kills the "section sum vs. total width" conflict that used to confuse
-  // users. Section edits inside the configurator still work normally — the
-  // configurator validates against `totalDimension`.
+  // Section widths now represent the modular-box slice (excluding the two
+  // 3/4" finishing panels). So the sections sum to `width − 1.5"` rather
+  // than `width`. The configurator's `totalDimension` is fed the inner
+  // value for the same reason.
   const setWidth = useCallback((next: number) => {
     setWidthState(next);
-    setSections((prev) => rescaleSections(prev, next, CABINET_DEFAULTS.minSectionWidth));
+    const innerTotal = Math.max(
+      0,
+      next - 2 * CABINET_DEFAULTS.finishPanelThickness
+    );
+    setSections((prev) =>
+      rescaleSections(prev, innerTotal, CABINET_DEFAULTS.minSectionWidth)
+    );
   }, []);
 
   // Derived totals — always come from sections now.
@@ -254,10 +263,17 @@ export function VanityTab({
     setCountertopDepth(depth + COUNTERTOP_OVERHANG);
   }, [width, depth]);
 
+  /**
+   * Unified Save (Phase 5): persist the builder configuration AND refresh
+   * the material snapshot in a single action. Previously these were two
+   * separate buttons ("Save inputs" and "Save materials to project"),
+   * which routinely left projects with drifted state when users forgot
+   * the second button.
+   */
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await fetch(`/api/projects/${projectId}/vanity`, {
+      const res = await fetch(`/api/projects/${projectId}/vanity`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -281,6 +297,23 @@ export function VanityTab({
           sections: sections.length > 0 ? JSON.stringify(sections) : null,
         }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body?.error ?? "Could not save vanity configuration.");
+        return;
+      }
+      // Inputs persisted — now regenerate the snapshot so materials stay
+      // in lockstep with the saved config.
+      const snap = await saveMaterialSnapshot(projectId, "vanity");
+      if (!snap.ok) {
+        toast.error(
+          snap.error
+            ? `Saved configuration, but materials did not refresh: ${snap.error}`
+            : "Saved configuration, but materials did not refresh."
+        );
+      } else {
+        toast.success("Vanity saved");
+      }
       onUpdate();
     } finally {
       setSaving(false);
@@ -415,7 +448,13 @@ export function VanityTab({
             direction="horizontal"
             sections={sections}
             onSectionsChange={setSections}
-            totalDimension={Number(width) || 24}
+            // Sections live inside the 2 finishing panels, so the usable
+            // horizontal span is width − 2 × finishPanelThickness.
+            totalDimension={Math.max(
+              0,
+              (Number(width) || 24) -
+                2 * CABINET_DEFAULTS.finishPanelThickness
+            )}
             minSection={CABINET_DEFAULTS.minSectionWidth}
           />
           <CabinetWireframe
@@ -564,7 +603,9 @@ export function VanityTab({
         </p>
       </div>
 
-      {/* Ingredient Estimate */}
+      {/* Ingredient Estimate — the internal Save button is hidden because
+          the parent tab now owns a unified Save that persists both the
+          configuration and the material snapshot in one click. */}
       <div className="border-t pt-4">
         <IngredientEstimatePanel
           estimate={ingredientEstimate}
@@ -572,18 +613,24 @@ export function VanityTab({
           projectId={projectId}
           sourceType="vanity"
           onSaved={onUpdate}
+          hideInternalSave
         />
       </div>
 
-      {/* Save inputs button */}
-      <button
-        type="button"
-        onClick={save}
-        disabled={saving}
-        className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-      >
-        {saving ? "Saving..." : "Save inputs"}
-      </button>
+      {/* Unified Save */}
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <span className="text-xs text-gray-500">
+          Saves configuration and refreshes the material snapshot together.
+        </span>
+      </div>
     </div>
   );
 }

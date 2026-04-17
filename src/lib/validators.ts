@@ -108,9 +108,13 @@ const vanitySectionSchema = z.object({
   id: z.string().min(1),
   sortOrder: z.number().int().min(0),
   layoutType: z.enum(VANITY_SECTION_LAYOUTS),
+  // The 8" minimum is enforced at save time (see /api/projects/[id]/vanity)
+  // not here — we still want the UI to accept typed intermediates without
+  // interrupting the user.
   width: z.number().min(1).max(120),
   doors: nonNegativeInt.max(10),
   drawers: nonNegativeInt.max(10),
+  hasSink: z.boolean().optional(),
 });
 
 export const vanityInputsSchema = z.object({

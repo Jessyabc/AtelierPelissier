@@ -11,6 +11,8 @@ import type { SideUnitSection } from "@/lib/ingredients/types";
 import { SectionConfigurator } from "./SectionConfigurator";
 import { CabinetWireframe } from "./CabinetWireframe";
 import { IngredientEstimatePanel } from "./IngredientEstimatePanel";
+import { saveMaterialSnapshot } from "@/lib/ingredients/saveSnapshotClient";
+import toast from "react-hot-toast";
 
 type Project = {
   sideUnitInputs: (Partial<SideUnitInputs> & { sections?: string | null }) | null;
@@ -128,10 +130,14 @@ export function SideUnitTab({
     ];
   }, [sections, inputs.height, kickplate, mountingStyle, effectiveDoors, effectiveDrawers]);
 
+  /**
+   * Unified Save (Phase 5): persist side-unit configuration and refresh
+   * the material snapshot in one click — same model as VanityTab.
+   */
   const save = useCallback(async () => {
     setSaving(true);
     try {
-      await fetch(`/api/projects/${projectId}/side-unit`, {
+      const res = await fetch(`/api/projects/${projectId}/side-unit`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -139,6 +145,21 @@ export function SideUnitTab({
           sections: sections.length > 0 ? JSON.stringify(sections) : null,
         }),
       });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        toast.error(body?.error ?? "Could not save side unit configuration.");
+        return;
+      }
+      const snap = await saveMaterialSnapshot(projectId, "side_unit");
+      if (!snap.ok) {
+        toast.error(
+          snap.error
+            ? `Saved configuration, but materials did not refresh: ${snap.error}`
+            : "Saved configuration, but materials did not refresh."
+        );
+      } else {
+        toast.success("Side unit saved");
+      }
       onUpdate();
     } finally {
       setSaving(false);
@@ -305,7 +326,7 @@ export function SideUnitTab({
         </p>
       </div>
 
-      {/* Ingredient Estimate */}
+      {/* Ingredient Estimate — internal Save hidden, parent drives unified save */}
       <div className="border-t pt-4">
         <IngredientEstimatePanel
           estimate={ingredientEstimate}
@@ -313,18 +334,24 @@ export function SideUnitTab({
           projectId={projectId}
           sourceType="side_unit"
           onSaved={onUpdate}
+          hideInternalSave
         />
       </div>
 
-      {/* Save inputs */}
-      <button
-        type="button"
-        onClick={save}
-        disabled={saving}
-        className="rounded bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
-      >
-        {saving ? "Saving..." : "Save inputs"}
-      </button>
+      {/* Unified Save */}
+      <div className="flex items-center gap-3 pt-2">
+        <button
+          type="button"
+          onClick={save}
+          disabled={saving}
+          className="rounded bg-gray-900 px-5 py-2 text-sm font-medium text-white hover:bg-gray-800 disabled:opacity-50"
+        >
+          {saving ? "Saving…" : "Save"}
+        </button>
+        <span className="text-xs text-gray-500">
+          Saves configuration and refreshes the material snapshot together.
+        </span>
+      </div>
     </div>
   );
 }
