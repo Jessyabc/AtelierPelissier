@@ -1,6 +1,32 @@
 # Operations Maturity Roadmap — Scorecard
 
-**Single source of truth for maturity scoring and the "where are we actually" question.**
+**Single source of truth for maturity scoring and the "where are we actually" question. This is the north-star scorecard — the doc we re-read every cycle to decide what to invest in next.**
+
+## North Star
+
+**What this app is (one line):** the operating system of a custom cabinetry shop — the single place where a project goes from salesperson conversation → invoice → shop floor → delivered → serviced, with every cost, punch, cutlist, purchase order, and exception attached to the same Project row.
+
+**Who uses it, and why:**
+
+| Role | Daily win |
+|---|---|
+| Salesperson | Turn a conversation into a confirmed project without having to think about production; quote vanities/side units/kitchens from a guided builder; see what clients still owe a deposit or a missing field. |
+| Planner | See every open job and know the next blocking step for each; hand work to the right woodworker; never be surprised by a missing material on a Monday morning. |
+| Woodworker | Open `/today` on a phone, see *my* tasks grouped by project + urgency, punch in/out, done. |
+| Admin / Owner | See the health of the whole shop in 30 seconds; tune defaults (processes, room types, kitchen pricing, permissions) without touching code. |
+
+**End state we are heading towards (target maturity = 4.5+/5 overall):**
+
+1. **Every project has a single truth.** Cost, cutlist, inventory, punches, and service calls attach to one Project row, and any change re-derives the downstream picture automatically (`recalculateProjectState` covers everything a human would have to remember otherwise).
+2. **Role surfaces are tight.** Sales, planner, woodworker, admin each see the minimum they need and cannot accidentally break adjacent roles' flows.
+3. **Hand-offs are explicit, not implicit.** Every stage transition (quote → invoiced → confirmed → in-production → done → delivered) is machine-readable, blockable, and auditable. The system refuses to advance when required fields are missing.
+4. **Time and materials are measured, not estimated.** Punches are tagged to the specific `ProjectProcessStep` the employee is on. Cutlist feeds into material requirements, which feed into purchase orders, which feed back into inventory — all without a human nudging each step.
+5. **Customization without code.** Everything that varies by shop (process templates, room-type → process mapping, kitchen pricing coefficients, inventory sections, permissions) lives in admin-editable config. The codebase is the platform; each shop is data.
+6. **Commercially portable.** Another shop could pick up this system and be productive in a week, because the data model and the vocabulary are generic — shop-specific vocabulary lives in seeds, not in code.
+
+**How to read the rest of this file:** every section below scores where we are *today* against that end state. Sections scoring under 3 are the active bottleneck. The "Top 3 actions before next review" block at the bottom is the short list we commit to moving before the next cycle.
+
+---
 
 ## Where each thing lives
 
@@ -228,8 +254,9 @@ Checklist:
 - Order suggestions from cutlist + stock ✓ (via AI + deviation engine)
 - Uncertainty surfaced ✓ (deviation system)
 - Supplier/product mapping can be learned — partial
+- **Warehouse sections + location notes per item ✓** (`WarehouseSection` model, `/api/warehouse-sections`, inventory UI column, AI actions `listWarehouseSections` / `proposeSetInventoryLocation`)
 
-**Score: 4 / 5**  
+**Score: 4.5 / 5** (↑ from 4 — warehouse sections close the "I don't know where in the warehouse this is" gap)  
 **Owner:** Purchasing + Admin  
 **Actions:**
 - Add confidence labels for supplier default resolution
@@ -288,8 +315,10 @@ Checklist:
 - Draft supplier email — NOT IMPLEMENTED
 - Answer project status quickly ✓
 - Show blocked/overdue/stalled projects ✓
+- **Monday.com ingestion with bilingual room inference ✓** (`guessRoomType` handles FR + EN synonyms; AI resolves board names and job numbers before executing)
+- **Warehouse-location actions ✓** (`listWarehouseSections`, `proposeCreateWarehouseSection`, `proposeSetInventoryLocation`)
 
-**Score: 3 / 5**  
+**Score: 3.5 / 5** (↑ from 3 — Monday ingestion works on the real Wood Shop board and the AI can now reason about physical warehouse locations)  
 **Owner:** Admin + Planner  
 **Actions:**
 - Add doc-to-project match action (depends on ingestion pipeline — Section 4)
@@ -318,26 +347,6 @@ Checklist:
 - Group projects by blocked vs active vs done in default cockpit view
 - Add per-role dashboard presets
 - Add "last updated" timestamp for data freshness
-
----
-
-## 17. Admin customization coherence
-
-Checklist:
-- Admin-level behavior controls in one canonical place ✓ (Admin Hub → App Behavior, Room Types, Menu, Integrations)
-- Legacy scattered settings entry points reduced — partial (`/settings/risk` now redirects to Admin Hub behavior tab)
-- Clear inventory of customizable surfaces — DONE (`docs/ADMIN_CUSTOMIZATION_SURFACE.md`)
-- Room type → process template mapping is admin-editable ✓ (`AppConfig.processDefaults` surfaced in `Admin → Room Types`, with built-in fallback indicator)
-- Custom room types plumbed through wizard + resolver ✓
-- Kitchen pricing admin controls persisted and editable from UI — NOT DONE (currently code constants; persistence/config editor pending)
-
-**Score: 3.5 / 5** (↑ from 3 — process-template mapping is now fully configurable by admins without touching code, and the fallback behaviour is visible in-UI)  
-**Owner:** Admin  
-**Actions:**
-- Persist kitchen pricing coefficients in admin config tables (manufacturer/style/hardware/labor/install/delivery presets)
-- Add behavior-change audit timeline for admin settings updates
-- Keep new customization features routed through `/admin` tabs only
-- Document the `processDefaults` fallback logic in `ADMIN_CUSTOMIZATION_SURFACE.md`
 
 ---
 
@@ -397,40 +406,60 @@ Checklist:
 
 ---
 
+## 17. Admin customization coherence
+
+Checklist:
+- Admin-level behavior controls in one canonical place ✓ (Admin Hub → App Behavior, Room Types, Menu, Integrations)
+- Legacy scattered settings entry points reduced — partial (`/settings/risk` now redirects to Admin Hub behavior tab)
+- Clear inventory of customizable surfaces — DONE (`docs/ADMIN_CUSTOMIZATION_SURFACE.md`)
+- Room type → process template mapping is admin-editable ✓ (`AppConfig.processDefaults` surfaced in `Admin → Room Types`, with built-in fallback indicator)
+- Custom room types plumbed through wizard + resolver ✓
+- Process step durations editable from the process builder ✓ (`estimatedMinutes` on `ProcessStep` + builder UI + persistence)
+- Kitchen pricing admin controls persisted and editable from UI — NOT DONE (currently code constants; persistence/config editor pending)
+
+**Score: 3.5 / 5** (↑ from 3 — process-template mapping and step durations are now fully configurable by admins without touching code; fallback behaviour is visible in-UI)  
+**Owner:** Admin  
+**Actions:**
+- Persist kitchen pricing coefficients in admin config tables (manufacturer/style/hardware/labor/install/delivery presets)
+- Add behavior-change audit timeline for admin settings updates
+- Keep new customization features routed through `/admin` tabs only
+- Document the `processDefaults` fallback logic in `ADMIN_CUSTOMIZATION_SURFACE.md`
+
+---
+
 ## Current snapshot
 
 | Section | Score | Delta vs last |
 |---------|-------|--------------|
-| 1. Core operational foundation | **3** | ↑ from 2.5 (`estimatedMinutes` on steps confirmed) |
+| 1. Core operational foundation | 2.5 | — (still missing canonical done-criteria + stage ownership) |
 | 2. Project intake | 3 | — |
-| 3. Sales-to-production handoff | **3** | ↑ from 2 (stage handoff + planner gating) |
-| 4. Email/document ingestion | **2** | ↑ from 1 (PDF drop-zone + heuristic pre-fill) |
+| 3. Sales-to-production handoff | 3 | — (readiness hard-block still pending) |
+| 4. Email/document ingestion | 2 | — |
 | 5. Project matching | 2 | — |
-| 6. Production workflow + task distribution | **3.5** | ↑ from 2 (task distribution built end-to-end; prior audit was incorrect) |
+| 6. Production workflow + task distribution | 3.5 | — |
 | 7. QR station timing | 3 | — |
-| 8. Standard time baselines | **1** | ↑ from 0 (step assignment unlocks tagging; now a wiring job) |
-| 9. Inventory + purchasing | 4 | — |
+| 8. Standard time baselines | 1 | — (waiting on punch↔step tagging) |
+| 9. Inventory + purchasing | **4.5** | ↑ from 4 (warehouse sections + location notes now first-class, AI-editable) |
 | 10. Cutlist integration | 3 | — |
-| 11. Roles and permissions | **3** | ↑ from 2.5 (master menu + permanent admin + withAuth) |
-| 12. AI action system | 3 | — |
-| 13. Dashboard usefulness | 3 | — (stage grouping + role-aware cards) |
+| 11. Roles and permissions | **4** | ↑ from 3 (sales/planner/woodworker each have a tailored `/today` + role-filtered project detail + read-only timeline for sales) |
+| 12. AI action system | **3.5** | ↑ from 3 (Monday ingestion + warehouse-section actions + bilingual inference) |
+| 13. Dashboard usefulness | 3 | — |
 | 14. Exception handling | 2 | — |
 | 15. Training and adoption | 1 | — |
 | 16. Commercialization readiness | 1 | — |
-| 17. Admin customization coherence | 3 | new |
-| **Overall average** | **2.6 / 5** | ↑ 0.3 (task-distribution re-audit + API auth pass + menu consolidation) |
+| 17. Admin customization coherence | **3.5** | ↑ from 3 (process defaults + editable step durations, both admin-configurable without code) |
+| **Overall average** | **2.79 / 5** | ↑ 0.19 (roles, AI, inventory, admin customization all ticked up this cycle) |
 
-**Review date:** 2026-04-15  
+**Review date:** 2026-04-16  
 **Top 3 risks this cycle:**
-1. API role enforcement is partial — ~60 routes trust middleware session but don't check role or project ownership (batch migration to `requireRole` + `requireProjectAccess` in progress)
-2. `/today` and calendar are built but won't light up for a woodworker until their `User.employeeId` is linked — onboarding must enforce that link or route them to ask admin
-3. No task-level time reporting yet — punches aren't tagged to the `ProjectProcessStep` the employee is actually working on
-3. Role-specific UX is incomplete — salesperson can't produce a quote, woodworker has no usable mobile view
+1. **API role enforcement is still partial.** ~60 routes rely on the middleware session but don't check role or project ownership. The `withAuth` + `requireProjectAccess` helper exists; batch migration of `/api/projects/**` and `/api/orders/**` mutation routes is the P1 closure.
+2. **`/today` and calendar only light up for a woodworker if `User.employeeId` is linked.** Invite / onboarding must enforce that link or explicitly route them to ask admin; otherwise the woodworker-facing promise is invisible.
+3. **No task-level time reporting yet.** Punches aren't tagged to the `ProjectProcessStep` the employee is actually working on, which blocks §8 (standard time baselines) from ever leaving 1/5.
 
-**Top 3 actions before next review:**
-1. Add `ProjectProcessStep` schema and assignment UI (unlocks task distribution + calendar integration + time baselines)
-2. Build PDF quote export for salesperson
-3. Build woodworker "Today" mobile view with task list + punch-in
+**Top 3 actions before next review (commit these, cut everything else):**
+1. **Migrate `/api/projects/**` + `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess`** — closes §11 to 4.5 and unblocks a clean audit of role enforcement.
+2. **Wire `/punch/[station]` to the currently-in-progress `ProjectProcessStep` for the scanning employee** — single change that moves §8 from 1 to 3 and §6 from 3.5 to 4.
+3. **Build the executive 30-second summary for `/` home** — active, blocked, ordering-needed, overdue — moves §13 from 3 to 4 and gives owners a reason to check the app daily.
 
 ---
 
