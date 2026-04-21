@@ -24,6 +24,7 @@ import { DraftIntakePanel } from "@/components/DraftIntakePanel";
 import { SalesProjectSummary } from "@/components/SalesProjectSummary";
 import { OrderDescriptionBlock } from "@/components/OrderDescriptionBlock";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { getStageView, getStageLabel } from "@/lib/projectStage";
 
 type TaskItem = { id: string; label: string; isDone: boolean; sortOrder: number };
 type ProjItem = {
@@ -87,12 +88,28 @@ function parseTabParam(v: string | null): Tab | null {
   return (VALID_TABS as readonly string[]).includes(v) ? (v as Tab) : null;
 }
 
-/** Tabs a given role is allowed to see on the project page. */
-function tabsForRole(role: string): Tab[] {
+/**
+ * Tabs visible to a given role and lifecycle stage.
+ *
+ * Progressive disclosure rules:
+ *   - Planner / admin always see the full set, regardless of stage. They are
+ *     responsible for the whole pipeline and need the complete view.
+ *   - Salespeople see a tab set that grows with the project's commitment:
+ *       quote          → Overview · Client & Info · Estimates & Costs
+ *                        (Service Calls hidden — there's no project yet)
+ *       draft_project  → adds Service Calls (still rare but legitimate now
+ *                        the client is on the hook)
+ *       project / done → full sales set
+ *
+ * Stage drives this — never `isDraft`. See `lib/projectStage.ts`.
+ */
+function tabsForRoleAndStage(role: string, stageView: ReturnType<typeof getStageView>): Tab[] {
   if (role === "salesperson") {
+    if (stageView === "quote") {
+      return ["Overview", "Client & Info", "Estimates & Costs"];
+    }
     return ["Overview", "Client & Info", "Estimates & Costs", "Service Calls"];
   }
-  // admin + planner + fallback see the full set (History is admin+planner).
   return ["Overview", "Client & Info", "Estimates & Costs", "Service Calls", "History"];
 }
 
@@ -121,14 +138,16 @@ export default function ProjectPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
-  // If the current role isn't allowed to see the active tab, snap back to
-  // Overview. Runs when the user's role loads (or the tab changes via URL).
+  // If the current role + stage isn't allowed to see the active tab, snap
+  // back to Overview. Runs when the user's role loads, the stage changes,
+  // or the URL ?tab= changes.
   useEffect(() => {
-    const allowed = tabsForRole(role);
+    const stageView = getStageView(project ?? {});
+    const allowed = tabsForRoleAndStage(role, stageView);
     if (!allowed.includes(activeTab)) {
       setActiveTab("Overview");
     }
-  }, [role, activeTab]);
+  }, [role, activeTab, project]);
   const [savingProject, setSavingProject] = useState(false);
   const [saveError, setSaveError] = useState("");
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -373,7 +392,9 @@ export default function ProjectPage() {
   const variance = estimatedCost - realCost;
 
   const types = project.types.split(",").map((t) => t.trim());
-  const tabs: Tab[] = tabsForRole(role);
+  const stageView = getStageView(project);
+  const stageMeta = getStageLabel(stageView);
+  const tabs: Tab[] = tabsForRoleAndStage(role, stageView);
 
   // Total task progress (per-room tasks only)
   const allItems = project.projectItems ?? [];
@@ -423,8 +444,14 @@ export default function ProjectPage() {
         </div>
         <div className="mt-2 flex flex-wrap items-center gap-3">
           <h2 className="text-lg font-semibold text-[var(--foreground)]">{project.name}</h2>
-          {project.isDraft && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Draft</span>}
-          {project.isDone && <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-medium">Done</span>}
+          {/* Canonical lifecycle chip — replaces the older Draft/Done pair.
+              Source of truth: lib/projectStage.ts. */}
+          <span
+            title={stageMeta.long}
+            className={`text-xs px-2 py-0.5 rounded-full font-medium ${stageMeta.chipClass}`}
+          >
+            {stageMeta.short}
+          </span>
           {project.blockedReason && (
             <BlockedReasonBadge reason={project.blockedReason} />
           )}
@@ -502,10 +529,19 @@ export default function ProjectPage() {
             />
           )}
           {project.isDraft && <ReadinessChecklistCard project={project} />}
-          {/* Summary strip */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Summary strip — for quote stage we hide Materials/Profit because
+              no cutlist exists yet and profit is speculative. Keeping only
+              Progress + Selling Price surfaces what salespeople actually
+              care about while the quote is still up for discussion. */}
+          <div
+            className={`grid gap-3 grid-cols-2 ${
+              stageView === "quote" ? "sm:grid-cols-2" : "sm:grid-cols-4"
+            }`}
+          >
             <div className="neo-card p-3 text-center">
-              <div className="text-xs text-[var(--foreground-muted)]">Progress</div>
+              <div className="text-xs text-[var(--foreground-muted)]">
+                {stageView === "quote" ? "Rooms configured" : "Progress"}
+              </div>
               <div className="text-lg font-bold text-[var(--foreground)]">{totalTasks > 0 ? Math.round((totalDone / totalTasks) * 100) : 0}%</div>
               <div className="text-[10px] text-[var(--foreground-muted)]">{totalDone}/{totalTasks} tasks</div>
               {totalTasks > 0 && (
@@ -514,17 +550,23 @@ export default function ProjectPage() {
                 </div>
               )}
             </div>
-            <div className="neo-card p-3 text-center">
-              <div className="text-xs text-[var(--foreground-muted)]">Materials</div>
-              <div className={`text-lg font-bold ${shortages.length > 0 ? "text-amber-600" : "text-emerald-600"}`}>
-                {totalRequired > 0 ? Math.round((totalAllocated / totalRequired) * 100) : 100}%
+
+            {stageView !== "quote" && (
+              <div className="neo-card p-3 text-center">
+                <div className="text-xs text-[var(--foreground-muted)]">Materials</div>
+                <div className={`text-lg font-bold ${shortages.length > 0 ? "text-amber-600" : "text-emerald-600"}`}>
+                  {totalRequired > 0 ? Math.round((totalAllocated / totalRequired) * 100) : 100}%
+                </div>
+                <div className="text-[10px] text-[var(--foreground-muted)]">
+                  {shortages.length > 0 ? `${shortages.length} shortage${shortages.length > 1 ? "s" : ""}` : "Covered"}
+                </div>
               </div>
-              <div className="text-[10px] text-[var(--foreground-muted)]">
-                {shortages.length > 0 ? `${shortages.length} shortage${shortages.length > 1 ? "s" : ""}` : "Covered"}
-              </div>
-            </div>
+            )}
+
             <div className="neo-card p-3 text-center">
-              <div className="text-xs text-[var(--foreground-muted)]">Selling Price</div>
+              <div className="text-xs text-[var(--foreground-muted)]">
+                {stageView === "quote" ? "Quoted price" : "Selling Price"}
+              </div>
               {editingPrice ? (
                 <div className="flex items-center gap-1 mt-1">
                   <input type="number" min={0} step={0.01} value={priceInput} onChange={(e) => setPriceInput(e.target.value)} className="neo-input w-20 px-1 py-0.5 text-sm text-center" autoFocus onKeyDown={(e) => e.key === "Enter" && handleSaveSellingPrice()} />
@@ -536,21 +578,74 @@ export default function ProjectPage() {
                 </button>
               )}
             </div>
-            <div className="neo-card p-3 text-center">
-              <div className="text-xs text-[var(--foreground-muted)]">Profit</div>
-              <div className={`text-lg font-bold ${profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
-                {sellingPrice > 0 ? `$${profit.toLocaleString()}` : "—"}
+
+            {stageView !== "quote" && (
+              <div className="neo-card p-3 text-center">
+                <div className="text-xs text-[var(--foreground-muted)]">Profit</div>
+                <div className={`text-lg font-bold ${profit >= 0 ? "text-emerald-600" : "text-red-500"}`}>
+                  {sellingPrice > 0 ? `$${profit.toLocaleString()}` : "—"}
+                </div>
+                <div className="text-[10px] text-[var(--foreground-muted)]">
+                  Est: ${estimatedCost.toLocaleString()} · Real: ${realCost.toLocaleString()} {variance !== 0 && <span className={variance > 0 ? "text-emerald-600" : "text-red-500"}>({variance > 0 ? "+" : ""}{variance.toLocaleString()})</span>}
+                </div>
               </div>
-              <div className="text-[10px] text-[var(--foreground-muted)]">
-                Est: ${estimatedCost.toLocaleString()} · Real: ${realCost.toLocaleString()} {variance !== 0 && <span className={variance > 0 ? "text-emerald-600" : "text-red-500"}>({variance > 0 ? "+" : ""}{variance.toLocaleString()})</span>}
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Timeline / Process Board
-              Salespeople see this read-only (no add/delete/reorder), admin
-              and planner can edit freely. */}
-          {!project.parentProject && (
+          {/* Rooms — for quote stage we skip process-step detail entirely
+              (steps are production concerns, not sales concerns) and show a
+              lightweight list linking each room to its builder. Once the
+              project is invoiced or confirmed, the full process board
+              appears so the planner can manage production. */}
+          {!project.parentProject && stageView === "quote" && (
+            <div className="neo-card p-5">
+              <h3 className="text-sm font-semibold text-[var(--foreground)] mb-3">
+                Rooms on this quote
+              </h3>
+              {allItems.length === 0 ? (
+                <p className="text-sm text-[var(--foreground-muted)]">
+                  No rooms yet. Go to <span className="font-medium">Estimates &amp; Costs</span> to add a vanity, kitchen, or side-unit to price.
+                </p>
+              ) : (
+                <ul className="divide-y divide-[var(--bg-light)]">
+                  {allItems.map((item) => (
+                    <li key={item.id} className="py-2 flex items-center justify-between">
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium text-[var(--foreground)] truncate">{item.label}</p>
+                        <p className="text-[11px] text-[var(--foreground-muted)] uppercase tracking-wide">
+                          {item.type.replace("_", " ")}
+                        </p>
+                      </div>
+                      <Link
+                        href={`/projects/${id}?tab=Estimates+%26+Costs`}
+                        className="neo-btn px-3 py-1 text-xs"
+                      >
+                        Configure →
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {project.subProjects && project.subProjects.length > 0 && (
+                <div className="mt-3 pt-3 border-t border-[var(--bg-light)] space-y-2">
+                  {project.subProjects.map((sp) => (
+                    <div key={sp.id} className="flex items-center justify-between text-sm">
+                      <div className="min-w-0">
+                        <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 mr-2">Follow-up</span>
+                        <span className="font-medium text-[var(--foreground)]">{sp.name}</span>
+                      </div>
+                      <Link href={`/projects/${sp.id}`} className="neo-btn px-2 py-1 text-xs">Open</Link>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Timeline / Process Board — shown once the project is invoiced or
+              confirmed. Salespeople see this read-only (no add/delete/
+              reorder), admin and planner can edit freely. */}
+          {!project.parentProject && stageView !== "quote" && (
             <div className="neo-card p-5">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-[var(--foreground)]">
@@ -654,8 +749,9 @@ export default function ProjectPage() {
             </div>
           )}
 
-          {/* Material shortages */}
-          {shortages.length > 0 && (
+          {/* Material shortages — only after the project is committed.
+              Shortages on a quote are meaningless (no cutlist yet). */}
+          {stageView !== "quote" && shortages.length > 0 && (
             <div className="neo-card p-4 severity-medium">
               <h4 className="text-sm font-semibold text-amber-800 mb-2">Material Shortages</h4>
               <div className="space-y-1">
@@ -695,26 +791,17 @@ export default function ProjectPage() {
       {/* Estimates & Costs — sales get a condensed view, planner/admin see
           the full builder/costing stack. The division is intentional:
           salespeople should not see internal material cost lines. */}
-      {activeTab === "Estimates & Costs" && isSales && (
-        <div className="neo-card p-6 sm:p-8">
-          <SalesProjectSummary project={project} />
-        </div>
-      )}
-      {activeTab === "Estimates & Costs" && !isSales && (
+      {activeTab === "Estimates & Costs" && (
         <div className="space-y-6">
-          {/* Once the project is invoiced / confirmed, mirror the
-              client-facing order description up-top so the planner can
-              copy it into the accounting invoice without leaving the
-              builder surface. The builder itself stays fully editable. */}
-          {(project.stage === "invoiced" || project.stage === "confirmed") && (
+          {isSales && (
             <div className="neo-card p-6 sm:p-8">
-              <OrderDescriptionBlock
-                project={project}
-                title="Order description"
-                subtitle={`Shown because this project is ${project.stage}. Copy into the accounting invoice.`}
-              />
+              <SalesProjectSummary project={project} />
             </div>
           )}
+
+          {/* Sales MUST be able to configure the quote live with the client.
+              They still don't see internal cost lines; the builders already
+              enforce breakdown visibility via role policy. */}
           {types.includes("vanity") && (
             <div className="neo-card p-6 sm:p-8">
               <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Vanity product builder</h3>
@@ -733,18 +820,42 @@ export default function ProjectPage() {
               <KitchenTab projectId={id} project={project} onUpdate={fetchProject} />
             </div>
           )}
-          <div className="neo-card p-6 sm:p-8">
-            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Prerequisites & Materials</h3>
-            <PrerequisitesTab projectId={id} project={project} onUpdate={fetchProject} />
-          </div>
-          <div className="neo-card p-6 sm:p-8">
-            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Cost Lines</h3>
-            <CostsTab projectId={id} project={project} onUpdate={fetchProject} />
-          </div>
-          <div className="neo-card p-6 sm:p-8">
-            <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Quote Summary</h3>
-            <QuoteTab project={project} companyName={companyConfig.companyName} companyPhone={companyConfig.companyPhone} companyEmail={companyConfig.companyEmail} companyAddress={companyConfig.companyAddress} />
-          </div>
+
+          {!isSales && (
+            <>
+              {/* Once the project is invoiced / confirmed, mirror the
+                  client-facing order description up-top so the planner can
+                  copy it into the accounting invoice without leaving the
+                  builder surface. The builder itself stays fully editable. */}
+              {(project.stage === "invoiced" || project.stage === "confirmed") && (
+                <div className="neo-card p-6 sm:p-8">
+                  <OrderDescriptionBlock
+                    project={project}
+                    title="Order description"
+                    subtitle={`Shown because this project is ${project.stage}. Copy into the accounting invoice.`}
+                  />
+                </div>
+              )}
+              <div className="neo-card p-6 sm:p-8">
+                <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Prerequisites & Materials</h3>
+                <PrerequisitesTab projectId={id} project={project} onUpdate={fetchProject} />
+              </div>
+              <div className="neo-card p-6 sm:p-8">
+                <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Cost Lines</h3>
+                <CostsTab projectId={id} project={project} onUpdate={fetchProject} />
+              </div>
+              <div className="neo-card p-6 sm:p-8">
+                <h3 className="text-sm font-semibold text-[var(--foreground)] mb-4">Quote Summary</h3>
+                <QuoteTab
+                  project={project}
+                  companyName={companyConfig.companyName}
+                  companyPhone={companyConfig.companyPhone}
+                  companyEmail={companyConfig.companyEmail}
+                  companyAddress={companyConfig.companyAddress}
+                />
+              </div>
+            </>
+          )}
         </div>
       )}
 

@@ -1,3 +1,5 @@
+import type { KitchenRoomDefaults } from "@/lib/kitchen-pricing/roomDefaults";
+
 export type KitchenCabinetType =
   | "base"
   | "wall"
@@ -81,6 +83,8 @@ export type KitchenInstallationInput = {
 
 export type KitchenProjectPricingInput = {
   cabinets: KitchenCabinetInput[];
+  /** Stage 1 room frame — does not affect line-item pricing until Stage 2+ wiring. */
+  roomDefaults: KitchenRoomDefaults;
   includeInstallation: boolean;
   installation: KitchenInstallationInput;
   includeDelivery: boolean;

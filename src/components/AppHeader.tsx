@@ -4,7 +4,12 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useRef, useEffect, useState } from "react";
 import { getBrowserSupabaseClient } from "@/lib/supabase/client";
-import { MASTER_MENU, isMenuItemVisibleToRole, type MenuItem } from "@/config/menu";
+import {
+  MASTER_MENU,
+  isMenuItemVisibleToRole,
+  getMenuLabelForRole,
+  type MenuItem,
+} from "@/config/menu";
 
 type MenuGroup = { label: string; items: MenuItem[] };
 
@@ -154,16 +159,17 @@ export function AppHeader() {
                   <div className="px-4 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-gray-400">
                     {group.label}
                   </div>
-                  {group.items.map((item) =>
-                    item.exportData ? (
+                  {group.items.map((item) => {
+                    const label = getMenuLabelForRole(item, userRole);
+                    return item.exportData ? (
                       <button
-                        key={item.label}
+                        key={item.href}
                         type="button"
                         onClick={handleExport}
                         role="menuitem"
                         className="block w-full px-5 py-2 text-left text-sm text-gray-700 hover:bg-white/50 transition-colors"
                       >
-                        {item.label}
+                        {label}
                       </button>
                     ) : (
                       <Link
@@ -177,10 +183,10 @@ export function AppHeader() {
                             : "text-gray-700 hover:bg-white/50"
                         }`}
                       >
-                        {item.label}
+                        {label}
                       </Link>
-                    )
-                  )}
+                    );
+                  })}
                 </div>
               ))}
             </nav>

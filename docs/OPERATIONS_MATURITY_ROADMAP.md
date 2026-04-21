@@ -293,14 +293,15 @@ Checklist:
 - Sales enters data without breaking production logic ✓ (sales read-only timeline + `SalesProjectSummary` hides costs/cutlists)
 - Admin can override safely with audit visibility ✓
 
-**Score: 4 / 5** (↑ from 3 — sales/planner/woodworker each have a tailored surface, project detail is now role-filtered, and the timeline is read-only for sales; executive summary remains the only major gap)  
+**Score: 4.5 / 5** (↑ from 4 — sales/planner/woodworker each have a tailored surface, project detail is now role-filtered, the timeline is read-only for sales, AND every `/api/projects/**` + `/api/orders/**` mutation route now goes through the unified `withAuth` / `withProjectAuth` guard; executive summary is the only remaining gap)  
 **Owner:** Admin  
 **Actions:**
 - ~~Build woodworker "Today" view~~ ✓ DONE
 - ~~Build salesperson "My Day" view~~ ✓ DONE (`SalesTodayView` in `/today`)
 - ~~Role-aware project detail tabs + read-only timeline for sales~~ ✓ DONE
+- ~~Migrate `/api/projects/**` + `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess`~~ ✓ DONE (2026-04-17 — both trees migrated in one pass, `withProjectAuth` helper added, full typecheck + lint green; `SettingsTab` UI gating flagged as a follow-up since the API is now admin/planner-only)
 - Build owner/executive 30-second summary (ties back to Section 13)
-- Migrate remaining `/api/projects/**` and `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess` (AUTH_RISK_MAP P1 closure)
+- UI follow-up: hide `SettingsTab` (markup + tax) from salespeople — API is already locked, UI still renders
 
 ---
 
@@ -441,25 +442,42 @@ Checklist:
 | 8. Standard time baselines | 1 | — (waiting on punch↔step tagging) |
 | 9. Inventory + purchasing | **4.5** | ↑ from 4 (warehouse sections + location notes now first-class, AI-editable) |
 | 10. Cutlist integration | 3 | — |
-| 11. Roles and permissions | **4** | ↑ from 3 (sales/planner/woodworker each have a tailored `/today` + role-filtered project detail + read-only timeline for sales) |
+| 11. Roles and permissions | **4.5** | ↑ from 4 (every `/api/projects/**` + `/api/orders/**` mutation route now runs through `withAuth` / `withProjectAuth`; role enforcement is finally end-to-end for those two trees) |
 | 12. AI action system | **3.5** | ↑ from 3 (Monday ingestion + warehouse-section actions + bilingual inference) |
 | 13. Dashboard usefulness | 3 | — |
 | 14. Exception handling | 2 | — |
 | 15. Training and adoption | 1 | — |
 | 16. Commercialization readiness | 1 | — |
 | 17. Admin customization coherence | **3.5** | ↑ from 3 (process defaults + editable step durations, both admin-configurable without code) |
-| **Overall average** | **2.79 / 5** | ↑ 0.19 (roles, AI, inventory, admin customization all ticked up this cycle) |
+| **Overall average** | **2.82 / 5** | ↑ 0.22 (roles now 4.5 after the `/api/projects/**` + `/api/orders/**` guard migration; AI, inventory, admin customization also ticked up this cycle) |
 
-**Review date:** 2026-04-16  
+**Review date:** 2026-04-17  
 **Top 3 risks this cycle:**
-1. **API role enforcement is still partial.** ~60 routes rely on the middleware session but don't check role or project ownership. The `withAuth` + `requireProjectAccess` helper exists; batch migration of `/api/projects/**` and `/api/orders/**` mutation routes is the P1 closure.
-2. **`/today` and calendar only light up for a woodworker if `User.employeeId` is linked.** Invite / onboarding must enforce that link or explicitly route them to ask admin; otherwise the woodworker-facing promise is invisible.
-3. **No task-level time reporting yet.** Punches aren't tagged to the `ProjectProcessStep` the employee is actually working on, which blocks §8 (standard time baselines) from ever leaving 1/5.
+1. **`/today` and calendar only light up for a woodworker if `User.employeeId` is linked.** Invite / onboarding must enforce that link or explicitly route them to ask admin; otherwise the woodworker-facing promise is invisible.
+2. **No task-level time reporting yet.** Punches aren't tagged to the `ProjectProcessStep` the employee is actually working on, which blocks §8 (standard time baselines) from ever leaving 1/5.
+3. **API role enforcement is now solid for `/projects` + `/orders`, but `/api/admin/**`, `/api/inventory/**`, `/api/suppliers/**`, and the AI action endpoints still use ad-hoc role checks.** The same `withAuth` migration needs to sweep those trees before we can claim end-to-end enforcement (AUTH_RISK_MAP P2).
 
 **Top 3 actions before next review (commit these, cut everything else):**
-1. **Migrate `/api/projects/**` + `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess`** — closes §11 to 4.5 and unblocks a clean audit of role enforcement.
-2. **Wire `/punch/[station]` to the currently-in-progress `ProjectProcessStep` for the scanning employee** — single change that moves §8 from 1 to 3 and §6 from 3.5 to 4.
-3. **Build the executive 30-second summary for `/` home** — active, blocked, ordering-needed, overdue — moves §13 from 3 to 4 and gives owners a reason to check the app daily.
+1. **Wire `/punch/[station]` to the currently-in-progress `ProjectProcessStep` for the scanning employee** — single change that moves §8 from 1 to 3 and §6 from 3.5 to 4.
+2. **Build the executive 30-second summary for `/` home** — active, blocked, ordering-needed, overdue — moves §13 from 3 to 4 and gives owners a reason to check the app daily.
+3. **Extend the `withAuth` migration to `/api/admin/**`, `/api/inventory/**`, `/api/suppliers/**`, and the AI action trees** — finishes the role-enforcement story started this cycle and closes §11 to 5/5.
+
+**Cycle log — 2026-04-17 (API auth migration):**
+- Added `withProjectAuth` composite helper in `src/lib/auth/guard.ts` (reuses already-fetched session, avoids the double-fetch that `requireProjectAccess` had after `withAuth` ran).
+- Migrated every route under `/api/projects/**` (38 files) and `/api/orders/**` (5 files) off `requireRole` / `requireProjectAccess` onto `withAuth` / `withProjectAuth`. No more ad-hoc role checks in either tree.
+- Fixed a latent bug in `/api/projects/[id]/material-snapshot` POST: it was calling `/api/projects/[id]/recalculate` via internal `fetch` without a cookie — would have silently 401'd once recalculate was locked to admin/planner. Swapped to a direct `recalculateProjectState(projectId)` call.
+- Typecheck + ESLint green across the touched surface.
+- Flagged one UI follow-up: `SettingsTab` (markup + tax) is still mounted for salespeople even though the `/api/projects/[id]/settings` endpoint now rejects them. API is safe; UI should hide the tab.
+
+**Cycle log — 2026-04-17 (foundations — project lifecycle + sales-stage UI primitives):**
+- Extended `Project` with `archivedAt`, `archiveReason`, `lostReason`, `lastSalesActivityAt` + supporting indices. Migration `20260417230000_add_project_lifecycle_fields` backfills `lastSalesActivityAt` from `updatedAt`. `PATCH /api/projects/[id]` + `POST /api/projects` now stamp `lastSalesActivityAt` so staleness is tracked from day one.
+- `lib/projectLifecycle.ts` is the single source of truth for staleness, follow-up cadence, auto-archive, and sales-activity derivation. Every predicate is Jest-covered.
+- Two new lifecycle endpoints: `POST /api/projects/[id]/lifecycle` (archive / unarchive / mark-lost / mark-found, `withProjectAuth`, audit-logged via new `lifecycle_*` action kinds) and `POST /api/admin/archive-stale-quotes` (admin/planner only, supports `dryRun` + `asOf`). Cron wiring is the remaining step.
+- Shared override UX primitives landed under `src/components/standards/`: `overrideResolver.ts` (pure TS, Jest-covered), `StandardsContext` (prefetches shop standards + project overrides once per project), `OverrideRequestModal`, and `ConstructionStandardField`. The resolver was intentionally split from the JSX so tests run without TSX transform.
+- `ConstructionStandards` gained `quoteFollowUpDays` + `invoiceFollowUpDays`; Admin Hub > Construction Standards tab exposes them as a "Sales follow-up cadence" section so operators can tune without a deploy.
+- Quote-stage UI polish: `projects/[id]` Overview is now stage-aware (hides Materials/Profit cards, relabels "Progress"/"Selling Price", replaces the process board with a lightweight "Rooms on this quote" list, suppresses material shortages pre-cutlist). Home filter chips migrated to `all / quotes / invoices / active / done / archived`, all going through `lib/projectStage.ts` predicates (archived + lost only visible under the Archived chip). `DraftIntakePanel` swaps an entire copy dictionary based on `stageView` ("Quote intake" vs "Invoice intake" vs legacy) covering title, subtitle, reference-field label, readiness message, save button, and toast.
+- Typecheck + ESLint + Jest green across all touched surface.
+- **Scorecard impact:** §13 Project lifecycle fidelity 3 → **3.5/5**. §17 Admin customization coherence 3.5 → **3.75/5**.
 
 ---
 

@@ -5,7 +5,7 @@ import { updateProjectSchema } from "@/lib/validators";
 import { recalculateProjectState } from "@/lib/observability/recalculateProjectState";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
 import { computeReadinessCheck } from "@/lib/readiness";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth, withProjectAuth } from "@/lib/auth/guard";
 
 function projectJsonResponse(body: unknown, readinessSoftBypass: string[] | null) {
   if (readinessSoftBypass?.length) {
@@ -20,12 +20,13 @@ function projectJsonResponse(body: unknown, readinessSoftBypass: string[] | null
   return NextResponse.json(body);
 }
 
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+// GET /api/projects/[id] — authenticated read. Project ownership is NOT
+// enforced here: the UI still relies on the unfiltered list for sales'
+// handoff context, and tightening reads is tracked as a follow-up. Writes
+// below ARE project-scoped.
+export const GET = withAuth<{ id: string }>("any", async ({ params }) => {
   try {
-    const { id } = await params;
+    const { id } = params;
     const project = await prisma.project.findUnique({
       where: { id },
       include: {
@@ -88,16 +89,17 @@ export async function GET(
     console.error("GET /api/projects/[id] error:", err);
     return NextResponse.json({ error: "Failed to load project" }, { status: 500 });
   }
-}
+});
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id } = await params;
+// PATCH /api/projects/[id] — sales-touchable metadata update. Salespeople
+// may edit their own projects; planners/admins edit anything.
+export const PATCH = withProjectAuth<{ id: string }>(
+  ["admin", "planner", "salesperson"],
+  async ({ req, params }) => {
+  const { id } = params;
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -176,7 +178,16 @@ export async function PATCH(
     blockedReason?: string | null;
     stage?: string;
     depositReceivedAt?: Date | null;
+    /** Set below on every PATCH — see lib/projectLifecycle.ts for why. */
+    lastSalesActivityAt?: Date;
   } = {};
+
+  // Stamp sales activity on every PATCH. Any authenticated edit to a project
+  // counts as "someone touched this", which is what the auto-archive sweep
+  // and the follow-up nudges key off. Planner edits also bump this — at
+  // worst that delays archive by a day, at best it reflects that the team
+  // is collaborating on the file.
+  updateData.lastSalesActivityAt = new Date();
   if (data.name != null) updateData.name = data.name;
   if (data.types != null) {
     updateData.types = data.types.join(",");
@@ -442,16 +453,14 @@ export async function PATCH(
     await logAudit(id, "client_updated");
   recalculateProjectState(id).catch(() => {});
   return projectJsonResponse(project, readinessSoftBypass);
-}
+  }
+);
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireRole(["admin"]);
-  if (!auth.ok) return auth.response;
-  const { id } = await params;
+// DELETE /api/projects/[id] — admin only (destructive). Project scope is
+// implied (admin has blanket access), so `withAuth` is sufficient.
+export const DELETE = withAuth<{ id: string }>("admin", async ({ params }) => {
+  const { id } = params;
   await logAudit(id, "deleted");
   await prisma.project.delete({ where: { id } });
   return NextResponse.json({ ok: true });
-}
+});

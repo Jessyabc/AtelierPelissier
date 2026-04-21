@@ -3,11 +3,14 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { createProjectSchema } from "@/lib/validators";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth } from "@/lib/auth/guard";
 
 const PROJECTS_GET_TIMEOUT_MS = 8000;
 
-export async function GET() {
+// GET /api/projects — authenticated, any role. List payload is not
+// per-role filtered yet (still shows all projects to every role); that's
+// tracked as a follow-up. Here we at minimum require a session.
+export const GET = withAuth("any", async () => {
   const timeoutPromise = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("Timeout")), PROJECTS_GET_TIMEOUT_MS)
   );
@@ -60,14 +63,14 @@ export async function GET() {
       { status: 500 }
     );
   }
-}
+});
 
-export async function POST(request: Request) {
-  const auth = await requireRole(["admin", "planner", "salesperson"]);
-  if (!auth.ok) return auth.response;
+// POST /api/projects — create project. No project id yet so no scope check;
+// role policy matches previous behavior (admin / planner / salesperson).
+export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req }) => {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -175,6 +178,8 @@ export async function POST(request: Request) {
       isDraft: true,
       stage,
       depositReceivedAt: resolvedDepositAt,
+      // Fresh project = fresh sales activity; see lib/projectLifecycle.ts.
+      lastSalesActivityAt: new Date(),
       parentProjectId,
       jobNumber: jobNumber?.trim() || parent.jobNumber,
       clientId: resolvedClientId,
@@ -201,6 +206,8 @@ export async function POST(request: Request) {
       isDraft: true,
       stage,
       depositReceivedAt: resolvedDepositAt,
+      // Fresh project = fresh sales activity; see lib/projectLifecycle.ts.
+      lastSalesActivityAt: new Date(),
       jobNumber: jobNumber?.trim() || null,
       processTemplateId: processTemplateId?.trim() || null,
       clientId: resolvedClientId,
@@ -262,4 +269,4 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
-}
+});

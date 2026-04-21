@@ -3,52 +3,52 @@ import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { projectSettingsSchema } from "@/lib/validators";
 import { triggerSettingsRecalc } from "@/lib/observability/recalculateProjectState";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth } from "@/lib/auth/guard";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+// Project settings (markup, tax, sheet format) — admin/planner only.
+// Changing markup has financial impact and shouldn't be touched by sales.
+export const PATCH = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+    const { id: projectId } = params;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    const parsed = projectSettingsSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+    const { markup, taxEnabled, taxRate, sheetFormatId } = parsed.data;
+
+    await prisma.projectSettings.upsert({
+      where: { projectId },
+      create: {
+        projectId,
+        markup,
+        taxEnabled,
+        taxRate,
+        sheetFormatId: sheetFormatId ?? null,
+      },
+      update: {
+        markup,
+        taxEnabled,
+        taxRate,
+        sheetFormatId: sheetFormatId ?? undefined,
+      },
+    });
+    await logAudit(projectId, "settings_updated");
+
+    const settings = await prisma.projectSettings.findUnique({
+      where: { projectId },
+      include: { sheetFormat: true },
+    });
+    triggerSettingsRecalc(projectId);
+    return NextResponse.json(settings ?? {});
   }
-  const parsed = projectSettingsSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
-      { status: 400 }
-    );
-  }
-  const { markup, taxEnabled, taxRate, sheetFormatId } = parsed.data;
-
-  await prisma.projectSettings.upsert({
-    where: { projectId },
-    create: {
-      projectId,
-      markup,
-      taxEnabled,
-      taxRate,
-      sheetFormatId: sheetFormatId ?? null,
-    },
-    update: {
-      markup,
-      taxEnabled,
-      taxRate,
-      sheetFormatId: sheetFormatId ?? undefined,
-    },
-  });
-  await logAudit(projectId, "settings_updated");
-
-  const settings = await prisma.projectSettings.findUnique({
-    where: { projectId },
-    include: { sheetFormat: true },
-  });
-  triggerSettingsRecalc(projectId);
-  return NextResponse.json(settings ?? {});
-}
+);

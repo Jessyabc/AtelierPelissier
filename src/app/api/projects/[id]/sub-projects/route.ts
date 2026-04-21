@@ -2,22 +2,20 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth } from "@/lib/auth/guard";
 
 /**
  * POST: Create a sub-project under this project (e.g. B/O return visit).
- * Inherits client info and job number from parent.
+ * Inherits client info and job number from parent. Admin/planner only —
+ * sub-projects change the project graph and are a planning concern.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: parentId } = await params;
-  const access = await requireProjectAccess(parentId);
-  if (!access.ok) return access.response;
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+  const { id: parentId } = params;
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -109,4 +107,5 @@ export async function POST(
       { status: 500 }
     );
   }
-}
+  }
+);

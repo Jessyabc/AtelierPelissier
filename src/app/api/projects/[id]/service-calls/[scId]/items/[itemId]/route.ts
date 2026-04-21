@@ -1,27 +1,30 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withProjectAuth } from "@/lib/auth/guard";
 
-/** DELETE: Remove an item from the service call. */
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string; scId: string; itemId: string }> }
-) {
-  const { id: projectId, scId, itemId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
+type Params = { id: string; scId: string; itemId: string };
 
-  const serviceCall = await prisma.serviceCall.findUnique({
-    where: { id: scId },
-    select: { id: true },
-  });
-  if (!serviceCall) {
-    return NextResponse.json({ error: "Service call not found" }, { status: 404 });
+/**
+ * DELETE: Remove an item from the service call.
+ * Sales-touchable (service calls are sales-owned workflow).
+ */
+export const DELETE = withProjectAuth<Params>(
+  ["admin", "planner", "salesperson"],
+  async ({ params }) => {
+    const { scId, itemId } = params;
+
+    const serviceCall = await prisma.serviceCall.findUnique({
+      where: { id: scId },
+      select: { id: true },
+    });
+    if (!serviceCall) {
+      return NextResponse.json({ error: "Service call not found" }, { status: 404 });
+    }
+
+    await prisma.serviceCallItem.deleteMany({
+      where: { id: itemId, serviceCallId: scId },
+    });
+
+    return NextResponse.json({ ok: true });
   }
-
-  await prisma.serviceCallItem.deleteMany({
-    where: { id: itemId, serviceCallId: scId },
-  });
-
-  return NextResponse.json({ ok: true });
-}
+);

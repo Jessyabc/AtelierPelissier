@@ -18,6 +18,7 @@ const TABS = [
   { id: "rooms", label: "Room Types" },
   { id: "behavior", label: "App Behavior" },
   { id: "standards", label: "Construction Standards" },
+  { id: "overrides", label: "Overrides" },
   { id: "ai", label: "AI Intelligence" },
   { id: "email", label: "Email Templates" },
   { id: "integrations", label: "Integrations" },
@@ -213,6 +214,7 @@ function AdminPageContent() {
         {tab === "rooms" && <RoomTypesTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "behavior" && <AppBehaviorTab />}
         {tab === "standards" && <ConstructionStandardsTab />}
+        {tab === "overrides" && <StandardsOverridesTab />}
         {tab === "ai" && <AiIntelligenceTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "email" && <EmailTemplatesTab config={config} saving={saving} onSave={saveConfig} />}
         {tab === "integrations" && <IntegrationsTab config={config} saving={saving} onSave={saveConfig} />}
@@ -1835,8 +1837,9 @@ function AppBehaviorTab() {
 // ── Construction Standards Tab ────────────────────────────────────────
 
 type StandardsData = {
+  // Shared
   standardBaseDepth: number;
-  defaultVanityHeight: number;
+  defaultVanityHeight: number; // deprecated — kept for legacy reads
   wallHungHeight: number;
   kickplateHeight: number;
   panelThickness: number;
@@ -1850,24 +1853,84 @@ type StandardsData = {
   thickFrameThickness: number;
   minSectionWidth: number;
   minSectionHeight: number;
+  // Vanity (2026-04-17)
+  vanityFreestandingHeight: number;
+  vanityDepthStandard: number;
+  vanityDepthWallMountedFaucet: number;
+  // Kitchen (2026-04-17)
+  kitchenBaseHeight: number;
+  kitchenBaseDepth: number;
+  kitchenKickplateHeight: number;
+  kitchenTopSilenceHeight: number;
+  // Sales follow-up cadence (2026-04-17)
+  quoteFollowUpDays: number;
+  invoiceFollowUpDays: number;
 };
 
-const STANDARDS_FIELDS: { key: keyof StandardsData; label: string; unit: string }[] = [
-  { key: "standardBaseDepth", label: "Standard base depth", unit: "in" },
-  { key: "defaultVanityHeight", label: "Default vanity height (freestanding)", unit: "in" },
-  { key: "wallHungHeight", label: "Wall-hung vanity height", unit: "in" },
-  { key: "kickplateHeight", label: "Kickplate height", unit: "in" },
-  { key: "panelThickness", label: "Panel thickness (5/8\")", unit: "in" },
-  { key: "backThickness", label: "Back panel thickness (1/4\")", unit: "in" },
-  { key: "stretcherDepth", label: "Top stretcher depth", unit: "in" },
-  { key: "framingWidth", label: "Framing strip width", unit: "in" },
-  { key: "drawerBoxHeight", label: "Drawer box height", unit: "in" },
-  { key: "drawerFrontHeight", label: "Drawer front height", unit: "in" },
-  { key: "doorGap", label: "Gap between doors", unit: "in" },
-  { key: "shelfSetback", label: "Shelf setback from front", unit: "in" },
-  { key: "thickFrameThickness", label: "Thick frame thickness (3/4\")", unit: "in" },
-  { key: "minSectionWidth", label: "Min section width", unit: "in" },
-  { key: "minSectionHeight", label: "Min section height", unit: "in" },
+/**
+ * Standards form layout — grouped so admins can scan "by product type".
+ * `highRisk` matches the HIGH_RISK_KEYS list in lib/standards/overridePolicy.ts
+ * and must stay in sync: these fields trigger admin-only override approval.
+ */
+type StandardsField = {
+  key: keyof StandardsData;
+  label: string;
+  unit: string;
+  /** True when changes here ripple across pricing / cutlist / hardware. */
+  highRisk?: boolean;
+};
+type StandardsSection = { title: string; description?: string; fields: StandardsField[] };
+
+const STANDARDS_SECTIONS: StandardsSection[] = [
+  {
+    title: "Vanity",
+    description: "Shop-wide defaults for vanities (freestanding and wall-hung).",
+    fields: [
+      { key: "vanityFreestandingHeight", label: "Freestanding vanity height", unit: "in", highRisk: true },
+      { key: "wallHungHeight", label: "Wall-hung vanity height", unit: "in" },
+      { key: "vanityDepthStandard", label: "Vanity depth (standard)", unit: "in" },
+      { key: "vanityDepthWallMountedFaucet", label: "Vanity depth (wall-mounted faucet)", unit: "in" },
+    ],
+  },
+  {
+    title: "Kitchen",
+    description: "Shop-wide defaults for kitchens. Room ceiling height is a per-project input, not a standard.",
+    fields: [
+      { key: "kitchenBaseHeight", label: "Base cabinet height", unit: "in", highRisk: true },
+      { key: "kitchenBaseDepth", label: "Base cabinet depth", unit: "in" },
+      { key: "kitchenKickplateHeight", label: "Kickplate height", unit: "in", highRisk: true },
+      { key: "kitchenTopSilenceHeight", label: "Top silence (to ceiling)", unit: "in" },
+    ],
+  },
+  {
+    title: "Shared cabinetry",
+    description: "Low-level construction constants shared across products.",
+    fields: [
+      { key: "standardBaseDepth", label: "Legacy base depth (vanity fallback)", unit: "in" },
+      { key: "panelThickness", label: "Panel thickness (5/8\")", unit: "in", highRisk: true },
+      { key: "backThickness", label: "Back panel thickness (1/4\")", unit: "in", highRisk: true },
+      { key: "stretcherDepth", label: "Top stretcher depth", unit: "in" },
+      { key: "framingWidth", label: "Framing strip width", unit: "in" },
+      { key: "drawerBoxHeight", label: "Drawer box height", unit: "in", highRisk: true },
+      { key: "drawerFrontHeight", label: "Drawer front height", unit: "in", highRisk: true },
+      { key: "doorGap", label: "Gap between doors", unit: "in" },
+      { key: "shelfSetback", label: "Shelf setback from front", unit: "in" },
+      { key: "thickFrameThickness", label: "Thick frame thickness (3/4\")", unit: "in" },
+      { key: "minSectionWidth", label: "Min section width", unit: "in" },
+      { key: "minSectionHeight", label: "Min section height", unit: "in" },
+      // `kickplateHeight` stays surfaced for the legacy vanity ingredient engine.
+      { key: "kickplateHeight", label: "Legacy kickplate (vanity engine)", unit: "in" },
+    ],
+  },
+  {
+    title: "Sales follow-up cadence",
+    description:
+      "How long a quote sits quiet before the salesperson gets nudged, and when a stale quote auto-archives (twice the quote window).",
+    fields: [
+      { key: "quoteFollowUpDays", label: "Nudge quote after", unit: "days" },
+      { key: "invoiceFollowUpDays", label: "Chase invoice after", unit: "days" },
+    ],
+  },
 ];
 
 function ConstructionStandardsTab() {
@@ -1919,22 +1982,42 @@ function ConstructionStandardsTab() {
           {toast}
         </div>
       )}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {STANDARDS_FIELDS.map(({ key, label, unit }) => (
-          <div key={key}>
-            <label className="mb-1 block text-sm font-medium text-[var(--foreground-muted)]">
-              {label} ({unit})
-            </label>
-            <input
-              type="number"
-              step="0.001"
-              min={0}
-              value={standards[key]}
-              onChange={(e) =>
-                setStandards({ ...standards, [key]: Number(e.target.value) })
-              }
-              className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
-            />
+      <div className="space-y-6">
+        {STANDARDS_SECTIONS.map((section) => (
+          <div key={section.title} className="neo-card p-4 sm:p-5">
+            <div className="mb-3">
+              <h3 className="text-sm font-semibold text-[var(--foreground)]">{section.title}</h3>
+              {section.description && (
+                <p className="mt-0.5 text-xs text-[var(--foreground-muted)]">{section.description}</p>
+              )}
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {section.fields.map(({ key, label, unit, highRisk }) => (
+                <div key={key}>
+                  <label className="mb-1 flex items-center gap-1.5 text-sm font-medium text-[var(--foreground-muted)]">
+                    <span>{label} ({unit})</span>
+                    {highRisk && (
+                      <span
+                        title="High-risk standard — project overrides require admin approval (ripples into pricing / cutlist / hardware)."
+                        className="inline-block rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-semibold text-rose-800"
+                      >
+                        High-risk
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    type="number"
+                    step="0.001"
+                    min={0}
+                    value={standards[key]}
+                    onChange={(e) =>
+                      setStandards({ ...standards, [key]: Number(e.target.value) })
+                    }
+                    className="w-full rounded border border-gray-300 px-3 py-2 text-sm"
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         ))}
       </div>
@@ -1946,6 +2029,248 @@ function ConstructionStandardsTab() {
       >
         {saving ? "Saving..." : "Save construction standards"}
       </button>
+    </div>
+  );
+}
+
+// ── Standards Overrides Tab ───────────────────────────────────────────
+// Approval queue for per-project standards overrides requested by sales
+// or planning. Tier-gated: planners only see low-risk rows (their approval
+// ceiling); admins see everything. Each row shows project context, the
+// standard being overridden, old → new, and approve/reject buttons.
+// Batch approval is deliberate — operators often review several at once.
+
+type StandardsOverrideRow = {
+  id: string;
+  projectId: string;
+  project: {
+    id: string;
+    name: string;
+    jobNumber: string | null;
+    stage: string | null;
+  };
+  standardKey: string;
+  standardValue: number;
+  overrideValue: number;
+  unit: string;
+  riskTier: "low" | "high" | string;
+  reason: string | null;
+  status: "pending" | "approved" | "rejected" | string;
+  createdAt: string;
+  reviewedAt: string | null;
+  reviewNote: string | null;
+};
+
+function StandardsOverridesTab() {
+  const [rows, setRows] = useState<StandardsOverrideRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "rejected" | "all">(
+    "pending"
+  );
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [working, setWorking] = useState(false);
+  const [toast, setToast] = useState("");
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    const qs = statusFilter === "all" ? "" : `?status=${statusFilter}`;
+    try {
+      const res = await fetch(`/api/admin/standards-overrides${qs}`);
+      const data = res.ok ? await res.json() : [];
+      setRows(Array.isArray(data) ? data : []);
+      setSelected(new Set());
+    } finally {
+      setLoading(false);
+    }
+  }, [statusFilter]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  function toggleRow(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function review(ids: string[], status: "approved" | "rejected") {
+    if (ids.length === 0) return;
+    setWorking(true);
+    try {
+      const results = await Promise.all(
+        ids.map((id) =>
+          fetch(`/api/admin/standards-overrides/${id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ status }),
+          })
+        )
+      );
+      const ok = results.filter((r) => r.ok).length;
+      const failed = results.length - ok;
+      setToast(
+        failed === 0
+          ? `${ok} ${status}`
+          : `${ok} ${status}, ${failed} failed (likely tier-blocked)`
+      );
+      setTimeout(() => setToast(""), 3000);
+      await load();
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <div className="space-y-5">
+      <div>
+        <h2 className="text-lg font-semibold text-[var(--foreground)]">Standards overrides</h2>
+        <p className="text-sm text-[var(--foreground-muted)]">
+          Review deviations from shop standards requested on specific projects. Low-risk rows can
+          be approved by a planner; high-risk rows are admin-only. Approved values unlock the
+          override on the project for production.
+        </p>
+      </div>
+
+      {toast && (
+        <div className="rounded bg-green-50 border border-green-200 px-4 py-2 text-sm text-green-700">
+          {toast}
+        </div>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {(["pending", "approved", "rejected", "all"] as const).map((f) => (
+          <button
+            key={f}
+            type="button"
+            onClick={() => setStatusFilter(f)}
+            className={
+              statusFilter === f
+                ? "neo-btn-pressed px-3 py-1.5 text-xs font-medium"
+                : "neo-segment-btn px-3 py-1.5 text-xs"
+            }
+          >
+            {f[0].toUpperCase() + f.slice(1)}
+          </button>
+        ))}
+        <div className="ml-auto flex items-center gap-2">
+          <button
+            type="button"
+            disabled={working || selected.size === 0}
+            onClick={() => review([...selected], "approved")}
+            className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+          >
+            Approve selected ({selected.size})
+          </button>
+          <button
+            type="button"
+            disabled={working || selected.size === 0}
+            onClick={() => review([...selected], "rejected")}
+            className="rounded bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+          >
+            Reject selected
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="py-8 text-center text-[var(--foreground-muted)]">Loading…</div>
+      ) : rows.length === 0 ? (
+        <div className="neo-card p-6 text-center text-sm text-[var(--foreground-muted)]">
+          Nothing to review.
+        </div>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((r) => {
+            const isPending = r.status === "pending";
+            const delta = r.overrideValue - r.standardValue;
+            const deltaLabel = `${delta >= 0 ? "+" : ""}${delta.toFixed(3)} ${r.unit}`;
+            const tierClass =
+              r.riskTier === "high"
+                ? "bg-rose-100 text-rose-800"
+                : "bg-blue-100 text-blue-800";
+            return (
+              <li key={r.id} className="neo-card p-3 sm:p-4">
+                <div className="flex flex-wrap items-start gap-3">
+                  {isPending && (
+                    <input
+                      type="checkbox"
+                      checked={selected.has(r.id)}
+                      onChange={() => toggleRow(r.id)}
+                      className="mt-1"
+                      aria-label={`Select override ${r.id}`}
+                    />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Link
+                        href={`/projects/${r.project.id}`}
+                        className="font-medium text-[var(--foreground)] hover:underline"
+                      >
+                        {r.project.name}
+                      </Link>
+                      {r.project.jobNumber && (
+                        <span className="text-xs text-[var(--foreground-muted)]">
+                          #{r.project.jobNumber}
+                        </span>
+                      )}
+                      <span
+                        className={`inline-block rounded-lg px-2 py-0.5 text-xs font-medium ${tierClass}`}
+                      >
+                        {r.riskTier === "high" ? "Admin review" : "Planner review"}
+                      </span>
+                      {!isPending && (
+                        <span className="inline-block rounded-lg bg-gray-100 px-2 py-0.5 text-xs text-gray-700">
+                          {r.status}
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-1 text-sm text-[var(--foreground)]">
+                      <code className="rounded bg-gray-100 px-1.5 py-0.5 text-xs">
+                        {r.standardKey}
+                      </code>{" "}
+                      {r.standardValue} → <strong>{r.overrideValue}</strong> {r.unit}{" "}
+                      <span className="text-xs text-[var(--foreground-muted)]">({deltaLabel})</span>
+                    </div>
+                    {r.reason && (
+                      <div className="mt-1 text-xs text-[var(--foreground-muted)]">
+                        Reason: {r.reason}
+                      </div>
+                    )}
+                    <div className="mt-1 text-[11px] text-[var(--foreground-muted)]">
+                      Requested {new Date(r.createdAt).toLocaleString()}
+                      {r.reviewedAt && ` · Reviewed ${new Date(r.reviewedAt).toLocaleString()}`}
+                    </div>
+                  </div>
+                  {isPending && (
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        disabled={working}
+                        onClick={() => review([r.id], "approved")}
+                        className="rounded bg-emerald-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-emerald-700 disabled:opacity-50"
+                      >
+                        Approve
+                      </button>
+                      <button
+                        type="button"
+                        disabled={working}
+                        onClick={() => review([r.id], "rejected")}
+                        className="rounded bg-rose-600 px-3 py-1.5 text-xs font-medium text-white hover:bg-rose-700 disabled:opacity-50"
+                      >
+                        Reject
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </li>
+            );
+          })}
+        </ul>
+      )}
     </div>
   );
 }

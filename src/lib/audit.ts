@@ -18,7 +18,15 @@ export type AuditAction =
   | "kitchen_updated"
   | "service_call_updated"
   | "duplicated"
-  | "deleted";
+  | "deleted"
+  // Sales lifecycle transitions — see lib/projectLifecycle.ts and
+  // /api/projects/[id]/lifecycle/route.ts. Each has its own action so the
+  // audit log reads plainly ("Lost — client went elsewhere") without the
+  // reviewer having to parse a generic "updated".
+  | "lifecycle_archived"
+  | "lifecycle_unarchived"
+  | "lifecycle_lost"
+  | "lifecycle_found";
 
 export async function logAudit(
   projectId: string,

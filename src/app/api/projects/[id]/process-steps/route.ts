@@ -1,18 +1,16 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOrderedTemplateSteps } from "@/lib/processTemplate";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth } from "@/lib/auth/guard";
 
 export const dynamic = "force-dynamic";
 
 /**
  * GET: List all ProjectProcessSteps for a project, with assigned employee info.
+ * Authenticated (any role) — woodworkers need this for their /today view.
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
+export const GET = withAuth<{ id: string }>("any", async ({ params }) => {
+  const { id: projectId } = params;
   const steps = await prisma.projectProcessStep.findMany({
     where: { projectId },
     include: {
@@ -22,27 +20,23 @@ export async function GET(
     orderBy: { sortOrder: "asc" },
   });
   return NextResponse.json(steps);
-}
+});
 
 /**
  * POST: Seed ProjectProcessSteps from the project's assigned process template,
- * or add a single ad-hoc step.
+ * or add a single ad-hoc step. Admin/planner only (planning surface).
  *
  * Body (seed from template): { action: "seed", replace?: boolean }
  *   replace=true deletes existing ProjectProcessSteps first (fix wrong template seed).
  * Body (ad-hoc):             { action: "add", label, estimatedMinutes? }
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireRole(["admin", "planner"]);
-  if (!auth.ok) return auth.response;
-
-  const { id: projectId } = await params;
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+  const { id: projectId } = params;
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -133,4 +127,5 @@ export async function POST(
   }
 
   return NextResponse.json({ error: "action must be 'seed' or 'add'" }, { status: 400 });
-}
+  }
+);

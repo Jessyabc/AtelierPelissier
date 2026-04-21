@@ -2,16 +2,14 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getOrderedStepLabels } from "@/lib/processTemplate";
 import { resolveDefaultProcessTemplateId } from "@/lib/processDefaults";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth, withProjectAuth } from "@/lib/auth/guard";
 
 /**
- * GET: List project items (deliverables) for a project
+ * GET: List project items (deliverables) for a project.
+ * Any authenticated user.
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
+export const GET = withAuth<{ id: string }>("any", async ({ params }) => {
+  const { id: projectId } = params;
   const project = await prisma.project.findUnique({
     where: { id: projectId },
     select: { id: true },
@@ -28,22 +26,20 @@ export async function GET(
     },
   });
   return NextResponse.json(items);
-}
+});
 
 /**
- * POST: Create a project item (deliverable)
+ * POST: Create a project item (deliverable). Sales-touchable since the room
+ * wizard calls this when sales configure the quote.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
+export const POST = withProjectAuth<{ id: string }>(
+  ["admin", "planner", "salesperson"],
+  async ({ req, params }) => {
   try {
-    const { id: projectId } = await params;
-    const access = await requireProjectAccess(projectId);
-    if (!access.ok) return access.response;
+    const { id: projectId } = params;
     let body: unknown;
     try {
-      body = await request.json();
+      body = await req.json();
     } catch {
       return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
     }
@@ -169,4 +165,5 @@ export async function POST(
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-}
+  }
+);

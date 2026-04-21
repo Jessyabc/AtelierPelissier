@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { parsePdfWithLlamaParse } from "@/lib/llamaparse";
 import { parseInvoiceText } from "@/lib/invoice/parseInvoiceText";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth } from "@/lib/auth/guard";
 
 /**
  * POST /api/projects/parse-invoice
@@ -12,11 +12,12 @@ import { requireRole } from "@/lib/auth/session";
  *
  * This is a UX accelerator: missing fields are simply omitted and the user
  * completes them manually. It never fails hard on extraction gaps.
+ *
+ * Role policy: admin / planner / salesperson (same as New Project wizard).
+ * No project id yet, so no project-scope check.
  */
-export async function POST(request: Request) {
-  const auth = await requireRole(["admin", "planner", "salesperson"]);
-  if (!auth.ok) return auth.response;
-  const contentType = request.headers.get("content-type") || "";
+export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req }) => {
+  const contentType = req.headers.get("content-type") || "";
   if (!contentType.includes("multipart/form-data")) {
     return NextResponse.json(
       { error: "Expected multipart/form-data with a 'file' field" },
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
     );
   }
 
-  const formData = await request.formData();
+  const formData = await req.formData();
   const file = formData.get("file") as File | null;
   if (!file || file.size === 0) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -67,4 +68,4 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({ extracted });
-}
+});

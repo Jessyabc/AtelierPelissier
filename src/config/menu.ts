@@ -20,8 +20,16 @@ export type MenuGroupKey = "Work" | "Ops" | "Tools" | "Config";
 export type MenuItem = {
   /** Next.js route or "#action" for a client-side action (e.g. "#export"). */
   href: string;
-  /** What the user sees in the dropdown. */
+  /** Default label shown in the dropdown. */
   label: string;
+  /**
+   * Optional per-role label overrides. Used for items that mean different
+   * things depending on who's looking — e.g. salespeople think "New quote",
+   * planners think "New project", but it's the same destination.
+   *
+   * Resolved through `getMenuLabelForRole(item, role)`.
+   */
+  roleLabels?: Partial<Record<AppRole, string>>;
   /** Soft-hide flag admins can flip from Admin Hub. */
   visible: boolean;
   /** Lower = earlier in the group. */
@@ -47,7 +55,15 @@ export const MASTER_MENU: readonly MenuItem[] = [
   // ── Work: what you do every day ──────────────────────────────────────
   { href: "/today",        label: "My Day",       visible: true, order: 0,  group: "Work",   roles: EVERY_ROLE },
   { href: "/",             label: "Projects",     visible: true, order: 1,  group: "Work",   roles: SALES_AND_PLANNING },
-  { href: "/projects/new", label: "New Project",  visible: true, order: 2,  group: "Work",   roles: SALES_AND_PLANNING },
+  {
+    href: "/projects/new",
+    label: "New project",
+    // Salespeople live in quote-world by default — calling it a "project"
+    // before any commitment is what was confusing them. Same destination,
+    // role-appropriate language.
+    roleLabels: { salesperson: "New quote" },
+    visible: true, order: 2, group: "Work", roles: SALES_AND_PLANNING,
+  },
   { href: "/service-calls",label: "Service Calls",visible: true, order: 3,  group: "Work",   roles: SALES_AND_PLANNING },
   { href: "/calendar",     label: "Calendar",     visible: true, order: 4,  group: "Work",   roles: EVERY_ROLE },
 
@@ -67,6 +83,15 @@ export const MASTER_MENU: readonly MenuItem[] = [
   { href: "/admin/invites",label: "Invite People",visible: true, order: 31, group: "Config", roles: ADMIN_ONLY },
   { href: "#export",       label: "Export Backup",visible: true, order: 32, group: "Config", roles: ADMIN_ONLY, exportData: true },
 ];
+
+/**
+ * Resolve the visible label for a menu item given the viewer's role. Falls
+ * back to the default `item.label` when no override exists for that role.
+ */
+export function getMenuLabelForRole(item: MenuItem, role: string): string {
+  const override = item.roleLabels?.[role as AppRole];
+  return override ?? item.label;
+}
 
 /** True if this role should see this item. */
 export function isMenuItemVisibleToRole(item: MenuItem, role: string): boolean {

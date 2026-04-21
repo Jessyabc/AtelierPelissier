@@ -1,31 +1,33 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import path from "path";
 import fs from "fs/promises";
 import { prisma } from "@/lib/db";
-import { requireProjectAccess } from "@/lib/auth/guard";
-
-type RouteParams = { params: Promise<{ id: string }> };
+import { withAuth } from "@/lib/auth/guard";
 
 const DOC_TYPES = ["reservation", "supplier_invoice", "estimate", "sage_invoice", "other"] as const;
 
-// GET /api/projects/[id]/cost-documents
-export async function GET(_req: NextRequest, { params }: RouteParams) {
-  const { id: projectId } = await params;
-  const docs = await prisma.costDocument.findMany({
-    where: { projectId },
-    orderBy: { createdAt: "desc" },
-  });
-  return NextResponse.json(docs);
-}
+// GET /api/projects/[id]/cost-documents — admin/planner only (cost documents
+// are financial / supplier artifacts not intended for sales).
+export const GET = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ params }) => {
+    const { id: projectId } = params;
+    const docs = await prisma.costDocument.findMany({
+      where: { projectId },
+      orderBy: { createdAt: "desc" },
+    });
+    return NextResponse.json(docs);
+  }
+);
 
 // POST /api/projects/[id]/cost-documents
 // Accepts multipart/form-data with:
 // - file: the uploaded document
 // - type: reservation | supplier_invoice | estimate | sage_invoice | other
-export async function POST(req: NextRequest, { params }: RouteParams) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+  const { id: projectId } = params;
 
   const contentType = req.headers.get("content-type") || "";
   if (!contentType.includes("multipart/form-data")) {
@@ -75,4 +77,5 @@ export async function POST(req: NextRequest, { params }: RouteParams) {
   });
 
   return NextResponse.json(doc, { status: 201 });
-}
+  }
+);

@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
 import { recalculateProjectState } from "@/lib/observability/recalculateProjectState";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth } from "@/lib/auth/guard";
 
-export async function POST(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  await recalculateProjectState(projectId);
-  return NextResponse.json({ ok: true });
-}
+// Full state recalculation is admin/planner only — heavy operation and
+// planner-facing. Sales save flows use the lighter `recalc-status` trigger.
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ params }) => {
+    const { id: projectId } = params;
+    await recalculateProjectState(projectId);
+    return NextResponse.json({ ok: true });
+  }
+);

@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth } from "@/lib/auth/guard";
 import { kitchenBuilderApprovalSchema } from "@/lib/validators";
+import { getConstructionStandards } from "@/lib/ingredients/getConstructionStandards";
 import { mapKitchenProjectToPayload } from "@/lib/kitchen-pricing/mappers";
 import { saveKitchenBuilderState } from "@/lib/kitchen-pricing/persistence";
 
@@ -23,17 +24,17 @@ async function fetchKitchenProject(projectId: string) {
   });
 }
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireRole(["admin", "planner"]);
-  if (!auth.ok) return auth.response;
-  const { id: projectId } = await params;
+// Admin/planner-only approval gate. Admin/planner short-circuit in
+// `checkProjectAccess`, so we use `withAuth` directly (project scope adds
+// no additional check for these roles).
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params, session }) => {
+  const { id: projectId } = params;
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -53,7 +54,10 @@ export async function POST(
     );
   }
 
-  const kitchenProject = await fetchKitchenProject(projectId);
+  const [kitchenProject, standards] = await Promise.all([
+    fetchKitchenProject(projectId),
+    getConstructionStandards(),
+  ]);
   if (!kitchenProject) {
     return NextResponse.json(
       { error: "No kitchen builder data to approve." },
@@ -61,7 +65,7 @@ export async function POST(
     );
   }
 
-  const payload = mapKitchenProjectToPayload(kitchenProject);
+  const payload = mapKitchenProjectToPayload(kitchenProject, standards);
   const isApproved = parsed.data.status === "approved";
   const now = new Date();
 
@@ -69,7 +73,7 @@ export async function POST(
     saveKitchenBuilderState(tx, projectId, payload, {
       approvalStatus: parsed.data.status,
       approvalReason: parsed.data.reason ?? null,
-      approvedByRole: auth.effectiveRole,
+      approvedByRole: session.effectiveRole,
       approvedAt: now,
       ...(isApproved ? {} : { submittedByRole: kitchenProject.submittedByRole ?? null }),
     })
@@ -80,7 +84,7 @@ export async function POST(
     "kitchen_updated",
     JSON.stringify({
       event: isApproved ? "builder_approved" : "builder_rejected",
-      role: auth.effectiveRole,
+      role: session.effectiveRole,
       reason: parsed.data.reason ?? null,
     })
   );
@@ -89,4 +93,5 @@ export async function POST(
     ok: true,
     status: parsed.data.status,
   });
-}
+  }
+);

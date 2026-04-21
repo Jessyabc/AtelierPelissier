@@ -137,7 +137,9 @@ export type ConfigWarning = {
 // ---------------------------------------------------------------------------
 
 export type ConstructionStandardsData = {
+  // ── Shared cabinetry constants ─────────────────────────────────────────
   standardBaseDepth: number;
+  /** @deprecated 2026-04-17 — use vanityFreestandingHeight / vanityWallHungHeight instead. Kept for back-compat reads. */
   defaultVanityHeight: number;
   wallHungHeight: number;
   kickplateHeight: number;
@@ -159,12 +161,46 @@ export type ConstructionStandardsData = {
    *   sum(section.width) + 2 × finishPanelThickness.
    */
   finishPanelThickness: number;
+
+  // ── Vanity standards (confirmed 2026-04-17) ────────────────────────────
+  /** Freestanding vanity height — universal across the shop. */
+  vanityFreestandingHeight: number;
+  /** Standard vanity depth when faucet mounts on the countertop. */
+  vanityDepthStandard: number;
+  /**
+   * Reduced vanity depth when the faucet is wall-mounted, so the carcass
+   * clears the in-wall supply lines.
+   */
+  vanityDepthWallMountedFaucet: number;
+
+  // ── Kitchen standards (confirmed 2026-04-17) ───────────────────────────
+  /** Kitchen base cabinet height, floor to top of countertop substrate. */
+  kitchenBaseHeight: number;
+  /** Kitchen base cabinet depth (carcass). */
+  kitchenBaseDepth: number;
+  /** Kickplate band under kitchen base cabinets. */
+  kitchenKickplateHeight: number;
+  /**
+   * Silence band between the top of wall/pantry cabinets and the ceiling
+   * when cabinets run floor-to-ceiling.
+   */
+  kitchenTopSilenceHeight: number;
+
+  // ── Sales follow-up thresholds ─────────────────────────────────────────
+  // Consumed by lib/projectLifecycle.ts to decide when a quote is stale and
+  // when it should auto-archive. Kept here (rather than in a separate
+  // "sales config") so the admin has ONE place to tune operational pacing.
+  /** Days of silence before a quote nudges the salesperson. */
+  quoteFollowUpDays: number;
+  /** Days of silence before an outstanding invoice chases the salesperson. */
+  invoiceFollowUpDays: number;
 };
 
 /** Hardcoded fallback defaults — used only if no ConstructionStandards row exists in DB */
 export const CABINET_DEFAULTS: ConstructionStandardsData = {
+  // Shared
   standardBaseDepth: 23.5,
-  defaultVanityHeight: 30,
+  defaultVanityHeight: 30, // deprecated — kept for legacy reads
   wallHungHeight: 24,
   kickplateHeight: 4,
   panelThickness: 0.625,
@@ -179,6 +215,18 @@ export const CABINET_DEFAULTS: ConstructionStandardsData = {
   minSectionWidth: 8,
   minSectionHeight: 5,
   finishPanelThickness: 0.75,
+  // Vanity
+  vanityFreestandingHeight: 34,
+  vanityDepthStandard: 21.75,
+  vanityDepthWallMountedFaucet: 19.75,
+  // Kitchen
+  kitchenBaseHeight: 34.75,
+  kitchenBaseDepth: 23.375,
+  kitchenKickplateHeight: 4.75,
+  kitchenTopSilenceHeight: 3,
+  // Sales follow-up
+  quoteFollowUpDays: 14,
+  invoiceFollowUpDays: 7,
 };
 
 // ---------------------------------------------------------------------------

@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth, checkProjectAccess } from "@/lib/auth/guard";
 
-export async function POST(request: Request) {
-  const auth = await requireRole(["admin", "planner", "salesperson"]);
-  if (!auth.ok) return auth.response;
+// POST /api/projects/duplicate
+// Top-level (no project [id] path param) so role gating is done with `withAuth`.
+// Project-scope is enforced per-body: the caller must be tied to the SOURCE
+// project they are cloning (prevents a salesperson from cloning a colleague's
+// confidential quote into a new draft under their own name).
+export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req, session }) => {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -16,6 +19,10 @@ export async function POST(request: Request) {
   if (!sourceId || typeof sourceId !== "string") {
     return NextResponse.json({ error: "sourceId is required" }, { status: 400 });
   }
+
+  // Project-scope check on the source project — prevents unauthorized copies.
+  const sourceAccess = await checkProjectAccess(session, sourceId);
+  if (!sourceAccess.ok) return sourceAccess.response;
 
   const source = await prisma.project.findUnique({
     where: { id: sourceId },
@@ -378,4 +385,4 @@ export async function POST(request: Request) {
     console.error("POST /api/projects/duplicate error:", err);
     return NextResponse.json({ error: "Failed to duplicate project" }, { status: 500 });
   }
-}
+});
