@@ -120,7 +120,7 @@ function clampIdx(idx: number, max: number): number {
 }
 
 function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabProps) {
-  const { resolve, loading: standardsLoading, refresh } = useStandardsContext();
+  const { resolve, loading: standardsLoading, refresh, overrides } = useStandardsContext();
   const [data, setData] = useState<KitchenBuilderResponse | null>(null);
   const [payload, setPayload] = useState<KitchenBuilderPayload | null>(null);
   const [shopRoomDefaults, setShopRoomDefaults] = useState<KitchenRoomDefaults | null>(null);
@@ -318,6 +318,9 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
     return <p className="text-sm text-gray-500">Loading kitchen builder...</p>;
   }
 
+  const pendingOverrides = (overrides ?? []).filter((o) => o.status === "pending");
+  const hasPendingOverrides = pendingOverrides.length > 0;
+
   const rd = payload.roomDefaults;
   const baseOpeningIn = usableBaseCabinetOpeningInches({
     ...rd,
@@ -405,6 +408,13 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       </div>
 
       {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+      {hasPendingOverrides && (
+        <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+          <strong>Overrides pending.</strong> You have {pendingOverrides.length} construction-standard override
+          {pendingOverrides.length === 1 ? "" : "s"} awaiting review. This quote can be saved, but cannot be submitted
+          until approvals land.
+        </div>
+      )}
 
       <div className="rounded border border-gray-200 bg-gray-50 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
@@ -891,7 +901,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
         <button
           type="button"
           onClick={submitBuilder}
-          disabled={submitting || saving}
+          disabled={submitting || saving || hasPendingOverrides}
           className="rounded bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
         >
           {submitting ? "Submitting..." : "Submit quote"}
@@ -939,7 +949,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
             <button
               type="button"
               onClick={submitBuilder}
-              disabled={submitting || saving}
+              disabled={submitting || saving || hasPendingOverrides}
               className="neo-btn px-4 py-2 text-sm disabled:opacity-50"
             >
               {submitting ? "Submitting…" : "Submit"}
