@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { DEFAULT_KITCHEN_MARKUP } from "@/config/kitchenPricingBuilder";
 import { autoCalculateHardware } from "@/lib/kitchen-pricing/engine";
@@ -104,6 +104,21 @@ type KitchenTabProps = {
   onUpdate: () => void;
 };
 
+function cabinetLabel(c: KitchenCabinetInput): string {
+  const t = c.cabinetType.replaceAll("_", " ");
+  const doors = c.doors.reduce((s, d) => s + d.quantity, 0);
+  const drawers = c.drawers.reduce((s, d) => s + d.quantity, 0);
+  if (doors === 0 && drawers === 0) return t;
+  if (doors > 0 && drawers > 0) return `${t} · ${doors}D/${drawers}Dr`;
+  if (doors > 0) return `${t} · ${doors}D`;
+  return `${t} · ${drawers}Dr`;
+}
+
+function clampIdx(idx: number, max: number): number {
+  if (max <= 0) return 0;
+  return Math.max(0, Math.min(max - 1, idx));
+}
+
 function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabProps) {
   const { resolve, loading: standardsLoading, refresh } = useStandardsContext();
   const [data, setData] = useState<KitchenBuilderResponse | null>(null);
@@ -116,6 +131,8 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
   const [submitting, setSubmitting] = useState(false);
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [error, setError] = useState("");
+  const [focusIdx, setFocusIdx] = useState(0);
+  const carouselRef = useRef<HTMLDivElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -132,6 +149,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       setPayload(builderData.payload);
       setShopRoomDefaults(builderData.shopRoomDefaults ?? null);
       setRole(meData?.user?.role ?? "salesperson");
+      setFocusIdx((prev) => clampIdx(prev, builderData.payload?.cabinets?.length ?? 0));
     } catch {
       setError("Failed to load kitchen builder.");
     } finally {
@@ -186,6 +204,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
     };
     setPayload({ ...payload, cabinets: [...payload.cabinets, cabinet] });
     setDraft(INITIAL_DRAFT);
+    setFocusIdx(payload.cabinets.length);
   };
 
   const removeCabinet = (index: number) => {
@@ -194,7 +213,31 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       ...payload,
       cabinets: payload.cabinets.filter((_, i) => i !== index),
     });
+    setFocusIdx((prev) => clampIdx(prev, payload.cabinets.length - 1));
   };
+
+  function scrollToIdx(nextIdx: number) {
+    const el = carouselRef.current;
+    if (!el) return;
+    const target = el.querySelector<HTMLElement>(`[data-cabinet-idx="${nextIdx}"]`);
+    if (!target) return;
+    target.scrollIntoView({ behavior: "smooth", inline: "start", block: "nearest" });
+  }
+
+  function setFocus(nextIdx: number) {
+    if (!payload) return;
+    const clamped = clampIdx(nextIdx, payload.cabinets.length);
+    setFocusIdx(clamped);
+    scrollToIdx(clamped);
+  }
+
+  function updateCabinet(idx: number, patch: Partial<KitchenCabinetInput>) {
+    if (!payload) return;
+    setPayload({
+      ...payload,
+      cabinets: payload.cabinets.map((c, i) => (i === idx ? { ...c, ...patch } : c)),
+    });
+  }
 
   const saveBuilder = useCallback(async () => {
     if (!payload) return;
@@ -283,7 +326,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
   });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-28">
       <p className="text-sm text-gray-600">
         Build cabinets from structured inputs, auto-calculate costs, then submit for approval if the multiplier differs
         from the default.
@@ -364,7 +407,164 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <div className="rounded border border-gray-200 bg-gray-50 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800">Step 2 — Add cabinets</h3>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-800">Step 2 — Cabinets</h3>
+            <p className="text-xs text-gray-600 mt-1">
+              Swipe left/right to move through cabinets. Use the minimap to jump.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setFocus(focusIdx - 1)}
+              disabled={payload.cabinets.length === 0 || focusIdx <= 0}
+              className="neo-btn px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              Prev
+            </button>
+            <button
+              type="button"
+              onClick={() => setFocus(focusIdx + 1)}
+              disabled={payload.cabinets.length === 0 || focusIdx >= payload.cabinets.length - 1}
+              className="neo-btn px-3 py-1.5 text-xs disabled:opacity-50"
+            >
+              Next
+            </button>
+          </div>
+        </div>
+
+        {/* Minimap */}
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          {payload.cabinets.length === 0 ? (
+            <span className="text-xs text-gray-500">No cabinets yet. Add the first one below.</span>
+          ) : (
+            payload.cabinets.map((c, idx) => (
+              <button
+                key={`${c.cabinetType}-${idx}`}
+                type="button"
+                onClick={() => setFocus(idx)}
+                className={
+                  idx === focusIdx
+                    ? "neo-btn-pressed px-3 py-1.5 text-xs whitespace-nowrap"
+                    : "neo-btn px-3 py-1.5 text-xs whitespace-nowrap"
+                }
+                title={cabinetLabel(c)}
+              >
+                {idx + 1}
+              </button>
+            ))
+          )}
+        </div>
+
+        {/* Reading-book carousel */}
+        {payload.cabinets.length > 0 && (
+          <div
+            ref={carouselRef}
+            className="flex gap-3 overflow-x-auto scroll-smooth snap-x snap-mandatory pb-2"
+          >
+            {payload.cabinets.map((c, idx) => {
+              const doors = c.doors.reduce((s, d) => s + d.quantity, 0);
+              const drawers = c.drawers.reduce((s, d) => s + d.quantity, 0);
+              const isFocused = idx === focusIdx;
+              return (
+                <div
+                  key={`${c.cabinetType}-${idx}`}
+                  data-cabinet-idx={idx}
+                  className={`min-w-[88%] sm:min-w-[540px] snap-start rounded border bg-white p-4 ${
+                    isFocused ? "border-[var(--accent)] shadow-sm" : "border-gray-200"
+                  }`}
+                  onClick={() => setFocus(idx)}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs text-gray-500">Cabinet {idx + 1}</div>
+                      <div className="text-sm font-semibold text-gray-900">{cabinetLabel(c)}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        removeCabinet(idx);
+                      }}
+                      className="text-xs text-red-700 underline hover:no-underline"
+                    >
+                      Remove
+                    </button>
+                  </div>
+
+                  <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                    <label className="space-y-1 text-xs text-gray-600">
+                      <span>Type</span>
+                      <select
+                        value={c.cabinetType}
+                        onChange={(e) =>
+                          updateCabinet(idx, { cabinetType: e.target.value as KitchenCabinetType })
+                        }
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      >
+                        <option value="base">Base</option>
+                        <option value="wall">Wall</option>
+                        <option value="pantry">Pantry</option>
+                        <option value="corner_base">Corner Base</option>
+                        <option value="corner_wall">Corner Wall</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </label>
+
+                    <label className="space-y-1 text-xs text-gray-600">
+                      <span>Configuration</span>
+                      <select
+                        value={c.configuration}
+                        onChange={(e) =>
+                          updateCabinet(idx, { configuration: e.target.value as KitchenCabinetConfiguration })
+                        }
+                        className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      >
+                        <option value="doors_only">Doors only</option>
+                        <option value="doors_and_drawers">Doors + drawers</option>
+                        <option value="drawers_only">Drawers only</option>
+                        <option value="corner_doors">Corner (doors)</option>
+                        <option value="custom">Custom</option>
+                      </select>
+                    </label>
+
+                    <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-xs text-gray-500">Quick counts</div>
+                      <div className="mt-1 flex items-center justify-between text-sm">
+                        <span>Doors</span>
+                        <strong>{doors}</strong>
+                      </div>
+                      <div className="mt-1 flex items-center justify-between text-sm">
+                        <span>Drawers</span>
+                        <strong>{drawers}</strong>
+                      </div>
+                    </div>
+
+                    <div className="rounded border border-gray-200 bg-gray-50 p-3">
+                      <div className="text-xs text-gray-500">Box qty</div>
+                      <input
+                        type="number"
+                        min={1}
+                        value={c.cabinetBoxQuantity}
+                        onChange={(e) =>
+                          updateCabinet(idx, { cabinetBoxQuantity: Number(e.target.value) || 1 })
+                        }
+                        className="mt-1 w-full rounded border border-gray-300 px-2 py-2 text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <details className="rounded border border-gray-200 bg-white p-3">
+          <summary className="cursor-pointer text-sm font-medium text-gray-800">
+            Add a cabinet
+          </summary>
+          <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <select
             value={draft.cabinetType}
@@ -492,8 +692,11 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
         >
           Add cabinet
         </button>
+          </div>
+        </details>
       </div>
 
+      {/* Legacy table view (kept for now as a fallback / quick scan). */}
       <table className="w-full border-collapse border border-gray-200 text-sm">
         <thead>
           <tr className="bg-gray-50">
@@ -713,6 +916,36 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
             </button>
           </>
         )}
+      </div>
+
+      {/* Sticky live price bar (mobile-first). */}
+      <div className="fixed inset-x-0 bottom-0 z-20 border-t border-gray-200 bg-white/95 backdrop-blur">
+        <div className="mx-auto max-w-5xl px-4 py-3 flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <div className="text-[11px] text-gray-500">Final sales price</div>
+            <div className="text-base font-semibold text-gray-900 truncate">
+              {formatCurrency(data.sales.finalSalesPrice)}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={saveBuilder}
+              disabled={saving}
+              className="neo-btn-primary px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {saving ? "Saving…" : "Save"}
+            </button>
+            <button
+              type="button"
+              onClick={submitBuilder}
+              disabled={submitting || saving}
+              className="neo-btn px-4 py-2 text-sm disabled:opacity-50"
+            >
+              {submitting ? "Submitting…" : "Submit"}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
