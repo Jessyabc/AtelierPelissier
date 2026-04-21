@@ -2,63 +2,61 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { prerequisiteLineUpdateSchema } from "@/lib/validators";
 import { triggerMaterialInventoryOrderRecalc } from "@/lib/observability/recalculateProjectState";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth } from "@/lib/auth/guard";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string; lineId: string }> }
-) {
-  const { id: projectId, lineId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  const line = await prisma.prerequisiteLine.findFirst({
-    where: { id: lineId, projectId },
-  });
-  if (!line) {
-    return NextResponse.json({ error: "Prerequisite line not found" }, { status: 404 });
-  }
+type Params = { id: string; lineId: string };
 
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-  const parsed = prerequisiteLineUpdateSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
-      { status: 400 }
-    );
-  }
+export const PATCH = withAuth<Params>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+    const { id: projectId, lineId } = params;
+    const line = await prisma.prerequisiteLine.findFirst({
+      where: { id: lineId, projectId },
+    });
+    if (!line) {
+      return NextResponse.json({ error: "Prerequisite line not found" }, { status: 404 });
+    }
 
-  const updated = await prisma.prerequisiteLine.update({
-    where: { id: lineId },
-    data: {
-      ...(parsed.data.materialCode !== undefined && { materialCode: parsed.data.materialCode }),
-      ...(parsed.data.category !== undefined && { category: parsed.data.category }),
-      ...(parsed.data.quantity !== undefined && { quantity: parsed.data.quantity }),
-      ...(parsed.data.needed !== undefined && { needed: parsed.data.needed }),
-    },
-  });
-  triggerMaterialInventoryOrderRecalc(projectId);
-  return NextResponse.json(updated);
-}
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    const parsed = prerequisiteLineUpdateSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
 
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string; lineId: string }> }
-) {
-  const { id: projectId, lineId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  const line = await prisma.prerequisiteLine.findFirst({
-    where: { id: lineId, projectId },
-  });
-  if (!line) {
-    return NextResponse.json({ error: "Prerequisite line not found" }, { status: 404 });
+    const updated = await prisma.prerequisiteLine.update({
+      where: { id: lineId },
+      data: {
+        ...(parsed.data.materialCode !== undefined && { materialCode: parsed.data.materialCode }),
+        ...(parsed.data.category !== undefined && { category: parsed.data.category }),
+        ...(parsed.data.quantity !== undefined && { quantity: parsed.data.quantity }),
+        ...(parsed.data.needed !== undefined && { needed: parsed.data.needed }),
+      },
+    });
+    triggerMaterialInventoryOrderRecalc(projectId);
+    return NextResponse.json(updated);
   }
-  await prisma.prerequisiteLine.delete({ where: { id: lineId } });
-  triggerMaterialInventoryOrderRecalc(projectId);
-  return NextResponse.json({ ok: true });
-}
+);
+
+export const DELETE = withAuth<Params>(
+  ["admin", "planner"],
+  async ({ params }) => {
+    const { id: projectId, lineId } = params;
+    const line = await prisma.prerequisiteLine.findFirst({
+      where: { id: lineId, projectId },
+    });
+    if (!line) {
+      return NextResponse.json({ error: "Prerequisite line not found" }, { status: 404 });
+    }
+    await prisma.prerequisiteLine.delete({ where: { id: lineId } });
+    triggerMaterialInventoryOrderRecalc(projectId);
+    return NextResponse.json({ ok: true });
+  }
+);

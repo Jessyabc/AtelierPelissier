@@ -9,6 +9,13 @@ import { HomeStats, type StatsData } from "@/components/HomeStats";
 import { ProjectCard, type ProjectCardProject } from "@/components/ProjectCard";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { roleDisplayName } from "@/lib/workflow/nextAction";
+import {
+  getNewItemLabels,
+  getStageView,
+  isQuote as isQuoteStageHelper,
+  isDraftProject as isDraftProjectHelper,
+  isActiveProject as isActiveProjectHelper,
+} from "@/lib/projectStage";
 
 type Project = ProjectCardProject & {
   id: string;
@@ -25,12 +32,36 @@ type Project = ProjectCardProject & {
   blockedReason?: string | null;
   stage?: "quote" | "invoiced" | "confirmed" | null;
   depositReceivedAt?: string | null;
+  archivedAt?: string | null;
+  lostReason?: string | null;
 };
 
 const LOAD_TIMEOUT_MS = 8000;
-// "quotes" = quick quotes and invoiced-but-no-deposit — the salesperson's
-// working queue. Everything confirmed falls through to Ongoing/Drafts/Done.
-type FilterKind = "all" | "quotes" | "drafts" | "saved" | "done";
+
+/**
+ * Filter chips reflect the canonical stage taxonomy (see lib/projectStage.ts).
+ * Archived/lost projects are hidden from every chip EXCEPT "archived" so
+ * default views stay focused on live work.
+ */
+type FilterKind = "all" | "quotes" | "invoices" | "active" | "done" | "archived";
+
+const FILTER_LABEL: Record<FilterKind, string> = {
+  all: "All",
+  quotes: "Quotes",
+  invoices: "Invoices",
+  active: "Active",
+  done: "Done",
+  archived: "Archived",
+};
+
+const FILTERS: readonly FilterKind[] = [
+  "all",
+  "quotes",
+  "invoices",
+  "active",
+  "done",
+  "archived",
+] as const;
 
 function filterProjects(
   projects: Project[],
@@ -46,16 +77,27 @@ function filterProjects(
       return name.includes(q) || client.includes(q);
     });
   }
-  if (filter === "drafts") list = list.filter((p) => p.isDraft);
-  else if (filter === "saved") list = list.filter((p) => !p.isDraft && !p.isDone);
-  else if (filter === "done") list = list.filter((p) => p.isDone);
-  else if (filter === "quotes") list = list.filter((p) => !p.isDone && (p.stage === "quote" || p.stage === "invoiced"));
-  return list;
+
+  // All chips except "archived" hide archived/lost by default — operators
+  // should have to click "Archived" to see them.
+  if (filter !== "archived") {
+    list = list.filter((p) => !p.archivedAt && !p.lostReason);
+  }
+
+  if (filter === "quotes") return list.filter(isQuoteStageHelper);
+  if (filter === "invoices") return list.filter(isDraftProjectHelper);
+  if (filter === "active") return list.filter(isActiveProjectHelper);
+  if (filter === "done") return list.filter((p) => p.isDone);
+  if (filter === "archived") {
+    return list.filter((p) => Boolean(p.archivedAt) || Boolean(p.lostReason));
+  }
+  return list; // "all"
 }
 
 /** Pre-deposit work for the salesperson: quotes + issued invoices awaiting deposit. */
 function isQuoteStage(p: Project): boolean {
-  return !p.isDone && (p.stage === "quote" || p.stage === "invoiced");
+  const view = getStageView(p);
+  return view === "quote" || view === "draft_project";
 }
 
 export default function ProjectsPage() {
@@ -118,7 +160,7 @@ export default function ProjectsPage() {
   useEffect(() => {
     if (!loading) return;
     const t = setTimeout(() => {
-      setError("Loading took too long. Try Retry or New Project.");
+      setError("Loading took too long. Try Retry or start a new entry.");
       setLoading(false);
     }, LOAD_TIMEOUT_MS + 2000);
     return () => clearTimeout(t);
@@ -129,6 +171,10 @@ export default function ProjectsPage() {
     setRetryKey((k) => k + 1);
   };
 
+  // Role-aware "new item" wording — "New quote" for salespeople, "New project"
+  // for everyone else. The destination is the same wizard.
+  const newItemLabels = getNewItemLabels(role);
+
   const filtered = filterProjects(projects, search, filter);
   // Quick quotes (and invoiced-but-no-deposit) are shown in their own section
   // and excluded from Ongoing/Drafts so the salesperson queue is isolated
@@ -137,6 +183,7 @@ export default function ProjectsPage() {
   const drafts = filtered.filter((p) => p.isDraft && !isQuoteStage(p));
   const ongoing = filtered.filter((p) => !p.isDraft && !p.isDone && !isQuoteStage(p));
   const done = filtered.filter((p) => p.isDone);
+  const archivedOrLost = filtered.filter((p) => Boolean(p.archivedAt) || Boolean(p.lostReason));
 
   async function handleDelete(projectId: string) {
     try {
@@ -199,7 +246,7 @@ export default function ProjectsPage() {
             Retry
           </button>
           <Link href="/projects/new" className="neo-btn-primary px-4 py-2 text-sm inline-block">
-            New project
+            {newItemLabels.menu}
           </Link>
         </p>
       </div>
@@ -223,7 +270,7 @@ export default function ProjectsPage() {
           href="/projects/new"
           className="neo-btn-primary inline-block px-5 py-2.5 text-sm font-medium"
         >
-          New Project
+          {newItemLabels.menu}
         </Link>
       </div>
 
@@ -237,14 +284,14 @@ export default function ProjectsPage() {
           aria-label="Search projects"
         />
         <div className="neo-segment">
-          {(["all", "quotes", "drafts", "saved", "done"] as const).map((f) => (
+          {FILTERS.map((f) => (
             <button
               key={f}
               type="button"
               onClick={() => setFilter(f)}
               className={filter === f ? "neo-btn-pressed px-4 py-2 text-sm font-medium" : "neo-segment-btn"}
             >
-              {f === "all" ? "All" : f === "quotes" ? "Quotes" : f === "drafts" ? "Drafts" : f === "saved" ? "Saved" : "Done"}
+              {FILTER_LABEL[f]}
             </button>
           ))}
         </div>
@@ -262,7 +309,7 @@ export default function ProjectsPage() {
           </div>
           {quotes.length === 0 ? (
             <p className="neo-card p-6 text-sm text-gray-500">
-              No open quotes. Start one from &ldquo;New Project&rdquo; and pick &ldquo;Quick quote&rdquo;.
+              No open quotes. Start one from &ldquo;{newItemLabels.menu}&rdquo; and pick &ldquo;Quick quote&rdquo;.
             </p>
           ) : (
             <ul className="space-y-3">
@@ -303,13 +350,12 @@ export default function ProjectsPage() {
         )}
       </section>
 
-      <section>
-        <h2 className="mb-3 text-lg font-medium text-gray-800">Drafts</h2>
-        {drafts.length === 0 ? (
-          <p className="neo-card p-6 text-sm text-gray-500">
-            No drafts. New projects are saved as drafts until you save them.
+      {drafts.length > 0 && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium text-gray-800">Legacy drafts</h2>
+          <p className="mb-2 text-xs text-gray-500">
+            Projects still marked as &ldquo;draft&rdquo; under the old flow. Save or archive to clear.
           </p>
-        ) : (
           <ul className="space-y-3">
             {drafts.map((p) => (
               <ProjectCard
@@ -322,8 +368,8 @@ export default function ProjectsPage() {
               />
             ))}
           </ul>
-        )}
-      </section>
+        </section>
+      )}
 
       <section>
         <h2 className="mb-3 text-lg font-medium text-gray-800">Done</h2>
@@ -347,6 +393,32 @@ export default function ProjectsPage() {
           </ul>
         )}
       </section>
+
+      {filter === "archived" && (
+        <section>
+          <h2 className="mb-3 text-lg font-medium text-gray-800">Archived & lost</h2>
+          {archivedOrLost.length === 0 ? (
+            <p className="neo-card p-6 text-sm text-gray-500">
+              Nothing archived. Quotes auto-archive after two quiet weeks, and salespeople
+              can mark a deal as lost from the project page.
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {archivedOrLost.map((p) => (
+                <ProjectCard
+                  key={p.id}
+                  project={p}
+                  role={role}
+                  onDuplicate={handleDuplicate}
+                  onDelete={setDeleteId}
+                  duplicatingId={duplicateId}
+                  compact
+                />
+              ))}
+            </ul>
+          )}
+        </section>
+      )}
 
       {deleteId && (
         <ConfirmModal

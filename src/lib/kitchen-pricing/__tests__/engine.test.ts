@@ -6,6 +6,7 @@ import {
   calculateTotalCost,
   lookupFabricationHours,
 } from "@/lib/kitchen-pricing/engine";
+import { staticKitchenRoomDefaults } from "@/lib/kitchen-pricing/roomDefaults";
 
 describe("kitchen pricing engine", () => {
   it("enforces manufacturer minimum door sqft", () => {
@@ -29,6 +30,7 @@ describe("kitchen pricing engine", () => {
 
   it("calculates full project totals and sales breakdown", () => {
     const payload = {
+      roomDefaults: staticKitchenRoomDefaults(),
       cabinets: [
         {
           cabinetType: "base" as const,

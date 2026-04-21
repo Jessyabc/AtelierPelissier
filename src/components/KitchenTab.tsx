@@ -13,6 +13,9 @@ import type {
   KitchenDrawerSystemId,
 } from "@/lib/kitchen-pricing/types";
 import { canUserSeeBreakdown, isKitchenManagerRole } from "@/lib/kitchen-pricing/permissions";
+import { type KitchenRoomDefaults, usableBaseCabinetOpeningInches } from "@/lib/kitchen-pricing/roomDefaults";
+import { ConstructionStandardField } from "@/components/standards/ConstructionStandardField";
+import { StandardsProvider, useStandardsContext } from "@/components/standards/StandardsContext";
 
 type Project = {
   projectSettings: { markup: number; taxEnabled: boolean; taxRate: number } | null;
@@ -21,6 +24,7 @@ type Project = {
 
 type KitchenBuilderPayload = {
   cabinets: KitchenCabinetInput[];
+  roomDefaults: KitchenRoomDefaults;
   includeInstallation: boolean;
   installation: {
     baseCabinetQty: number;
@@ -37,6 +41,7 @@ type KitchenBuilderPayload = {
 
 type KitchenBuilderResponse = {
   payload: KitchenBuilderPayload;
+  shopRoomDefaults: KitchenRoomDefaults;
   totals: {
     materialsSubtotal: number;
     fabricationSubtotal: number;
@@ -93,17 +98,17 @@ const INITIAL_DRAFT: DraftCabinet = {
   manualFabricationHours: "",
 };
 
-export function KitchenTab({
-  projectId,
-  project: _project,
-  onUpdate,
-}: {
+type KitchenTabProps = {
   projectId: string;
   project: Project;
   onUpdate: () => void;
-}) {
+};
+
+function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabProps) {
+  const { resolve, loading: standardsLoading, refresh } = useStandardsContext();
   const [data, setData] = useState<KitchenBuilderResponse | null>(null);
   const [payload, setPayload] = useState<KitchenBuilderPayload | null>(null);
+  const [shopRoomDefaults, setShopRoomDefaults] = useState<KitchenRoomDefaults | null>(null);
   const [draft, setDraft] = useState<DraftCabinet>(INITIAL_DRAFT);
   const [role, setRole] = useState("salesperson");
   const [loading, setLoading] = useState(true);
@@ -125,6 +130,7 @@ export function KitchenTab({
       const meData = await meRes.json();
       setData(builderData);
       setPayload(builderData.payload);
+      setShopRoomDefaults(builderData.shopRoomDefaults ?? null);
       setRole(meData?.user?.role ?? "salesperson");
     } catch {
       setError("Failed to load kitchen builder.");
@@ -195,22 +201,34 @@ export function KitchenTab({
     setSaving(true);
     setError("");
     try {
+      const roomDefaults: KitchenRoomDefaults = {
+        ceilingHeightInches: payload.roomDefaults.ceilingHeightInches,
+        baseCabinetHeightInches: resolve("kitchenBaseHeight").value,
+        baseCabinetDepthInches: resolve("kitchenBaseDepth").value,
+        kickplateHeightInches: resolve("kitchenKickplateHeight").value,
+        topCabinetSilenceInches: resolve("kitchenTopSilenceHeight").value,
+      };
+      const body = { ...payload, roomDefaults };
       const res = await fetch(`/api/projects/${projectId}/kitchen-builder`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
-      const json = await res.json();
+      const json = (await res.json()) as Partial<KitchenBuilderResponse> & { error?: string };
       if (!res.ok) {
         setError(json?.error ?? "Could not save kitchen builder.");
         return;
       }
-      setData((prev) => (prev ? { ...prev, ...json } : json));
+      if (json.payload) {
+        setPayload(json.payload);
+      }
+      setData((prev) => (prev ? { ...prev, ...json } : (json as KitchenBuilderResponse)));
+      void refresh();
       onUpdate();
     } finally {
       setSaving(false);
     }
-  }, [payload, projectId, onUpdate]);
+  }, [payload, projectId, onUpdate, resolve, refresh]);
 
   const submitBuilder = async () => {
     setSubmitting(true);
@@ -257,16 +275,96 @@ export function KitchenTab({
     return <p className="text-sm text-gray-500">Loading kitchen builder...</p>;
   }
 
+  const rd = payload.roomDefaults;
+  const baseOpeningIn = usableBaseCabinetOpeningInches({
+    ...rd,
+    baseCabinetHeightInches: resolve("kitchenBaseHeight").value,
+    kickplateHeightInches: resolve("kitchenKickplateHeight").value,
+  });
+
   return (
     <div className="space-y-6">
       <p className="text-sm text-gray-600">
         Build cabinets from structured inputs, auto-calculate costs, then submit for approval if the multiplier differs
         from the default.
       </p>
+
+      <div
+        className={`rounded border border-emerald-200 bg-emerald-50/40 p-4 space-y-3 transition-opacity ${
+          standardsLoading ? "opacity-70" : ""
+        }`}
+      >
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-sm font-semibold text-gray-900">Step 1 — Room defaults</h3>
+            <p className="text-xs text-gray-600 mt-1 max-w-prose">
+              Ceiling is per room. Base height, depth, kick, and top silence come from shop construction standards — change
+              a value and you&apos;ll be asked for a reason if it needs planner/admin approval. Saving the builder stores
+              the effective numbers on this quote.
+            </p>
+          </div>
+          {shopRoomDefaults && (
+            <button
+              type="button"
+              onClick={() => {
+                setPayload({ ...payload, roomDefaults: { ...shopRoomDefaults } });
+                void refresh();
+              }}
+              className="shrink-0 text-xs font-medium text-emerald-900 underline hover:no-underline"
+            >
+              Reset saved snapshot to shop defaults
+            </button>
+          )}
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <label className="space-y-1 text-xs text-gray-600">
+            <span>Ceiling height (in)</span>
+            <input
+              type="number"
+              step={0.125}
+              min={72}
+              max={168}
+              value={rd.ceilingHeightInches}
+              onChange={(e) =>
+                setPayload({
+                  ...payload,
+                  roomDefaults: { ...rd, ceilingHeightInches: Number(e.target.value) || 0 },
+                })
+              }
+              className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
+            />
+          </label>
+          <ConstructionStandardField
+            standardKey="kitchenBaseHeight"
+            label="Base cabinet height"
+            hint="Shop default; override triggers review if policy says so."
+          />
+          <ConstructionStandardField
+            standardKey="kitchenBaseDepth"
+            label="Base cabinet depth"
+            hint="Typically 23⅜″ carcass depth."
+          />
+          <ConstructionStandardField
+            standardKey="kitchenKickplateHeight"
+            label="Kick / toe"
+            hint="Toe space under base cabinets."
+          />
+          <ConstructionStandardField
+            standardKey="kitchenTopSilenceHeight"
+            label="Top silence"
+            hint="Space above wall cabinets to ceiling on tall runs."
+          />
+        </div>
+        <p className="text-xs text-gray-600">
+          Usable base opening (doors/drawers): <strong>{baseOpeningIn} in</strong>
+          <span className="text-gray-500"> — effective base height minus kick (from standards / approved overrides)</span>
+        </p>
+      </div>
+
       {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
 
       <div className="rounded border border-gray-200 bg-gray-50 p-4 space-y-3">
-        <h3 className="text-sm font-semibold text-gray-800">Add cabinet</h3>
+        <h3 className="text-sm font-semibold text-gray-800">Step 2 — Add cabinets</h3>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <select
             value={draft.cabinetType}
@@ -617,5 +715,13 @@ export function KitchenTab({
         )}
       </div>
     </div>
+  );
+}
+
+export function KitchenTab(props: KitchenTabProps) {
+  return (
+    <StandardsProvider projectId={props.projectId}>
+      <KitchenTabInner {...props} />
+    </StandardsProvider>
   );
 }

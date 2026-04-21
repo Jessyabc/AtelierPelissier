@@ -5,7 +5,7 @@ import { vanityInputsSchema } from "@/lib/validators";
 import { computeConfigHash, type VanitySection } from "@/lib/ingredients/types";
 import { getConstructionStandards } from "@/lib/ingredients/getConstructionStandards";
 import { markSnapshotStale } from "@/lib/ingredients/snapshot";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withProjectAuth } from "@/lib/auth/guard";
 
 /**
  * Validate section widths against the configured minimum. We parse the
@@ -41,16 +41,15 @@ function validateSectionWidths(
   };
 }
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
+// Vanity inputs are a sales-facing surface (the section configurator).
+// Salesperson must be tied to the project.
+export const PATCH = withProjectAuth<{ id: string }>(
+  ["admin", "planner", "salesperson"],
+  async ({ req, params }) => {
+  const { id: projectId } = params;
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -138,4 +137,5 @@ export async function PATCH(
     include: { vanityInputs: true },
   });
   return NextResponse.json(project?.vanityInputs ?? {});
-}
+  }
+);

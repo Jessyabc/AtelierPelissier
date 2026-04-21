@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { kitchenRoomDefaultsSchema } from "@/lib/kitchen-pricing/roomDefaults";
 
 const FRAMING = ["Sides only", "Sides and bottom", "Around", "Frame everything"] as const;
 const MOUNTING = ["Freestanding", "Wall-hung", "Custom legs", "Box base"] as const;
@@ -206,6 +207,7 @@ const kitchenInstallationSchema = z.object({
 
 export const kitchenBuilderPayloadSchema = z.object({
   cabinets: z.array(kitchenCabinetSchema).max(150),
+  roomDefaults: kitchenRoomDefaultsSchema,
   includeInstallation: z.boolean().default(false),
   installation: kitchenInstallationSchema,
   includeDelivery: z.boolean().default(true),

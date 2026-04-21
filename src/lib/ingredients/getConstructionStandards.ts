@@ -18,6 +18,7 @@ export async function getConstructionStandards(): Promise<ConstructionStandardsD
   if (!row) return { ...CABINET_DEFAULTS };
 
   return {
+    // Shared
     standardBaseDepth: row.standardBaseDepth,
     defaultVanityHeight: row.defaultVanityHeight,
     wallHungHeight: row.wallHungHeight,
@@ -37,5 +38,17 @@ export async function getConstructionStandards(): Promise<ConstructionStandardsD
     // hardcoded default. When the admin UI gets a field for this we can
     // plumb it through the Prisma model.
     finishPanelThickness: CABINET_DEFAULTS.finishPanelThickness,
+    // Vanity
+    vanityFreestandingHeight: row.vanityFreestandingHeight,
+    vanityDepthStandard: row.vanityDepthStandard,
+    vanityDepthWallMountedFaucet: row.vanityDepthWallMountedFaucet,
+    // Kitchen
+    kitchenBaseHeight: row.kitchenBaseHeight,
+    kitchenBaseDepth: row.kitchenBaseDepth,
+    kitchenKickplateHeight: row.kitchenKickplateHeight,
+    kitchenTopSilenceHeight: row.kitchenTopSilenceHeight,
+    // Sales follow-up thresholds — tuned by admins to pace the sales team.
+    quoteFollowUpDays: row.quoteFollowUpDays,
+    invoiceFollowUpDays: row.invoiceFollowUpDays,
   };
 }

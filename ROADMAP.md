@@ -3,9 +3,41 @@
 **Single source of truth.** Replaces `IMPROVEMENTS.md` and `PHASE2.md` (both archived).  
 Companion docs: `docs/OPERATIONS_MATURITY_ROADMAP.md` (scorecard), `docs/IMPLEMENTATION_BOARD.md` (ticket backlog), `docs/ADMIN_CUSTOMIZATION_SURFACE.md`, `docs/AUTH_RISK_MAP.md`, `docs/TEST_MATRIX_AUTH.md`. Anything under `docs/archive/` is history, not active work.
 
-Last updated: 2026-04-16
+Last updated: 2026-04-17
 
-> **What changed since 2026-04-14 (the "product builder + sales surface" cycle, phases 1-7):**
+> **What changed on 2026-04-17 (foundations — project lifecycle + sales-stage UI primitives):**
+> - **Project lifecycle schema** — `Project` gained `archivedAt`, `archiveReason`, `lostReason`, and `lastSalesActivityAt`, plus two indexes (`archivedAt`, `[stage, lastSalesActivityAt]`). Migration `20260417230000_add_project_lifecycle_fields` backfills `lastSalesActivityAt` from `updatedAt` so nothing looks artificially stale on day one.
+> - **Lifecycle business logic** (`src/lib/projectLifecycle.ts`) is the single source of truth for follow-up cadence, auto-archive, and sales-activity timestamps. Jest covers every predicate (`effectiveLastSalesActivity`, `isSalesFollowUpCandidate`, `shouldAutoArchive`, `getSalesFollowUpReason`, `thresholdsFromStandards`).
+> - **Lifecycle API endpoints** — `POST /api/projects/[id]/lifecycle` (archive / unarchive / mark-lost / mark-found, all `withProjectAuth` + audit-logged) and `POST /api/admin/archive-stale-quotes` (admin/planner only, supports `dryRun` + `asOf`). `audit.ts` extended with `lifecycle_*` action kinds.
+> - **Shared override UX primitives** (`src/components/standards/*`) — `overrideResolver.ts` (pure TS, Jest-covered) + `StandardsContext` + `OverrideRequestModal` + `ConstructionStandardField`. These are the reusable building blocks every future cabinetry builder (kitchen first) will lean on, and splitting the resolver from the JSX makes them easy to test in isolation.
+> - **Admin surface for follow-up thresholds** — `ConstructionStandards` now stores `quoteFollowUpDays` + `invoiceFollowUpDays`, and the Admin Hub > Construction Standards tab got a new "Sales follow-up cadence" section so operators can tune the cadence without a deploy.
+> - **Quote-stage UI polish** (makes later UI work cheap):
+>   - `projects/[id]` Overview tab is stage-aware. On quote-stage projects, Materials + Profit stat cards are hidden, "Progress" becomes "Rooms configured", "Selling Price" becomes "Quoted price", and the process board is replaced with a flat "Rooms on this quote" list that deep-links into the Estimates tab. Material-shortage cards are suppressed pre-cutlist.
+>   - Home filter chips switched from `all / quotes / drafts / saved / done` to the canonical taxonomy `all / quotes / invoices / active / done / archived`, all routed through `lib/projectStage.ts` predicates. Archived + lost are hidden from every chip except **Archived**.
+>   - `DraftIntakePanel` now derives `stageView` once and swaps a whole copy dictionary — "Quote intake" vs "Invoice intake" vs legacy fallback — covering title, subtitle, reference-field label, readiness message, save button, and toast. Render gate widened from `isDraft` to `isPreDeposit || isDraft`.
+> - **Quality gate** — `tsc --noEmit` + ESLint green on every touched file. Jest suites green.
+>
+> **Scorecard impact:** §13 Project lifecycle fidelity 3 → **3.5/5** (lifecycle fields + auto-archive path exist; cron wiring still pending). §17 Admin customization coherence 3.5 → **3.75/5** (follow-up cadence is now admin-tunable).
+>
+> **Flagged for next cycle:**
+> - Wire `/api/admin/archive-stale-quotes` to a scheduler (Vercel Cron, nightly dry-run → live) as part of Week 6.
+> - Surface `mark-lost` + `archive` controls on the project detail page (currently API-only).
+> - Kitchen builder Stage 1 (Week 2) is now unblocked — all override primitives are in place.
+
+> **What changed on 2026-04-17 (API auth migration cycle):**
+> - **Unified `withAuth` / `withProjectAuth` rolled out across `/api/projects/**` and `/api/orders/**`** — every mutation route in both trees is now behind the same guard in `src/lib/auth/guard.ts`. No more ad-hoc `requireRole(...); if (!ok) return response` at the top of handlers, no more inline `requireProjectAccess` after a session fetch.
+> - **New composite helper** `withProjectAuth<P extends { id: string }>(policy, handler)` — runs the role check via `withAuth`, then enforces project ownership through a shared `checkProjectAccess(session, projectId)` that reuses the already-fetched session (eliminates the double-fetch that plain `requireProjectAccess` had to do post-`withAuth`).
+> - **`withAuth` now handles Next.js 15 `params: Promise<P>`** — it awaits internally so route handlers get a plain `params` object; `AuthedContext<P>` is the canonical handler signature.
+> - **Latent bug fixed** — `/api/projects/[id]/material-snapshot` POST was calling `/api/projects/[id]/recalculate` via internal `fetch` without a cookie. Would have silently 401'd once recalculate was locked to admin/planner. Replaced with a direct `recalculateProjectState(projectId)` call.
+> - **Quality gate** — `tsc --noEmit` and ESLint green across the 43 touched route files + `src/lib/auth/guard.ts`.
+>
+> **Scorecard impact:** §11 Roles and permissions 4 → **4.5/5**. Overall average 2.79 → **2.82/5**.
+>
+> **Flagged for next cycle:**
+> - UI-AUTH-01: hide `SettingsTab` from salespeople (API is already locked to admin/planner).
+> - AUTH-02: extend the same migration to `/api/admin/**`, `/api/inventory/**`, `/api/suppliers/**`, and the AI action trees. This is the remaining 0.5 to get §11 to 5/5.
+
+> **What changed on 2026-04-16 (the "product builder + sales surface" cycle, phases 1-7):**
 > - **Monday ingestion reliability** — board-name + job-number resolution (`resolveMondayBoardIdForAction`, `findMondayItemByRefInTree`), bilingual room inference in `guessRoomType` with diacritic normalisation.
 > - **Warehouse sections** — new `WarehouseSection` model, `/api/warehouse-sections` CRUD, inventory UI with section filter + per-item location picker, AI tools (`listWarehouseSections`, `proposeCreateWarehouseSection`, `proposeSetInventoryLocation`).
 > - **Invite / login UX** — invite links prefer `NEXT_PUBLIC_APP_URL`/request origin over `VERCEL_URL`, login page has show/hide + confirm-password for first-time signup.

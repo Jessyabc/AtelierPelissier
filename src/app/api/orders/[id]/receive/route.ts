@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { triggerOrderInventoryRecalc } from "@/lib/observability/recalculateProjectState";
 import { triggerInventoryRecalcForMaterial } from "@/lib/observability/recalculateProjectState";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth } from "@/lib/auth/guard";
 
 /**
  * POST /api/orders/[id]/receive
@@ -26,13 +26,14 @@ const receiveOrderSchema = z.object({
   lines: z.array(lineSchema).optional(),
 });
 
-export async function POST(
-  req: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const auth = await requireRole(["admin", "planner"]);
-  if (!auth.ok) return auth.response;
-  const { id } = await params;
+/**
+ * POST: Receive order lines and update inventory. Admin/planner only —
+ * this is a stock-moving operation.
+ */
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+  const { id } = params;
 
   let body: unknown;
   try {
@@ -137,4 +138,5 @@ export async function POST(
   }
 
   return NextResponse.json({ status: "received", movements, orderId: id });
-}
+  }
+);

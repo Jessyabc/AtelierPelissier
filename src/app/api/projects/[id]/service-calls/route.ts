@@ -1,15 +1,13 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth, withProjectAuth } from "@/lib/auth/guard";
 
 /**
- * GET: List all service calls for the project, ordered by serviceDate (then createdAt) ascending.
+ * GET: List all service calls for the project, ordered by serviceDate ascending.
+ * Any authenticated user — sales see service calls on their projects.
  */
-export async function GET(
-  _request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
+export const GET = withAuth<{ id: string }>("any", async ({ params }) => {
+  const { id: projectId } = params;
 
   const project = await prisma.project.findUnique({
     where: { id: projectId },
@@ -26,23 +24,21 @@ export async function GET(
   });
 
   return NextResponse.json(serviceCalls);
-}
+});
 
 /**
  * POST: Create a new service call for the project.
  * Auto-assigns serviceCallNumber as "{jobNumber} - #{n}".
+ * Sales-touchable — sales book service calls for their clients.
  */
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
+export const POST = withProjectAuth<{ id: string }>(
+  ["admin", "planner", "salesperson"],
+  async ({ req, params }) => {
+  const { id: projectId } = params;
 
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -126,4 +122,5 @@ export async function POST(
   });
 
   return NextResponse.json(full);
-}
+  }
+);

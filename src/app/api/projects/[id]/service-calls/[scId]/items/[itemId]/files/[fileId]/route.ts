@@ -2,37 +2,40 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { unlink } from "fs/promises";
 import path from "path";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withProjectAuth } from "@/lib/auth/guard";
 
-/** DELETE: Remove a file from a materials item */
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string; scId: string; itemId: string; fileId: string }> }
-) {
-  const { id: projectId, scId, itemId, fileId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
+type Params = { id: string; scId: string; itemId: string; fileId: string };
 
-  const fileRecord = await prisma.serviceCallItemFile.findFirst({
-    where: {
-      id: fileId,
-      serviceCallItemId: itemId,
-      serviceCallItem: {
-        serviceCallId: scId,
+/**
+ * DELETE: Remove a file from a service-call materials item.
+ * Sales-touchable (service calls are sales-owned workflow).
+ */
+export const DELETE = withProjectAuth<Params>(
+  ["admin", "planner", "salesperson"],
+  async ({ params }) => {
+    const { scId, itemId, fileId } = params;
+
+    const fileRecord = await prisma.serviceCallItemFile.findFirst({
+      where: {
+        id: fileId,
+        serviceCallItemId: itemId,
+        serviceCallItem: {
+          serviceCallId: scId,
+        },
       },
-    },
-  });
-  if (!fileRecord) {
-    return NextResponse.json({ error: "File not found" }, { status: 404 });
-  }
+    });
+    if (!fileRecord) {
+      return NextResponse.json({ error: "File not found" }, { status: 404 });
+    }
 
-  const fullPath = path.join(process.cwd(), "public", fileRecord.storagePath);
-  try {
-    await unlink(fullPath);
-  } catch {
-    // File may already be missing, continue with DB delete
-  }
+    const fullPath = path.join(process.cwd(), "public", fileRecord.storagePath);
+    try {
+      await unlink(fullPath);
+    } catch {
+      // File may already be missing; proceed with DB delete
+    }
 
-  await prisma.serviceCallItemFile.delete({ where: { id: fileId } });
-  return NextResponse.json({ ok: true });
-}
+    await prisma.serviceCallItemFile.delete({ where: { id: fileId } });
+    return NextResponse.json({ ok: true });
+  }
+);

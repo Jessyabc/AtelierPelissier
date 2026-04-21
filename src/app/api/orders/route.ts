@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { z } from "zod";
 import { triggerOrderInventoryRecalc } from "@/lib/observability/recalculateProjectState";
-import { requireRole } from "@/lib/auth/session";
+import { withAuth } from "@/lib/auth/guard";
 
 const createSchema = z.object({
   supplier: z.string().max(200).trim().optional(),
@@ -16,22 +16,25 @@ const createSchema = z.object({
   backorderNotes: z.string().max(500).optional().nullable(),
 });
 
-export async function GET() {
-  const auth = await requireRole(["admin", "planner"]);
-  if (!auth.ok) return auth.response;
+/**
+ * GET: List purchase orders. Admin/planner only — orders are inventory data
+ * that sales and woodworkers don't need to see.
+ */
+export const GET = withAuth(["admin", "planner"], async () => {
   const orders = await prisma.order.findMany({
     include: { lines: { include: { inventoryItem: true } } },
     orderBy: { createdAt: "desc" },
   });
   return NextResponse.json(orders);
-}
+});
 
-export async function POST(request: Request) {
-  const postAuth = await requireRole(["admin", "planner"]);
-  if (!postAuth.ok) return postAuth.response;
+/**
+ * POST: Create a purchase order. Admin/planner only.
+ */
+export const POST = withAuth(["admin", "planner"], async ({ req }) => {
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -51,7 +54,11 @@ export async function POST(request: Request) {
     if (sup?.name) supplierName = sup.name;
   }
   if (!supplierName) supplierName = "Unknown";
-  const placedAt = data.placedAt ? new Date(data.placedAt) : (data.status === "placed" ? new Date() : null);
+  const placedAt = data.placedAt
+    ? new Date(data.placedAt)
+    : data.status === "placed"
+      ? new Date()
+      : null;
   const order = await prisma.order.create({
     data: {
       supplier: supplierName,
@@ -67,4 +74,4 @@ export async function POST(request: Request) {
   });
   triggerOrderInventoryRecalc(order.projectId);
   return NextResponse.json(order);
-}
+});

@@ -1,63 +1,62 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth } from "@/lib/auth/guard";
+
+type Params = { id: string; itemId: string; taskId: string };
 
 /**
- * PATCH: Update a project item task item
+ * PATCH: Update a project item task item. Admin/planner only
+ * (production checklist editing).
  */
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string; itemId: string; taskId: string }> }
-) {
-  const { id: projectId, itemId, taskId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+export const PATCH = withAuth<Params>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+    const { itemId, taskId } = params;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    const { label, isDone } = body as { label?: string; isDone?: boolean };
+
+    const task = await prisma.projectItemTaskItem.findFirst({
+      where: { id: taskId, projectItemId: itemId },
+    });
+    if (!task) {
+      return NextResponse.json({ error: "Task item not found" }, { status: 404 });
+    }
+
+    const updateData: { label?: string; isDone?: boolean } = {};
+    if (label !== undefined) updateData.label = String(label).trim();
+    if (isDone !== undefined) updateData.isDone = Boolean(isDone);
+
+    if (Object.keys(updateData).length === 0) {
+      return NextResponse.json(task);
+    }
+
+    const updated = await prisma.projectItemTaskItem.update({
+      where: { id: taskId },
+      data: updateData,
+    });
+    return NextResponse.json(updated);
   }
-  const { label, isDone } = body as { label?: string; isDone?: boolean };
-
-  const task = await prisma.projectItemTaskItem.findFirst({
-    where: { id: taskId, projectItemId: itemId },
-  });
-  if (!task) {
-    return NextResponse.json({ error: "Task item not found" }, { status: 404 });
-  }
-
-  const updateData: { label?: string; isDone?: boolean } = {};
-  if (label !== undefined) updateData.label = String(label).trim();
-  if (isDone !== undefined) updateData.isDone = Boolean(isDone);
-
-  if (Object.keys(updateData).length === 0) {
-    return NextResponse.json(task);
-  }
-
-  const updated = await prisma.projectItemTaskItem.update({
-    where: { id: taskId },
-    data: updateData,
-  });
-  return NextResponse.json(updated);
-}
+);
 
 /**
- * DELETE: Remove a project item task item
+ * DELETE: Remove a project item task item. Admin/planner only.
  */
-export async function DELETE(
-  _request: Request,
-  { params }: { params: Promise<{ id: string; itemId: string; taskId: string }> }
-) {
-  const { id: projectId, itemId, taskId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  const task = await prisma.projectItemTaskItem.findFirst({
-    where: { id: taskId, projectItemId: itemId },
-  });
-  if (!task) {
-    return NextResponse.json({ error: "Task item not found" }, { status: 404 });
+export const DELETE = withAuth<Params>(
+  ["admin", "planner"],
+  async ({ params }) => {
+    const { itemId, taskId } = params;
+    const task = await prisma.projectItemTaskItem.findFirst({
+      where: { id: taskId, projectItemId: itemId },
+    });
+    if (!task) {
+      return NextResponse.json({ error: "Task item not found" }, { status: 404 });
+    }
+    await prisma.projectItemTaskItem.delete({ where: { id: taskId } });
+    return NextResponse.json({ ok: true });
   }
-  await prisma.projectItemTaskItem.delete({ where: { id: taskId } });
-  return NextResponse.json({ ok: true });
-}
+);

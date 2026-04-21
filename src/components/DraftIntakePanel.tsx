@@ -3,6 +3,7 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { computeReadinessCheck } from "@/lib/readiness";
+import { getStageView, type StageView } from "@/lib/projectStage";
 
 type ProcessTemplate = { id: string; name: string };
 
@@ -16,7 +17,77 @@ type ProjectLike = {
   targetDate?: string | null;
   notes?: string | null;
   projectItems?: unknown[] | null;
+  // Lifecycle signals — let the panel render stage-aware copy without the
+  // caller needing to branch. All optional; `getStageView` falls back to
+  // legacy `isDraft` when these are absent.
+  stage?: string | null;
+  depositReceivedAt?: string | Date | null;
+  isDone?: boolean;
+  archivedAt?: string | Date | null;
+  lostReason?: string | null;
 };
+
+/**
+ * Copy dictionary per stage view. Kept at the top so the label polish is
+ * obvious from a single glance instead of scattered ternaries in JSX.
+ */
+const INTAKE_COPY: Record<
+  "quote" | "draft_project" | "fallback",
+  {
+    title: string;
+    subtitle: string;
+    referenceLabel: string;
+    referencePlaceholder: string;
+    missingLabel: string;
+    saveLabel: string;
+    savingLabel: string;
+    savedToast: string;
+    scopeLabel: string;
+  }
+> = {
+  quote: {
+    title: "Quote intake",
+    subtitle:
+      "Client name + a rough scope is enough to start. You can build the price on the next tab.",
+    referenceLabel: "Reference (optional)",
+    referencePlaceholder: "Internal note, e.g. MC-Q-0412",
+    missingLabel: "Still needed before sending this quote",
+    saveLabel: "Save quote basics",
+    savingLabel: "Saving…",
+    savedToast: "Quote info saved",
+    scopeLabel: "Scope notes (paste messy info from Monday, emails, Sage)",
+  },
+  draft_project: {
+    title: "Invoice intake",
+    subtitle:
+      "Invoice is out — wrap up the missing info so planning can take over once the deposit lands.",
+    referenceLabel: "Invoice / job #",
+    referencePlaceholder: "MC-1234",
+    missingLabel: "Still needed to hand off to planning",
+    saveLabel: "Save invoice basics",
+    savingLabel: "Saving…",
+    savedToast: "Invoice info saved",
+    scopeLabel: "Notes / scope (paste messy info from Monday, emails, Sage)",
+  },
+  fallback: {
+    title: "Draft intake",
+    subtitle:
+      "Fill the basics, then use AI to suggest rooms (deliverables) from messy notes.",
+    referenceLabel: "Invoice / job #",
+    referencePlaceholder: "MC-1234",
+    missingLabel: "Missing for publish",
+    saveLabel: "Save basics",
+    savingLabel: "Saving…",
+    savedToast: "Draft info saved",
+    scopeLabel: "Notes / scope (paste messy info from Monday, emails, texts)",
+  },
+};
+
+function copyForStage(view: StageView): (typeof INTAKE_COPY)[keyof typeof INTAKE_COPY] {
+  if (view === "quote") return INTAKE_COPY.quote;
+  if (view === "draft_project") return INTAKE_COPY.draft_project;
+  return INTAKE_COPY.fallback;
+}
 
 // Suggestions are intentionally rooms-only — process steps come from the
 // curated `ProcessTemplate` that the server maps by room type.
@@ -41,6 +112,11 @@ export function DraftIntakePanel({
   const [address, setAddress] = useState(project.clientAddress ?? "");
   const [targetDate, setTargetDate] = useState(project.targetDate ?? "");
   const [saving, setSaving] = useState(false);
+
+  // Derive the stage view once per render. Falls back gracefully when the
+  // caller hasn't threaded through the new lifecycle fields yet.
+  const stageView = useMemo(() => getStageView(project), [project]);
+  const copy = copyForStage(stageView);
 
   const readiness = useMemo(() => {
     return computeReadinessCheck({
@@ -82,7 +158,7 @@ export function DraftIntakePanel({
         toast.error(data?.error ?? "Failed to save");
         return;
       }
-      toast.success("Draft info saved");
+      toast.success(copy.savedToast);
       await onApplied();
     } catch {
       toast.error("Failed to save");
@@ -156,21 +232,30 @@ export function DraftIntakePanel({
     }
   }
 
-  if (!project.isDraft) return null;
+  // Show the panel for any pre-deposit stage (quote / draft_project) OR any
+  // legacy `isDraft` row. Hide once a deposit has landed (stage=project) or
+  // the project is done/archived/lost — those have their own surfaces.
+  const isPreDeposit = stageView === "quote" || stageView === "draft_project";
+  if (!isPreDeposit && !project.isDraft) return null;
 
   return (
     <div className="neo-card p-4 space-y-4 border-l-4 border-[var(--accent)]">
       <div>
-        <h3 className="text-sm font-semibold text-[var(--foreground)]">Draft intake</h3>
-        <p className="text-xs text-[var(--foreground-muted)] mt-1">
-          Fill the basics, then use AI to suggest rooms (deliverables) from messy notes.
-        </p>
+        <h3 className="text-sm font-semibold text-[var(--foreground)]">{copy.title}</h3>
+        <p className="text-xs text-[var(--foreground-muted)] mt-1">{copy.subtitle}</p>
       </div>
 
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
-          <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1">Invoice / job #</label>
-          <input value={jobNumber} onChange={(e) => setJobNumber(e.target.value)} className="neo-input w-full px-3 py-2 text-sm font-mono" placeholder="MC-1234" />
+          <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1">
+            {copy.referenceLabel}
+          </label>
+          <input
+            value={jobNumber}
+            onChange={(e) => setJobNumber(e.target.value)}
+            className="neo-input w-full px-3 py-2 text-sm font-mono"
+            placeholder={copy.referencePlaceholder}
+          />
         </div>
         <div>
           <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1">Target date</label>
@@ -192,19 +277,24 @@ export function DraftIntakePanel({
 
       {!readiness.ready && (
         <div className="neo-panel-inset p-3 text-xs text-amber-800">
-          Missing for publish: <span className="font-mono">{readiness.missing.join(", ")}</span>
+          {copy.missingLabel}: <span className="font-mono">{readiness.missing.join(", ")}</span>
         </div>
       )}
 
       <div className="flex gap-2">
-        <button type="button" onClick={saveCore} disabled={saving} className="neo-btn-primary px-4 py-2 text-sm disabled:opacity-50">
-          {saving ? "Saving…" : "Save basics"}
+        <button
+          type="button"
+          onClick={saveCore}
+          disabled={saving}
+          className="neo-btn-primary px-4 py-2 text-sm disabled:opacity-50"
+        >
+          {saving ? copy.savingLabel : copy.saveLabel}
         </button>
       </div>
 
       <div className="pt-2 border-t border-[var(--shadow-dark)]/15">
         <label className="block text-xs font-medium text-[var(--foreground-muted)] mb-1">
-          Notes / scope (paste messy info from Monday, emails, texts)
+          {copy.scopeLabel}
         </label>
         <textarea
           value={scopeText}

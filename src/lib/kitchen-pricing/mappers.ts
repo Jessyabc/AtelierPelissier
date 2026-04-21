@@ -1,7 +1,10 @@
+import type { ConstructionStandardsData } from "@/lib/ingredients/types";
 import { DEFAULT_KITCHEN_MARKUP, KITCHEN_DELIVERY_FALLBACK_COST } from "@/config/kitchenPricingBuilder";
 import type { KitchenBuilderPayloadValidated } from "@/lib/validators";
+import { mergeKitchenRoomDefaults, staticKitchenRoomDefaults } from "@/lib/kitchen-pricing/roomDefaults";
 
 type KitchenProjectRecord = {
+  roomDefaults?: unknown;
   includeInstallation: boolean;
   includeDelivery: boolean;
   deliveryCost: number | null;
@@ -44,6 +47,7 @@ type KitchenProjectRecord = {
 export function buildDefaultKitchenBuilderPayload(): KitchenBuilderPayloadValidated {
   return {
     cabinets: [],
+    roomDefaults: staticKitchenRoomDefaults(),
     includeInstallation: false,
     installation: {
       baseCabinetQty: 0,
@@ -60,10 +64,14 @@ export function buildDefaultKitchenBuilderPayload(): KitchenBuilderPayloadValida
 }
 
 export function mapKitchenProjectToPayload(
-  record: KitchenProjectRecord | null | undefined
+  record: KitchenProjectRecord | null | undefined,
+  standards: ConstructionStandardsData
 ): KitchenBuilderPayloadValidated {
   if (!record) {
-    return buildDefaultKitchenBuilderPayload();
+    return {
+      ...buildDefaultKitchenBuilderPayload(),
+      roomDefaults: mergeKitchenRoomDefaults(null, standards),
+    };
   }
 
   const installationBase = {
@@ -80,7 +88,10 @@ export function mapKitchenProjectToPayload(
     if (item.installTypeId === "panel_install") installationBase.finishingPanelQty = item.quantity;
   }
 
+  const roomDefaults = mergeKitchenRoomDefaults(record.roomDefaults ?? null, standards);
+
   return {
+    roomDefaults,
     cabinets: record.cabinets.map((cabinet) => ({
       cabinetType: cabinet.cabinetType as KitchenBuilderPayloadValidated["cabinets"][number]["cabinetType"],
       configuration:

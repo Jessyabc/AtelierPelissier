@@ -71,6 +71,7 @@ export async function saveKitchenBuilderState(
     where: { projectId },
     create: {
       projectId,
+      roomDefaults: payload.roomDefaults,
       includeInstallation: payload.includeInstallation,
       includeDelivery: payload.includeDelivery,
       deliveryCost: payload.deliveryCost ?? null,
@@ -85,6 +86,7 @@ export async function saveKitchenBuilderState(
       approvedAt: options.approvedAt ?? current?.approvedAt ?? null,
     },
     update: {
+      roomDefaults: payload.roomDefaults,
       includeInstallation: payload.includeInstallation,
       includeDelivery: payload.includeDelivery,
       deliveryCost: payload.deliveryCost ?? null,

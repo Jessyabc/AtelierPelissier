@@ -4,74 +4,73 @@ import { logAudit } from "@/lib/audit";
 import { sideUnitInputsSchema } from "@/lib/validators";
 import { computeConfigHash } from "@/lib/ingredients/types";
 import { markSnapshotStale } from "@/lib/ingredients/snapshot";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withProjectAuth } from "@/lib/auth/guard";
 
-export async function PATCH(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
-  let body: unknown;
-  try {
-    body = await request.json();
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+// Side-unit inputs are a sales-facing surface (section configurator).
+export const PATCH = withProjectAuth<{ id: string }>(
+  ["admin", "planner", "salesperson"],
+  async ({ req, params }) => {
+    const { id: projectId } = params;
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    }
+    const parsed = sideUnitInputsSchema.safeParse(body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
+        { status: 400 }
+      );
+    }
+    const data = parsed.data;
+
+    await prisma.sideUnitInputs.upsert({
+      where: { projectId },
+      create: {
+        projectId,
+        width: data.width,
+        depth: data.depth,
+        height: data.height,
+        kickplate: data.kickplate,
+        framingStyle: data.framingStyle,
+        mountingStyle: data.mountingStyle,
+        drawers: data.drawers,
+        doors: data.doors,
+        thickFrame: data.thickFrame,
+        doorStyle: data.doorStyle,
+        sections: data.sections ?? null,
+      },
+      update: {
+        width: data.width,
+        depth: data.depth,
+        height: data.height,
+        kickplate: data.kickplate,
+        framingStyle: data.framingStyle,
+        mountingStyle: data.mountingStyle,
+        drawers: data.drawers,
+        doors: data.doors,
+        thickFrame: data.thickFrame,
+        doorStyle: data.doorStyle,
+        sections: data.sections ?? null,
+      },
+    });
+    await logAudit(projectId, "side_unit_updated");
+
+    // Stale tracking: check if active snapshot's configHash differs from new config
+    const newHash = computeConfigHash(data as Record<string, unknown>);
+    const activeSnapshot = await prisma.materialSnapshot.findFirst({
+      where: { projectId, sourceType: "side_unit", isActive: true },
+    });
+    if (activeSnapshot && activeSnapshot.configHash !== newHash) {
+      await markSnapshotStale(projectId, "side_unit");
+    }
+
+    const project = await prisma.project.findUnique({
+      where: { id: projectId },
+      include: { sideUnitInputs: true },
+    });
+    return NextResponse.json(project?.sideUnitInputs ?? {});
   }
-  const parsed = sideUnitInputsSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Validation failed", issues: parsed.error.flatten().fieldErrors },
-      { status: 400 }
-    );
-  }
-  const data = parsed.data;
-
-  await prisma.sideUnitInputs.upsert({
-    where: { projectId },
-    create: {
-      projectId,
-      width: data.width,
-      depth: data.depth,
-      height: data.height,
-      kickplate: data.kickplate,
-      framingStyle: data.framingStyle,
-      mountingStyle: data.mountingStyle,
-      drawers: data.drawers,
-      doors: data.doors,
-      thickFrame: data.thickFrame,
-      doorStyle: data.doorStyle,
-      sections: data.sections ?? null,
-    },
-    update: {
-      width: data.width,
-      depth: data.depth,
-      height: data.height,
-      kickplate: data.kickplate,
-      framingStyle: data.framingStyle,
-      mountingStyle: data.mountingStyle,
-      drawers: data.drawers,
-      doors: data.doors,
-      thickFrame: data.thickFrame,
-      doorStyle: data.doorStyle,
-      sections: data.sections ?? null,
-    },
-  });
-  await logAudit(projectId, "side_unit_updated");
-
-  // Stale tracking: check if active snapshot's configHash differs from new config
-  const newHash = computeConfigHash(data as Record<string, unknown>);
-  const activeSnapshot = await prisma.materialSnapshot.findFirst({
-    where: { projectId, sourceType: "side_unit", isActive: true },
-  });
-  if (activeSnapshot && activeSnapshot.configHash !== newHash) {
-    await markSnapshotStale(projectId, "side_unit");
-  }
-
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: { sideUnitInputs: true },
-  });
-  return NextResponse.json(project?.sideUnitInputs ?? {});
-}
+);

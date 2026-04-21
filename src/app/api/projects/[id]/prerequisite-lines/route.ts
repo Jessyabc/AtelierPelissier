@@ -2,14 +2,11 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { prerequisiteLineSchema } from "@/lib/validators";
 import { triggerMaterialInventoryOrderRecalc } from "@/lib/observability/recalculateProjectState";
-import { requireProjectAccess } from "@/lib/auth/guard";
+import { withAuth } from "@/lib/auth/guard";
 
-export async function GET(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const { searchParams } = new URL(request.url);
+export const GET = withAuth<{ id: string }>("any", async ({ req, params }) => {
+  const { id: projectId } = params;
+  const { searchParams } = new URL(req.url);
   const category = searchParams.get("category");
 
   const where: { projectId: string; category?: string } = { projectId };
@@ -35,18 +32,15 @@ export async function GET(
   }));
 
   return NextResponse.json(withDescription);
-}
+});
 
-export async function POST(
-  request: Request,
-  { params }: { params: Promise<{ id: string }> }
-) {
-  const { id: projectId } = await params;
-  const access = await requireProjectAccess(projectId);
-  if (!access.ok) return access.response;
+export const POST = withAuth<{ id: string }>(
+  ["admin", "planner"],
+  async ({ req, params }) => {
+  const { id: projectId } = params;
   let body: unknown;
   try {
-    body = await request.json();
+    body = await req.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -78,4 +72,5 @@ export async function POST(
   });
   triggerMaterialInventoryOrderRecalc(projectId);
   return NextResponse.json(line);
-}
+  }
+);

@@ -4,6 +4,11 @@ import Link from "next/link";
 import { BlockedReasonBadge } from "@/components/BlockedReasonBadge";
 import { getNextAction, type NextActionProject } from "@/lib/workflow/nextAction";
 import type { AppRole } from "@/lib/auth/roles";
+import {
+  getStageView,
+  getStageLabel,
+  type ProjectStageShape,
+} from "@/lib/projectStage";
 
 export type ProjectCardProject = NextActionProject & {
   name: string;
@@ -48,18 +53,21 @@ function toneClass(tone: "primary" | "neutral" | "warning" | "success"): string 
   }
 }
 
-/** Small pill for the sales lifecycle stage — only shown when pre-confirmed. */
-function StageBadge({ stage }: { stage?: string | null }) {
-  if (!stage || stage === "confirmed") return null;
-  const map: Record<string, { label: string; className: string }> = {
-    quote: { label: "Quote", className: "bg-blue-100 text-blue-800" },
-    invoiced: { label: "Invoiced", className: "bg-amber-100 text-amber-800" },
-  };
-  const cfg = map[stage];
-  if (!cfg) return null;
+/**
+ * Single pill that surfaces the canonical lifecycle stage (Quote /
+ * Draft project / Project / Completed / Archived / Lost). Replaces the older
+ * pair of "Draft" + "Quote" chips, which double-stated the same fact and
+ * confused salespeople. Source of truth lives in `lib/projectStage.ts`.
+ */
+function StageBadge({ project }: { project: ProjectStageShape }) {
+  const view = getStageView(project);
+  const { short, long, chipClass } = getStageLabel(view);
   return (
-    <span className={`inline-block rounded-lg px-2 py-0.5 text-xs ${cfg.className}`}>
-      {cfg.label}
+    <span
+      title={long}
+      className={`inline-block rounded-lg px-2 py-0.5 text-xs font-medium ${chipClass}`}
+    >
+      {short}
     </span>
   );
 }
@@ -144,17 +152,7 @@ export function ProjectCard({
         <Link href={`/projects/${p.id}`} className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-medium text-gray-900">{p.name}</span>
-            {p.isDraft && (
-              <span className="neo-btn-pressed inline-block rounded-lg px-2 py-0.5 text-xs text-gray-600">
-                Draft
-              </span>
-            )}
-            {p.isDone && (
-              <span className="inline-block rounded-lg bg-emerald-100 px-2 py-0.5 text-xs text-emerald-800">
-                Done
-              </span>
-            )}
-            <StageBadge stage={p.stage ?? undefined} />
+            <StageBadge project={p} />
             {p.blockedReason && <BlockedReasonBadge reason={p.blockedReason} />}
             {p.subProjects && p.subProjects.length > 0 && (
               <span className="text-xs text-gray-500">({p.subProjects.length} tasks)</span>

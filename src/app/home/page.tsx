@@ -208,7 +208,7 @@ export default function OperationsCockpit() {
             All clear — no shortages, no pending orders, no deviations.
           </p>
           <Link href="/projects/new" className="neo-btn-primary px-5 py-2.5 text-sm font-medium inline-block mt-4">
-            New Project
+            New project
           </Link>
         </div>
       )}

@@ -10,6 +10,56 @@ This board converts the Phase 1 (operational maturity) and Phase 2 (lean refacto
 
 Rather than rewrite 60 tickets individually, each cycle records what closed below. Tickets not listed here are still open and remain the active backlog.
 
+#### 2026-04-17 cycle (Foundations — project lifecycle + sales-stage UI primitives)
+
+Shipped in this cycle and therefore **closed** on the board (these are *foundation* tickets that unlock the Week 2–6 work):
+
+| Ticket | How it closed |
+|--------|----------------|
+| **FOUND-1** Project lifecycle schema | `Project` gained `archivedAt`, `archiveReason`, `lostReason`, `lastSalesActivityAt` + two supporting indices (`archivedAt`, `[stage, lastSalesActivityAt]`). Migration `20260417230000_add_project_lifecycle_fields` backfills `lastSalesActivityAt` from `updatedAt` so existing rows don't look stale on day one. |
+| **FOUND-2** Lifecycle business logic + APIs | `lib/projectLifecycle.ts` is the single source of truth for staleness, auto-archive, and follow-up reasons. Exposed `POST /api/projects/[id]/lifecycle` (archive / unarchive / mark-lost / mark-found) and `POST /api/admin/archive-stale-quotes` (with `dryRun` + `asOf`). `audit.ts` extended with `lifecycle_*` actions. Jest covers every predicate. |
+| **FOUND-3** Shared override UX primitives | `overrideResolver.ts` (pure TS, Jest-covered) for `pickActiveOverride` / `resolveStandard`; `StandardsContext` prefetches shop standards + project overrides once per project; `OverrideRequestModal` + `ConstructionStandardField` are the reusable input pair every future builder will lean on. JSX was intentionally split from resolver logic so tests run without TSX transform. |
+| **FOUND-4a** Overview slim-down for quote stage | `projects/[id]` Overview tab now branches on `stageView`: hides Materials + Profit stat cards, relabels "Progress" → "Rooms configured" and "Selling Price" → "Quoted price", replaces the process board with a flat "Rooms on this quote" list (`Configure →` deep-link to the Estimates tab), and suppresses material-shortage cards that are meaningless pre-cutlist. |
+| **FOUND-4b** Home filter chips (canonical taxonomy) | Replaced the old `all / quotes / drafts / saved / done` chips with `all / quotes / invoices / active / done / archived`, all routed through `lib/projectStage.ts` predicates. Archived + lost are hidden from every chip except **Archived**, which gets its own section on the home page. |
+| **FOUND-4c** Intake panel label polish | `DraftIntakePanel` now derives `stageView` once and swaps its own copy dictionary: "Quote intake" vs "Invoice intake" vs legacy fallback. Save button, toasts, reference-field label, and readiness message all stage-aware. Render gate widened from `isDraft` to `isPreDeposit || isDraft` so new stage-only rows still surface the panel. |
+| **FOUND-5** Docs refresh | This entry + the roadmap log below. |
+
+Carry-forward:
+- **FOUND-6** (implicit) Cron wiring for `/api/admin/archive-stale-quotes` — endpoint ships, scheduler hookup tracked with Week 6 follow-ups.
+
+#### 2026-04-17 cycle (Track B — Cabinetry standards + override approval)
+
+Shipped in this cycle and therefore **closed** on the board:
+
+| Ticket | How it closed |
+|--------|----------------|
+| **STD-01** Extend `ConstructionStandards` with vanity + kitchen fields | Added `vanityFreestandingHeight`, `vanityDepthStandard`, `vanityDepthWallMountedFaucet`, `kitchenBaseHeight`, `kitchenBaseDepth`, `kitchenKickplateHeight`, `kitchenTopSilenceHeight` — defaults match the values the owner confirmed on 2026-04-17. Legacy `defaultVanityHeight` retained as a deprecated back-compat read. Migration `20260417213618_add_cabinetry_standards_and_overrides` generated. |
+| **STD-02** Admin edit surface grouped by product | `ConstructionStandardsTab` rewritten around `STANDARDS_SECTIONS` (Vanity / Kitchen / Shared). Fields that flip pricing/cutlist are flagged `highRisk: true` so the UI can warn operators when they're about to change a pricing-impacting constant. |
+| **STD-03** Override + approval data model | New `StandardsOverride` table with `riskTier`, `status`, `standardValue` (captured at request time), reviewer + note. Risk tier is **not** in the schema — it's resolved in `lib/standards/overridePolicy.ts` so policy tuning doesn't need a migration. `HIGH_RISK_KEYS` flagged and unit-tested (12 cases). |
+| **STD-04** Override approval queue | `/api/projects/[id]/standards-overrides` (GET/POST/DELETE) + `/api/admin/standards-overrides` (GET, PATCH). Planners see low-tier rows only; admins see everything. Pending-rows are reviewable once (409 on re-review). Admin hub got a new **Overrides** tab with filter chips, batch approve/reject, and inline tier badges. |
+
+Carry-forward:
+- **STD-05** Surface "request override" inside the builders themselves — parked until the kitchen Stage-1 UI lands (Week 2). Until then, overrides can only be created via the API.
+
+#### 2026-04-17 cycle (API auth migration — `/projects` + `/orders`)
+
+Shipped in this cycle and therefore **closed** on the board:
+
+| Ticket | How it closed |
+|--------|----------------|
+| **AUTH-01** (roadmap §11 action #1) Migrate `/api/projects/**` + `/api/orders/**` mutation routes to `withAuth` + `requireProjectAccess` | Every route under both trees now runs through the unified guards. `src/lib/auth/guard.ts` grew a composite `withProjectAuth<P extends { id: string }>` wrapper (role policy first, project-scope enforcement second, no session double-fetch). 38 project routes + 5 order routes converted in one pass. Typecheck + ESLint green on touched surface. |
+
+Secondary cleanups that landed with it:
+
+- `checkProjectAccess(session, projectId)` extracted as the reusable core of project-scope auth; `requireProjectAccess` kept as a thin wrapper for the remaining non-route call sites.
+- `withAuth` signature updated to accept Next.js 15's `params: Promise<P>` and `await` it internally so route handlers get plain `params`.
+- `/api/projects/[id]/material-snapshot` POST no longer calls `/api/projects/[id]/recalculate` over HTTP — it now invokes `recalculateProjectState(projectId)` directly, which (a) removes an unauthenticated internal fetch, and (b) avoids failing against the newly-tightened admin/planner policy on the recalculate endpoint.
+
+Carried forward as explicit follow-ups:
+
+- **AUTH-02** (P2): sweep `/api/admin/**`, `/api/inventory/**`, `/api/suppliers/**`, and the AI action trees onto the same `withAuth` contract. This is what remains between §11 at 4.5 and §11 at 5.
+- **UI-AUTH-01**: `SettingsTab` (markup + tax) is still mounted for salespeople even though `/api/projects/[id]/settings` rejects them. API is safe; UI needs to hide the tab based on role (use `isMenuItemVisibleToRole` as the pattern, or inline guard on the tab list).
+
 #### 2026-04-16 cycle (product builder + sales surface)
 
 Shipped in this cycle and therefore **closed** on the board:
