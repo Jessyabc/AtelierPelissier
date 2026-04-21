@@ -29,6 +29,22 @@ export const POST = withProjectAuth<{ id: string }>(
   async ({ params, session }) => {
     const { id: projectId } = params;
 
+    const pendingOverrides = await prisma.standardsOverride.count({
+      where: { projectId, status: "pending" },
+    });
+    if (pendingOverrides > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          requiresApproval: true,
+          approvalStatus: "pending",
+          message:
+            "Construction-standard overrides are still pending review. Approve/reject them before submitting this quote.",
+        },
+        { status: 409 }
+      );
+    }
+
     const [kitchenProject, standards] = await Promise.all([
       fetchKitchenProject(projectId),
       getConstructionStandards(),
