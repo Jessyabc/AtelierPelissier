@@ -3,6 +3,7 @@
 import { formatCurrency } from "@/lib/format";
 
 type Project = {
+  id: string;
   name: string;
   types: string;
   isDraft: boolean;
@@ -47,7 +48,7 @@ export function QuoteTab({
   companyEmail?: string;
   companyAddress?: string;
 }) {
-  const estimateLines = project.costLines.filter((l) => l.kind === "estimate");
+  const estimateLines = (project.costLines ?? []).filter((l) => l.kind === "estimate");
   const subtotal = estimateLines.reduce((s, l) => s + l.amount, 0);
   const settings = project.projectSettings;
   const markup = settings?.markup ?? 2.5;
@@ -60,6 +61,25 @@ export function QuoteTab({
 
   const clientName = [project.clientFirstName, project.clientLastName].filter(Boolean).join(" ").trim() || null;
 
+  async function downloadPdf() {
+    try {
+      const res = await fetch(`/api/projects/${project.id}/quote-pdf`);
+      if (!res.ok) throw new Error("PDF export failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${project.name || "quote"}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch {
+      // If PDF fails (serverless limits, etc.), printing still works.
+      printQuote();
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-4 print:hidden">
@@ -67,13 +87,22 @@ export function QuoteTab({
           <h3 className="text-lg font-semibold text-gray-900">Quote / Estimate</h3>
           <p className="text-sm text-gray-500 mt-0.5">This is what the client sees when printed.</p>
         </div>
-        <button
-          type="button"
-          onClick={printQuote}
-          className="neo-btn-primary px-4 py-2 text-sm font-medium"
-        >
-          Print quote
-        </button>
+        <div className="flex gap-2">
+          <button
+            type="button"
+            onClick={downloadPdf}
+            className="neo-btn px-4 py-2 text-sm font-medium"
+          >
+            Download PDF
+          </button>
+          <button
+            type="button"
+            onClick={printQuote}
+            className="neo-btn-primary px-4 py-2 text-sm font-medium"
+          >
+            Print quote
+          </button>
+        </div>
       </div>
 
       <div id="quote-print" className="neo-card p-8 max-w-2xl print:border-0 print:shadow-none print:bg-white print:max-w-full">
