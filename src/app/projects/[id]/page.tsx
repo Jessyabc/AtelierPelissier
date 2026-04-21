@@ -385,20 +385,21 @@ export default function ProjectPage() {
   if (!project) return <div className="py-12"><p className="text-red-500">Project not found.</p><Link href="/" className="underline text-[var(--foreground-muted)]">Back</Link></div>;
 
   // Compute financials
-  const estimatedCost = project.costLines.filter((c) => c.kind === "estimate").reduce((s, c) => s + c.amount, 0);
-  const realCost = project.costLines.filter((c) => c.kind === "actual").reduce((s, c) => s + c.amount, 0);
+  const costLines = project.costLines ?? [];
+  const estimatedCost = costLines.filter((c) => c.kind === "estimate").reduce((s, c) => s + c.amount, 0);
+  const realCost = costLines.filter((c) => c.kind === "actual").reduce((s, c) => s + c.amount, 0);
   const sellingPrice = project.sellingPrice ?? 0;
   const profit = sellingPrice - realCost;
   const variance = estimatedCost - realCost;
 
-  const types = project.types.split(",").map((t) => t.trim());
+  const types = (project.types ?? "").split(",").map((t) => t.trim()).filter(Boolean);
   const stageView = getStageView(project);
   const stageMeta = getStageLabel(stageView);
   const tabs: Tab[] = tabsForRoleAndStage(role, stageView);
 
   // Total task progress (per-room tasks only)
   const allItems = project.projectItems ?? [];
-  const allTasks = allItems.flatMap((i) => i.taskItems);
+  const allTasks = allItems.flatMap((i) => i.taskItems ?? []);
   const totalDone = allTasks.filter((t) => t.isDone).length;
   const totalTasks = allTasks.length;
 
