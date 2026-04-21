@@ -14,35 +14,43 @@ export const GET = withAuth("any", async () => {
   const timeoutPromise = new Promise<never>((_, reject) =>
     setTimeout(() => reject(new Error("Timeout")), PROJECTS_GET_TIMEOUT_MS)
   );
+  // IMPORTANT: This endpoint backs the home dashboard list. Keep it *light*.
+  // Full project graphs (taskItems, nested projectItems, etc.) belong on
+  // GET /api/projects/[id]. Heavy includes here are the primary cause of
+  // dashboard timeouts in production.
   const fetchPromise = prisma.project.findMany({
     where: { parentProjectId: null },
     orderBy: { updatedAt: "desc" },
-    include: {
-      client: true,
-      client2: true,
-      projectSettings: { include: { sheetFormat: true } },
-      costLines: true,
-      taskItems: { orderBy: { sortOrder: "asc" } },
-      processTemplate: { select: { id: true, name: true } },
-      projectItems: {
-        orderBy: { sortOrder: "asc" },
-        include: {
-          processTemplate: { select: { id: true, name: true } },
-          taskItems: { orderBy: { sortOrder: "asc" } },
-        },
-      },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      types: true,
+      stage: true,
+      depositReceivedAt: true,
+      isDraft: true,
+      isDone: true,
+      updatedAt: true,
+      archivedAt: true,
+      lostReason: true,
+      lastSalesActivityAt: true,
+      blockedReason: true,
+      // Flat client fields (used by home search + ProjectCard)
+      clientFirstName: true,
+      clientLastName: true,
+      clientEmail: true,
+      clientPhone: true,
+      clientPhone2: true,
+      clientAddress: true,
+      // Used for home money totals; full line editing stays on project page.
+      costLines: { select: { amount: true, kind: true, category: true } },
+      // Sub-projects are shown as lightweight follow-ups on cards.
       subProjects: {
-        select: {
-          id: true,
-          name: true,
-          isDone: true,
-          isDraft: true,
-          updatedAt: true,
-          processTemplateId: true,
-          processTemplate: { select: { id: true, name: true } },
-        },
+        select: { id: true, name: true, isDone: true, isDraft: true, updatedAt: true },
         orderBy: { updatedAt: "desc" },
       },
+      // Settings is needed for pricing badges in a few surfaces; keep minimal.
+      projectSettings: { select: { markup: true, taxEnabled: true, taxRate: true } },
     },
   });
 
