@@ -239,8 +239,8 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
     });
   }
 
-  const saveBuilder = useCallback(async () => {
-    if (!payload) return;
+  const saveBuilder = useCallback(async (): Promise<boolean> => {
+    if (!payload) return false;
     setSaving(true);
     setError("");
     try {
@@ -260,7 +260,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       const json = (await res.json()) as Partial<KitchenBuilderResponse> & { error?: string };
       if (!res.ok) {
         setError(json?.error ?? "Could not save kitchen builder.");
-        return;
+        return false;
       }
       if (json.payload) {
         setPayload(json.payload);
@@ -268,6 +268,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       setData((prev) => (prev ? { ...prev, ...json } : (json as KitchenBuilderResponse)));
       void refresh();
       onUpdate();
+      return true;
     } finally {
       setSaving(false);
     }
@@ -277,7 +278,10 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
     setSubmitting(true);
     setError("");
     try {
-      await saveBuilder();
+      const saved = await saveBuilder();
+      if (!saved) {
+        return;
+      }
       const res = await fetch(`/api/projects/${projectId}/kitchen-builder/submit`, {
         method: "POST",
       });
