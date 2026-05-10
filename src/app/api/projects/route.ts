@@ -24,6 +24,7 @@ export const GET = withAuth("any", async () => {
     select: {
       id: true,
       name: true,
+      jobNumber: true,
       type: true,
       types: true,
       stage: true,
@@ -35,6 +36,8 @@ export const GET = withAuth("any", async () => {
       lostReason: true,
       lastSalesActivityAt: true,
       blockedReason: true,
+      targetDate: true,
+      sellingPrice: true,
       // Flat client fields (used by home search + ProjectCard)
       clientFirstName: true,
       clientLastName: true,
@@ -51,11 +54,27 @@ export const GET = withAuth("any", async () => {
       },
       // Settings is needed for pricing badges in a few surfaces; keep minimal.
       projectSettings: { select: { markup: true, taxEnabled: true, taxRate: true } },
+      // Dashboard next-action + planner cards need room/snapshot signals without
+      // hydrating full projectItems or nested task graphs.
+      _count: { select: { projectItems: true } },
+      materialSnapshots: {
+        where: { isActive: true },
+        select: { isStale: true },
+      },
     },
   });
 
   try {
-    const projects = await Promise.race([fetchPromise, timeoutPromise]);
+    const rows = await Promise.race([fetchPromise, timeoutPromise]);
+    const projects = rows.map((p) => {
+      const { _count, materialSnapshots, ...rest } = p;
+      return {
+        ...rest,
+        projectItemCount: _count.projectItems,
+        hasMaterialSnapshot: materialSnapshots.length > 0,
+        hasStaleMaterialSnapshot: materialSnapshots.some((s) => s.isStale),
+      };
+    });
     return NextResponse.json(projects);
   } catch (err) {
     if ((err as Error)?.message === "Timeout") {

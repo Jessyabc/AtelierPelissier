@@ -57,6 +57,11 @@ export type NextActionProject = {
   hasStaleMaterialSnapshot?: boolean;
   /** Whether a saved material snapshot exists at all. */
   hasMaterialSnapshot?: boolean;
+  /**
+   * Dashboard list optimization: room count when `projectItems` are omitted
+   * (see GET /api/projects).
+   */
+  projectItemCount?: number | null;
 };
 
 /**
@@ -75,7 +80,8 @@ export function getNextAction(
   const done = project.isDone;
   const draft = project.isDraft;
   const hasClient = Boolean(project.clientId || project.clientFirstName || project.clientLastName);
-  const hasRooms = (project.projectItems?.length ?? 0) > 0;
+  const hasRooms =
+    (project.projectItems?.length ?? 0) > 0 || (project.projectItemCount ?? 0) > 0;
   const hasCostLines = (project.costLines?.length ?? 0) > 0;
   const hasPrice = (project.sellingPrice ?? 0) > 0;
 
