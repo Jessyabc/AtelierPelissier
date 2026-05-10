@@ -45,6 +45,18 @@ describe("getNextAction", () => {
       expect(a.label).toBe("Add rooms");
     });
 
+    it("treats projectItemCount as rooms for lightweight list payloads", () => {
+      const a = getNextAction(
+        base({
+          clientId: "c1",
+          projectItems: [],
+          projectItemCount: 2,
+        }),
+        "salesperson"
+      );
+      expect(a.label).toBe("Build estimate");
+    });
+
     it("asks to build estimate after rooms", () => {
       const a = getNextAction(
         base({ clientId: "c1", projectItems: [{ id: "r1" }] }),
@@ -140,6 +152,14 @@ describe("getNextAction", () => {
 
     it("asks to verify materials when rooms exist but no snapshot", () => {
       const a = getNextAction(base({ projectItems: [{ id: "r1" }] }), "planner");
+      expect(a.label).toBe("Verify materials");
+    });
+
+    it("treats projectItemCount as rooms for planner material gate", () => {
+      const a = getNextAction(
+        base({ projectItems: [], projectItemCount: 1, hasMaterialSnapshot: false }),
+        "planner"
+      );
       expect(a.label).toBe("Verify materials");
     });
 
