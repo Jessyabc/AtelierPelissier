@@ -153,18 +153,23 @@ export function calculateTotalCost(input: KitchenProjectPricingInput): KitchenCo
   );
   const fabricationSubtotal = round2(totalHours * KITCHEN_FABRICATION_HOURLY_RATE);
 
-  const installationSubtotal = input.includeInstallation
-    ? round2(
-        input.installation.baseCabinetQty * KITCHEN_INSTALLATION_RATES.base_install +
-          input.installation.wallCabinetQty * KITCHEN_INSTALLATION_RATES.wall_install +
-          input.installation.pantryQty * KITCHEN_INSTALLATION_RATES.pantry_install +
-          input.installation.finishingPanelQty * KITCHEN_INSTALLATION_RATES.panel_install
-      )
-    : 0;
+  const installationTbd = Boolean(input.installationTbd);
+  const deliveryTbd = Boolean(input.deliveryTbd);
 
-  const deliverySubtotal = input.includeDelivery
-    ? round2(input.deliveryCost ?? KITCHEN_DELIVERY_FALLBACK_COST)
-    : 0;
+  const installationSubtotal =
+    input.includeInstallation && !installationTbd
+      ? round2(
+          input.installation.baseCabinetQty * KITCHEN_INSTALLATION_RATES.base_install +
+            input.installation.wallCabinetQty * KITCHEN_INSTALLATION_RATES.wall_install +
+            input.installation.pantryQty * KITCHEN_INSTALLATION_RATES.pantry_install +
+            input.installation.finishingPanelQty * KITCHEN_INSTALLATION_RATES.panel_install
+        )
+      : 0;
+
+  const deliverySubtotal =
+    input.includeDelivery && !deliveryTbd
+      ? round2(input.deliveryCost ?? KITCHEN_DELIVERY_FALLBACK_COST)
+      : 0;
 
   const totalCost = round2(materialsSubtotal + fabricationSubtotal + installationSubtotal + deliverySubtotal);
 

@@ -122,6 +122,7 @@ export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req, 
           sinks: v.sinks,
           faucetHoles: v.faucetHoles,
           priceRangePi2: v.priceRangePi2,
+          countertopTbd: v.countertopTbd,
         },
       });
     }

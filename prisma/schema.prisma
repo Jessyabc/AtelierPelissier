@@ -214,6 +214,8 @@ model VanityInputs {
   sinks           String? // Single | Double | Single Vessel | Double Vessel | None
   faucetHoles     String? // 4" center | 8" center | One hole | No Hole
   priceRangePi2   Float?
+  /// When true, countertop is included in scope but not priced in the combined total (TBD).
+  countertopTbd   Boolean @default(false)
   sections        String? // JSON: VanitySection[] — null = legacy single-section mode
 }
 
@@ -251,7 +253,11 @@ model KitchenPricingProject {
   /// on first load when null. See `lib/kitchen-pricing/roomDefaults.ts`.
   roomDefaults        Json?
   includeInstallation Boolean   @default(false)
+  /// When true, installation is in scope but not priced yet — excluded from totals and estimate cost lines.
+  installationTbd     Boolean   @default(false)
   includeDelivery     Boolean   @default(true)
+  /// When true, delivery is in scope but not priced yet — excluded from totals and estimate cost lines.
+  deliveryTbd         Boolean   @default(false)
   deliveryCost        Float?
   multiplier          Float     @default(2.5)
   discountPercent     Float     @default(0)

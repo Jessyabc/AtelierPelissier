@@ -6,8 +6,13 @@ import { computeCountertop } from "@/lib/pricing/countertop";
 import { formatCurrency } from "@/lib/format";
 import { computeVanityIngredients } from "@/lib/ingredients/vanity";
 import { computeConfigWarnings } from "@/lib/ingredients/warnings";
-import { CABINET_DEFAULTS } from "@/lib/ingredients/types";
 import { saveMaterialSnapshot } from "@/lib/ingredients/saveSnapshotClient";
+import { ConstructionStandardField } from "@/components/standards/ConstructionStandardField";
+import {
+  StandardsProvider,
+  useEffectiveConstructionStandards,
+  useStandardsContext,
+} from "@/components/standards/StandardsContext";
 import type { VanityInputs } from "@/lib/pricing/vanity";
 import type { CountertopInputs } from "@/lib/pricing/countertop";
 import type { VanitySection, VanitySectionLayout } from "@/lib/ingredients/types";
@@ -27,6 +32,7 @@ type Project = {
   vanityInputs: Partial<VanityInputs> & {
     height?: number | null;
     countertop?: boolean;
+    countertopTbd?: boolean;
     countertopWidth?: number | null;
     countertopDepth?: number | null;
     sinks?: string | null;
@@ -126,15 +132,15 @@ function rescaleSections(
   }));
 }
 
-export function VanityTab({
-  projectId,
-  project,
-  onUpdate,
-}: {
+type VanityTabProps = {
   projectId: string;
   project: Project;
   onUpdate: () => void;
-}) {
+};
+
+function VanityTabInner({ projectId, project, onUpdate }: VanityTabProps) {
+  const effectiveStandards = useEffectiveConstructionStandards();
+  const { refresh: refreshStandards } = useStandardsContext();
   const v = project.vanityInputs;
   const initialWidth = v?.width ?? 24;
   const [width, setWidthState] = useState(initialWidth);
@@ -158,6 +164,7 @@ export function VanityTab({
   const [sinks, setSinks] = useState(v?.sinks ?? "Single");
   const [faucetHoles, setFaucetHoles] = useState(v?.faucetHoles ?? "No Hole");
   const [priceRangePi2, setPriceRangePi2] = useState(v?.priceRangePi2 ?? 50);
+  const [countertopTbd, setCountertopTbd] = useState(v?.countertopTbd ?? false);
   // Section-canonical layout: always at least one section. Legacy projects
   // with flat doors/drawers are synthesised into an implicit single section.
   const [sections, setSections] = useState<VanitySection[]>(() =>
@@ -170,16 +177,16 @@ export function VanityTab({
   // 3/4" finishing panels). So the sections sum to `width − 1.5"` rather
   // than `width`. The configurator's `totalDimension` is fed the inner
   // value for the same reason.
-  const setWidth = useCallback((next: number) => {
-    setWidthState(next);
-    const innerTotal = Math.max(
-      0,
-      next - 2 * CABINET_DEFAULTS.finishPanelThickness
-    );
-    setSections((prev) =>
-      rescaleSections(prev, innerTotal, CABINET_DEFAULTS.minSectionWidth)
-    );
-  }, []);
+  const setWidth = useCallback(
+    (next: number) => {
+      setWidthState(next);
+      const fp = effectiveStandards.finishPanelThickness;
+      const minSec = effectiveStandards.minSectionWidth;
+      const innerTotal = Math.max(0, next - 2 * fp);
+      setSections((prev) => rescaleSections(prev, innerTotal, minSec));
+    },
+    [effectiveStandards.finishPanelThickness, effectiveStandards.minSectionWidth]
+  );
 
   // Derived totals — always come from sections now.
   const effectiveDoors = sections.reduce((s, sec) => s + sec.doors, 0);
@@ -210,6 +217,8 @@ export function VanityTab({
   };
   const countertopResult = computeCountertop(countertopInputs);
   const countertopTotal = countertopResult.total;
+  const countertopCountsTowardTotal = countertop && !countertopTbd;
+  const countertopDisplayTotal = countertopCountsTowardTotal ? countertopTotal : 0;
 
   // Ingredient estimate (live, computed from current config)
   const ingredientEstimate = useMemo(() => {
@@ -219,16 +228,16 @@ export function VanityTab({
         height: height === "" ? undefined : height,
         sections,
       },
-      { standards: CABINET_DEFAULTS }
+      { standards: effectiveStandards }
     );
-  }, [vanityInputs, height, sections]);
+  }, [vanityInputs, height, sections, effectiveStandards]);
 
   // Effective height for wireframe
   const effectiveHeight =
     height === ""
       ? mountingStyle === "Wall-hung"
-        ? CABINET_DEFAULTS.wallHungHeight
-        : CABINET_DEFAULTS.defaultVanityHeight
+        ? effectiveStandards.wallHungHeight
+        : effectiveStandards.vanityFreestandingHeight
       : height;
 
   // Config warnings — sections are always present so no fallback branch here.
@@ -245,9 +254,9 @@ export function VanityTab({
           numberOfSinks: vanityInputs.numberOfSinks,
           sinks: countertop ? sinks : undefined,
         },
-        CABINET_DEFAULTS
+        effectiveStandards
       ),
-    [vanityInputs, effectiveHeight, sections, countertop, sinks]
+    [vanityInputs, effectiveHeight, sections, countertop, sinks, effectiveStandards]
   );
 
   // Wireframe always reads directly from sections — no more legacy synthesis.
@@ -294,6 +303,7 @@ export function VanityTab({
           sinks: countertop ? sinks : null,
           faucetHoles: countertop ? faucetHoles : null,
           priceRangePi2: countertop ? priceRangePi2 : null,
+          countertopTbd: countertop ? countertopTbd : false,
           sections: sections.length > 0 ? JSON.stringify(sections) : null,
         }),
       });
@@ -314,6 +324,7 @@ export function VanityTab({
       } else {
         toast.success("Vanity saved");
       }
+      void refreshStandards();
       onUpdate();
     } finally {
       setSaving(false);
@@ -321,11 +332,41 @@ export function VanityTab({
   }, [
     projectId, vanityInputs, height, effectiveDoors, effectiveDrawers,
     countertop, countertopWidth, countertopDepth, sinks, faucetHoles,
-    priceRangePi2, sections, onUpdate,
+    priceRangePi2, countertopTbd, sections, onUpdate, refreshStandards,
   ]);
 
   return (
     <div className="space-y-6">
+      <div className="rounded-lg border border-gray-200 bg-white p-4">
+        <h3 className="mb-3 font-medium text-gray-800">Shop construction standards (vanity)</h3>
+        <p className="mb-3 text-xs text-gray-500">
+          Values come from Admin → Construction Standards. Request a project override when the job
+          needs a different reading; pending requests still price from the shop default.
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <ConstructionStandardField
+            standardKey="vanityFreestandingHeight"
+            label="Freestanding vanity height"
+            hint="Default cabinet height when mounting is not wall-hung."
+          />
+          <ConstructionStandardField
+            standardKey="wallHungHeight"
+            label="Wall-hung vanity height"
+            hint="Default height for wall-mounted boxes."
+          />
+          <ConstructionStandardField
+            standardKey="vanityDepthStandard"
+            label="Standard vanity depth"
+            hint="Typical depth when the faucet mounts on the countertop."
+          />
+          <ConstructionStandardField
+            standardKey="minSectionWidth"
+            label="Minimum section width"
+            hint="Used when validating section layout (API enforces at save)."
+          />
+        </div>
+      </div>
+
       {/* Global settings */}
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
@@ -362,7 +403,11 @@ export function VanityTab({
             max={120}
             step={1}
             value={height}
-            placeholder={mountingStyle === "Wall-hung" ? "24 (wall-hung)" : "30 (standard)"}
+            placeholder={
+              mountingStyle === "Wall-hung"
+                ? `${effectiveStandards.wallHungHeight} (wall-hung)`
+                : `${effectiveStandards.vanityFreestandingHeight} (standard)`
+            }
             onChange={(e) => setHeight(e.target.value === "" ? "" : Number(e.target.value))}
             className="w-full rounded border border-gray-300 px-3 py-2"
           />
@@ -452,10 +497,9 @@ export function VanityTab({
             // horizontal span is width − 2 × finishPanelThickness.
             totalDimension={Math.max(
               0,
-              (Number(width) || 24) -
-                2 * CABINET_DEFAULTS.finishPanelThickness
+              (Number(width) || 24) - 2 * effectiveStandards.finishPanelThickness
             )}
-            minSection={CABINET_DEFAULTS.minSectionWidth}
+            minSection={effectiveStandards.minSectionWidth}
           />
           <CabinetWireframe
             direction="horizontal"
@@ -463,42 +507,59 @@ export function VanityTab({
             totalWidth={Number(width) || 24}
             totalHeight={effectiveHeight}
             kickplate={kickplate && mountingStyle !== "Wall-hung"}
-            kickplateHeight={CABINET_DEFAULTS.kickplateHeight}
+            kickplateHeight={effectiveStandards.kickplateHeight}
           />
         </div>
       </div>
 
-      {/* Countertop */}
-      <div className="border-t pt-4">
-        <div className="mb-2 flex items-center justify-between">
-          <h3 className="font-medium text-gray-800">Countertop</h3>
+      {/* Countertop sidecar — priced separately; can be marked TBD like kitchen delivery/install */}
+      <aside className="rounded-xl border border-gray-200 bg-slate-50/90 p-5 shadow-sm">
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <div>
+            <h3 className="font-medium text-gray-900">Countertop (add-on)</h3>
+            <p className="text-xs text-gray-500">Priced separately from the vanity box; optional TBD for early quotes.</p>
+          </div>
           {countertop && !countertopIsOverhang && (
             <button
               type="button"
               onClick={matchVanityCountertop}
-              className="text-xs text-[var(--accent-hover)] underline"
+              className="shrink-0 text-xs text-[var(--accent-hover)] underline"
               title={`Reset to vanity size + ${COUNTERTOP_OVERHANG}" overhang`}
             >
               Match vanity
             </button>
           )}
         </div>
-        <div className="flex items-center gap-2 mb-4">
-          <input
-            type="checkbox"
-            id="countertop"
-            checked={countertop}
-            onChange={(e) => {
-              const next = e.target.checked;
-              setCountertop(next);
-              // Seed sensible defaults the first time countertop turns on.
-              if (next) {
-                setCountertopWidth(width + COUNTERTOP_OVERHANG);
-                setCountertopDepth(depth + COUNTERTOP_OVERHANG);
-              }
-            }}
-          />
-          <label htmlFor="countertop">Include countertop</label>
+        <div className="mb-4 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <label className="inline-flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="countertop"
+              checked={countertop}
+              onChange={(e) => {
+                const next = e.target.checked;
+                setCountertop(next);
+                if (!next) setCountertopTbd(false);
+                if (next) {
+                  setCountertopWidth(width + COUNTERTOP_OVERHANG);
+                  setCountertopDepth(depth + COUNTERTOP_OVERHANG);
+                }
+              }}
+            />
+            <span>Include countertop</span>
+          </label>
+          <label
+            className={`inline-flex items-center gap-2 ${countertop ? "" : "text-gray-400"}`}
+          >
+            <input
+              type="checkbox"
+              id="countertopTbd"
+              disabled={!countertop}
+              checked={countertopTbd}
+              onChange={(e) => setCountertopTbd(e.target.checked)}
+            />
+            <span>Countertop price TBD</span>
+          </label>
         </div>
         {countertop && (
           <div className="grid gap-4 sm:grid-cols-2">
@@ -568,7 +629,7 @@ export function VanityTab({
             </div>
           </div>
         )}
-      </div>
+      </aside>
 
       {/* Pricing */}
       <div className="rounded bg-gray-50 p-4">
@@ -587,19 +648,23 @@ export function VanityTab({
         </p>
         <p className="text-lg">
           <span className="text-gray-600">Countertop total: </span>
-          <strong>{formatCurrency(countertopTotal)}</strong>
-          <button
-            type="button"
-            onClick={() => navigator.clipboard.writeText(String(countertopTotal))}
-            className="ml-2 rounded px-2 py-0.5 text-sm text-gray-500 hover:bg-gray-200"
-            title="Copy value"
-          >
-            Copy
-          </button>
+          <strong>
+            {countertop && countertopTbd ? "TBD" : formatCurrency(countertopDisplayTotal)}
+          </strong>
+          {countertop && !countertopTbd ? (
+            <button
+              type="button"
+              onClick={() => navigator.clipboard.writeText(String(countertopTotal))}
+              className="ml-2 rounded px-2 py-0.5 text-sm text-gray-500 hover:bg-gray-200"
+              title="Copy value"
+            >
+              Copy
+            </button>
+          ) : null}
         </p>
         <p className="mt-2 text-lg font-medium">
           <span className="text-gray-600">Combined: </span>
-          {formatCurrency(vanityTotal + countertopTotal)}
+          {formatCurrency(vanityTotal + countertopDisplayTotal)}
         </p>
       </div>
 
@@ -632,5 +697,13 @@ export function VanityTab({
         </span>
       </div>
     </div>
+  );
+}
+
+export function VanityTab(props: VanityTabProps) {
+  return (
+    <StandardsProvider projectId={props.projectId}>
+      <VanityTabInner {...props} />
+    </StandardsProvider>
   );
 }

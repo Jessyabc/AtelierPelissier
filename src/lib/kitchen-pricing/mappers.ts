@@ -6,7 +6,9 @@ import { mergeKitchenRoomDefaults, staticKitchenRoomDefaults } from "@/lib/kitch
 type KitchenProjectRecord = {
   roomDefaults?: unknown;
   includeInstallation: boolean;
+  installationTbd?: boolean;
   includeDelivery: boolean;
+  deliveryTbd?: boolean;
   deliveryCost: number | null;
   multiplier: number;
   discountPercent: number;
@@ -49,6 +51,7 @@ export function buildDefaultKitchenBuilderPayload(): KitchenBuilderPayloadValida
     cabinets: [],
     roomDefaults: staticKitchenRoomDefaults(),
     includeInstallation: false,
+    installationTbd: false,
     installation: {
       baseCabinetQty: 0,
       wallCabinetQty: 0,
@@ -56,6 +59,7 @@ export function buildDefaultKitchenBuilderPayload(): KitchenBuilderPayloadValida
       finishingPanelQty: 0,
     },
     includeDelivery: true,
+    deliveryTbd: false,
     deliveryCost: KITCHEN_DELIVERY_FALLBACK_COST,
     multiplier: DEFAULT_KITCHEN_MARKUP,
     discountPercent: 0,
@@ -126,8 +130,10 @@ export function mapKitchenProjectToPayload(
       manualFabricationHours: cabinet.manualFabricationHours ?? null,
     })),
     includeInstallation: record.includeInstallation,
+    installationTbd: record.installationTbd ?? false,
     installation: installationBase,
     includeDelivery: record.includeDelivery,
+    deliveryTbd: record.deliveryTbd ?? false,
     deliveryCost: record.deliveryCost ?? KITCHEN_DELIVERY_FALLBACK_COST,
     multiplier: record.multiplier,
     discountPercent: record.discountPercent,

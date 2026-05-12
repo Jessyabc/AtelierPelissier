@@ -26,6 +26,7 @@ type KitchenBuilderPayload = {
   cabinets: KitchenCabinetInput[];
   roomDefaults: KitchenRoomDefaults;
   includeInstallation: boolean;
+  installationTbd: boolean;
   installation: {
     baseCabinetQty: number;
     wallCabinetQty: number;
@@ -33,6 +34,7 @@ type KitchenBuilderPayload = {
     finishingPanelQty: number;
   };
   includeDelivery: boolean;
+  deliveryTbd: boolean;
   deliveryCost?: number | null;
   multiplier: number;
   discountPercent: number;
@@ -781,23 +783,61 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
             className="w-full rounded border border-gray-300 px-2 py-2 text-sm"
           />
         </label>
-        <div className="flex items-end gap-4 pb-1 text-sm">
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={payload.includeInstallation}
-              onChange={(e) => setPayload({ ...payload, includeInstallation: e.target.checked })}
-            />
-            Installation
-          </label>
-          <label className="inline-flex items-center gap-2">
-            <input
-              type="checkbox"
-              checked={payload.includeDelivery}
-              onChange={(e) => setPayload({ ...payload, includeDelivery: e.target.checked })}
-            />
-            Delivery
-          </label>
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-2 pb-1 text-sm">
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={payload.includeInstallation}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setPayload({
+                    ...payload,
+                    includeInstallation: on,
+                    installationTbd: on ? payload.installationTbd : false,
+                  });
+                }}
+              />
+              Installation
+            </label>
+            <label
+              className={`inline-flex items-center gap-2 ${payload.includeInstallation ? "" : "text-gray-400"}`}
+            >
+              <input
+                type="checkbox"
+                disabled={!payload.includeInstallation}
+                checked={payload.installationTbd}
+                onChange={(e) => setPayload({ ...payload, installationTbd: e.target.checked })}
+              />
+              Installation TBD
+            </label>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={payload.includeDelivery}
+                onChange={(e) => {
+                  const on = e.target.checked;
+                  setPayload({
+                    ...payload,
+                    includeDelivery: on,
+                    deliveryTbd: on ? payload.deliveryTbd : false,
+                  });
+                }}
+              />
+              Delivery
+            </label>
+            <label className={`inline-flex items-center gap-2 ${payload.includeDelivery ? "" : "text-gray-400"}`}>
+              <input
+                type="checkbox"
+                disabled={!payload.includeDelivery}
+                checked={payload.deliveryTbd}
+                onChange={(e) => setPayload({ ...payload, deliveryTbd: e.target.checked })}
+              />
+              Delivery TBD
+            </label>
+          </div>
         </div>
       </div>
 
@@ -872,8 +912,22 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
           <>
             <p className="text-sm text-gray-700">Materials: <strong>{formatCurrency(data.totals.materialsSubtotal)}</strong></p>
             <p className="text-sm text-gray-700">Fabrication: <strong>{formatCurrency(data.totals.fabricationSubtotal)}</strong></p>
-            <p className="text-sm text-gray-700">Installation: <strong>{formatCurrency(data.totals.installationSubtotal)}</strong></p>
-            <p className="text-sm text-gray-700">Delivery: <strong>{formatCurrency(data.totals.deliverySubtotal)}</strong></p>
+            <p className="text-sm text-gray-700">
+              Installation:{" "}
+              <strong>
+                {payload.includeInstallation && payload.installationTbd
+                  ? "TBD"
+                  : formatCurrency(data.totals.installationSubtotal)}
+              </strong>
+            </p>
+            <p className="text-sm text-gray-700">
+              Delivery:{" "}
+              <strong>
+                {payload.includeDelivery && payload.deliveryTbd
+                  ? "TBD"
+                  : formatCurrency(data.totals.deliverySubtotal)}
+              </strong>
+            </p>
             <p className="text-sm text-gray-700">Total cost: <strong>{formatCurrency(data.totals.totalCost)}</strong></p>
             <p className="text-sm text-gray-700">Sales (x{data.sales.multiplier}): <strong>{formatCurrency(data.sales.salesPriceRaw)}</strong></p>
           </>

@@ -77,6 +77,8 @@ export const PATCH = withProjectAuth<{ id: string }>(
     );
   }
 
+  const countertopTbdPersisted = data.countertop ? data.countertopTbd : false;
+
   await prisma.vanityInputs.upsert({
     where: { projectId },
     create: {
@@ -98,6 +100,7 @@ export const PATCH = withProjectAuth<{ id: string }>(
       sinks: data.countertop ? data.sinks ?? null : null,
       faucetHoles: data.countertop ? data.faucetHoles ?? null : null,
       priceRangePi2: data.countertop ? data.priceRangePi2 ?? null : null,
+      countertopTbd: countertopTbdPersisted,
       sections: data.sections ?? null,
     },
     update: {
@@ -118,6 +121,7 @@ export const PATCH = withProjectAuth<{ id: string }>(
       sinks: data.countertop ? data.sinks ?? null : null,
       faucetHoles: data.countertop ? data.faucetHoles ?? null : null,
       priceRangePi2: data.countertop ? data.priceRangePi2 ?? null : null,
+      countertopTbd: countertopTbdPersisted,
       sections: data.sections ?? null,
     },
   });

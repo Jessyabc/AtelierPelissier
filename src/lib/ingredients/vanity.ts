@@ -66,7 +66,7 @@ export function computeVanityIngredients(
     inputs.height ??
     (inputs.mountingStyle === "Wall-hung"
       ? s.wallHungHeight
-      : s.defaultVanityHeight);
+      : s.vanityFreestandingHeight ?? s.defaultVanityHeight);
 
   // Carcass wall thickness (5/8" default, 3/4" for "thick frame" flag).
   const T = inputs.thickFrame ? s.thickFrameThickness : s.panelThickness;

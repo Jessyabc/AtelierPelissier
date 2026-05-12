@@ -86,8 +86,12 @@ export type KitchenProjectPricingInput = {
   /** Stage 1 room frame — does not affect line-item pricing until Stage 2+ wiring. */
   roomDefaults: KitchenRoomDefaults;
   includeInstallation: boolean;
+  /** When true with installation included, installation dollars are excluded from totals (quote TBD). */
+  installationTbd?: boolean;
   installation: KitchenInstallationInput;
   includeDelivery: boolean;
+  /** When true with delivery included, delivery dollars are excluded from totals (quote TBD). */
+  deliveryTbd?: boolean;
   deliveryCost?: number | null;
   multiplier: number;
   discountPercent: number;

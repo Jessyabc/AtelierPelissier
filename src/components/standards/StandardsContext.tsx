@@ -189,3 +189,47 @@ export function useResolvedStandard(
   const { resolve } = useStandardsContext();
   return resolve(key, sectionId);
 }
+
+/** Every numeric field in `ConstructionStandardsData`, resolved for approved overrides (pending keeps shop). */
+const ALL_CONSTRUCTION_STANDARD_KEYS: StandardKey[] = [
+  "standardBaseDepth",
+  "defaultVanityHeight",
+  "wallHungHeight",
+  "kickplateHeight",
+  "panelThickness",
+  "backThickness",
+  "stretcherDepth",
+  "framingWidth",
+  "drawerBoxHeight",
+  "drawerFrontHeight",
+  "doorGap",
+  "shelfSetback",
+  "thickFrameThickness",
+  "minSectionWidth",
+  "minSectionHeight",
+  "finishPanelThickness",
+  "vanityFreestandingHeight",
+  "vanityDepthStandard",
+  "vanityDepthWallMountedFaucet",
+  "kitchenBaseHeight",
+  "kitchenBaseDepth",
+  "kitchenKickplateHeight",
+  "kitchenTopSilenceHeight",
+  "quoteFollowUpDays",
+  "invoiceFollowUpDays",
+];
+
+/**
+ * Full standards snapshot for ingredient engines and warnings: each key uses
+ * the effective value from the resolver (same as pricing/cutlist inputs).
+ */
+export function useEffectiveConstructionStandards(): ConstructionStandardsData {
+  const { standards, resolve } = useStandardsContext();
+  return useMemo(() => {
+    const out = { ...standards };
+    for (const k of ALL_CONSTRUCTION_STANDARD_KEYS) {
+      (out as Record<StandardKey, number>)[k] = resolve(k).value;
+    }
+    return out;
+  }, [standards, resolve]);
+}

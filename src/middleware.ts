@@ -32,6 +32,16 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
+  // Critical: avoid calling Supabase for routes that do not require auth.
+  // Middleware has a tight execution budget on Vercel; any network hiccup
+  // here can surface as MIDDLEWARE_INVOCATION_TIMEOUT.
+  if (pathname.startsWith("/api") && isPublicApi(pathname, request)) {
+    return NextResponse.next();
+  }
+  if (!pathname.startsWith("/api") && isPublicPath(pathname)) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -58,16 +68,9 @@ export async function middleware(request: NextRequest) {
   } = await supabase.auth.getUser();
 
   if (pathname.startsWith("/api")) {
-    if (isPublicApi(pathname, request)) {
-      return response;
-    }
     if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return response;
-  }
-
-  if (isPublicPath(pathname)) {
     return response;
   }
 
