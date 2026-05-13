@@ -84,7 +84,15 @@ export const PATCH = withProjectAuth<{ id: string }>(
       );
     }
 
-    const payload = parsed.data;
+    const existingTbd = await prisma.kitchenPricingProject.findUnique({
+      where: { projectId },
+      select: { installationTbd: true, deliveryTbd: true },
+    });
+    const payload = {
+      ...parsed.data,
+      installationTbd: parsed.data.installationTbd ?? existingTbd?.installationTbd ?? false,
+      deliveryTbd: parsed.data.deliveryTbd ?? existingTbd?.deliveryTbd ?? false,
+    };
     const needsReview = requiresManagerReview(payload.multiplier);
 
     const statusOverride =
