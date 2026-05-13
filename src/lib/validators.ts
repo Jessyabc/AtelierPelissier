@@ -136,7 +136,8 @@ export const vanityInputsSchema = z.object({
   sinks: z.enum(COUNTERTOP_SINKS).optional().nullable(),
   faucetHoles: z.enum(FAUCET_HOLES).optional().nullable(),
   priceRangePi2: z.number().min(0).max(1000).optional().nullable(),
-  countertopTbd: z.boolean().default(false),
+  /** Omitted on older clients; API merges from persisted row before save. */
+  countertopTbd: z.boolean().optional(),
   sections: z.string().optional().nullable(), // JSON string of VanitySection[]
 });
 
@@ -210,10 +211,12 @@ export const kitchenBuilderPayloadSchema = z.object({
   cabinets: z.array(kitchenCabinetSchema).max(150),
   roomDefaults: kitchenRoomDefaultsSchema,
   includeInstallation: z.boolean().default(false),
-  installationTbd: z.boolean().default(false),
+  /** Omitted on older clients; API merges from persisted row before save. */
+  installationTbd: z.boolean().optional(),
   installation: kitchenInstallationSchema,
   includeDelivery: z.boolean().default(true),
-  deliveryTbd: z.boolean().default(false),
+  /** Omitted on older clients; API merges from persisted row before save. */
+  deliveryTbd: z.boolean().optional(),
   deliveryCost: z.number().min(0).max(100000).nullable().optional(),
   multiplier: z.number().min(1).max(10).default(2.5),
   discountPercent: z.number().min(0).max(10).default(0),

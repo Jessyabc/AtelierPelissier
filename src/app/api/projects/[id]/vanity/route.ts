@@ -77,7 +77,13 @@ export const PATCH = withProjectAuth<{ id: string }>(
     );
   }
 
-  const countertopTbdPersisted = data.countertop ? data.countertopTbd : false;
+  const existingVanity = await prisma.vanityInputs.findUnique({
+    where: { projectId },
+    select: { countertopTbd: true },
+  });
+  const countertopTbdPersisted = data.countertop
+    ? (data.countertopTbd ?? existingVanity?.countertopTbd ?? false)
+    : false;
 
   await prisma.vanityInputs.upsert({
     where: { projectId },
