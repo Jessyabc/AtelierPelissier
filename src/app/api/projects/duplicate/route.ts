@@ -150,15 +150,19 @@ export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req, 
       });
     }
     if (source.kitchenPricingProject) {
+      const kpp = source.kitchenPricingProject;
       const copiedKitchen = await prisma.kitchenPricingProject.create({
         data: {
           projectId: project.id,
-          includeInstallation: source.kitchenPricingProject.includeInstallation,
-          includeDelivery: source.kitchenPricingProject.includeDelivery,
-          deliveryCost: source.kitchenPricingProject.deliveryCost,
-          multiplier: source.kitchenPricingProject.multiplier,
-          discountPercent: source.kitchenPricingProject.discountPercent,
-          discountReason: source.kitchenPricingProject.discountReason,
+          roomDefaults: kpp.roomDefaults ?? undefined,
+          includeInstallation: kpp.includeInstallation,
+          installationTbd: kpp.installationTbd,
+          includeDelivery: kpp.includeDelivery,
+          deliveryTbd: kpp.deliveryTbd,
+          deliveryCost: kpp.deliveryCost,
+          multiplier: kpp.multiplier,
+          discountPercent: kpp.discountPercent,
+          discountReason: kpp.discountReason,
           approvalStatus: "not_required",
           approvalReason: null,
           approvedByRole: null,
