@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { logAudit } from "@/lib/audit";
 import { withAuth, checkProjectAccess } from "@/lib/auth/guard";
+import { kitchenPricingProjectDuplicateScalars } from "@/lib/projects/kitchenPricingDuplicateScalars";
 
 // POST /api/projects/duplicate
 // Top-level (no project [id] path param) so role gating is done with `withAuth`.
@@ -150,15 +151,11 @@ export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req, 
       });
     }
     if (source.kitchenPricingProject) {
+      const kpp = source.kitchenPricingProject;
       const copiedKitchen = await prisma.kitchenPricingProject.create({
         data: {
           projectId: project.id,
-          includeInstallation: source.kitchenPricingProject.includeInstallation,
-          includeDelivery: source.kitchenPricingProject.includeDelivery,
-          deliveryCost: source.kitchenPricingProject.deliveryCost,
-          multiplier: source.kitchenPricingProject.multiplier,
-          discountPercent: source.kitchenPricingProject.discountPercent,
-          discountReason: source.kitchenPricingProject.discountReason,
+          ...kitchenPricingProjectDuplicateScalars(kpp),
           approvalStatus: "not_required",
           approvalReason: null,
           approvedByRole: null,
