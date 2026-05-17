@@ -12,7 +12,11 @@ import type {
   KitchenDoorStyleId,
   KitchenDrawerSystemId,
 } from "@/lib/kitchen-pricing/types";
-import { canUserSeeBreakdown, isKitchenManagerRole } from "@/lib/kitchen-pricing/permissions";
+import {
+  canUserSeeBreakdown,
+  isKitchenManagerRole,
+  isKitchenSubmitGateStandardKey,
+} from "@/lib/kitchen-pricing/permissions";
 import { type KitchenRoomDefaults, usableBaseCabinetOpeningInches } from "@/lib/kitchen-pricing/roomDefaults";
 import { ConstructionStandardField } from "@/components/standards/ConstructionStandardField";
 import { StandardsProvider, useStandardsContext } from "@/components/standards/StandardsContext";
@@ -320,8 +324,10 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
     return <p className="text-sm text-gray-500">Loading kitchen builder...</p>;
   }
 
-  const pendingOverrides = (overrides ?? []).filter((o) => o.status === "pending");
-  const hasPendingOverrides = pendingOverrides.length > 0;
+  const pendingKitchenSubmitOverrides = (overrides ?? []).filter(
+    (o) => o.status === "pending" && isKitchenSubmitGateStandardKey(o.standardKey)
+  );
+  const hasPendingKitchenSubmitOverrides = pendingKitchenSubmitOverrides.length > 0;
 
   const rd = payload.roomDefaults;
   const baseOpeningIn = usableBaseCabinetOpeningInches({
@@ -410,11 +416,12 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
       </div>
 
       {error && <p className="rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-      {hasPendingOverrides && (
+      {hasPendingKitchenSubmitOverrides && (
         <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-          <strong>Overrides pending.</strong> You have {pendingOverrides.length} construction-standard override
-          {pendingOverrides.length === 1 ? "" : "s"} awaiting review. This quote can be saved, but cannot be submitted
-          until approvals land.
+          <strong>Kitchen standard overrides pending.</strong> You have {pendingKitchenSubmitOverrides.length}{" "}
+          kitchen-related construction-standard override
+          {pendingKitchenSubmitOverrides.length === 1 ? "" : "s"} awaiting review. This quote can be saved, but cannot be
+          submitted until those approvals land.
         </div>
       )}
 
@@ -955,7 +962,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
         <button
           type="button"
           onClick={submitBuilder}
-          disabled={submitting || saving || hasPendingOverrides}
+          disabled={submitting || saving || hasPendingKitchenSubmitOverrides}
           className="rounded bg-emerald-700 px-4 py-2 text-sm text-white hover:bg-emerald-600 disabled:opacity-50"
         >
           {submitting ? "Submitting..." : "Submit quote"}
@@ -1003,7 +1010,7 @@ function KitchenTabInner({ projectId, project: _project, onUpdate }: KitchenTabP
             <button
               type="button"
               onClick={submitBuilder}
-              disabled={submitting || saving || hasPendingOverrides}
+              disabled={submitting || saving || hasPendingKitchenSubmitOverrides}
               className="neo-btn px-4 py-2 text-sm disabled:opacity-50"
             >
               {submitting ? "Submitting…" : "Submit"}

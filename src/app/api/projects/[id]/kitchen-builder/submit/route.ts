@@ -4,7 +4,7 @@ import { logAudit } from "@/lib/audit";
 import { withProjectAuth } from "@/lib/auth/guard";
 import { getConstructionStandards } from "@/lib/ingredients/getConstructionStandards";
 import { mapKitchenProjectToPayload } from "@/lib/kitchen-pricing/mappers";
-import { requiresManagerReview } from "@/lib/kitchen-pricing/permissions";
+import { KITCHEN_SUBMIT_GATE_STANDARD_KEYS, requiresManagerReview } from "@/lib/kitchen-pricing/permissions";
 import { saveKitchenBuilderState } from "@/lib/kitchen-pricing/persistence";
 
 async function fetchKitchenProject(projectId: string) {
@@ -30,7 +30,11 @@ export const POST = withProjectAuth<{ id: string }>(
     const { id: projectId } = params;
 
     const pendingOverrides = await prisma.standardsOverride.count({
-      where: { projectId, status: "pending" },
+      where: {
+        projectId,
+        status: "pending",
+        standardKey: { in: [...KITCHEN_SUBMIT_GATE_STANDARD_KEYS] },
+      },
     });
     if (pendingOverrides > 0) {
       return NextResponse.json(
@@ -39,7 +43,7 @@ export const POST = withProjectAuth<{ id: string }>(
           requiresApproval: true,
           approvalStatus: "pending",
           message:
-            "Construction-standard overrides are still pending review. Approve/reject them before submitting this quote.",
+            "Kitchen-related construction-standard overrides are still pending review. Approve/reject them before submitting this quote.",
         },
         { status: 409 }
       );
