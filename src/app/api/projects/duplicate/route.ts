@@ -153,8 +153,11 @@ export const POST = withAuth(["admin", "planner", "salesperson"], async ({ req, 
       const copiedKitchen = await prisma.kitchenPricingProject.create({
         data: {
           projectId: project.id,
+          roomDefaults: source.kitchenPricingProject.roomDefaults,
           includeInstallation: source.kitchenPricingProject.includeInstallation,
+          installationTbd: source.kitchenPricingProject.installationTbd,
           includeDelivery: source.kitchenPricingProject.includeDelivery,
+          deliveryTbd: source.kitchenPricingProject.deliveryTbd,
           deliveryCost: source.kitchenPricingProject.deliveryCost,
           multiplier: source.kitchenPricingProject.multiplier,
           discountPercent: source.kitchenPricingProject.discountPercent,
